@@ -1,0 +1,19 @@
+{
+  "vault_id": "VAULT_001",
+  "user_id": "USR001",
+  "payment_methods": [
+    {
+      "payment_method_id": "PM001",
+      "type": "card",
+      "masked_pan": "4242",
+      "card_brand": "Visa",
+      "expiry_month": 12,
+      "expiry_year": 2027,
+      "billing_name": "Demo User",
+      "vault_reference": "vault_ref_pm001_secure",
+      "status": "active",
+      "is_default": true
+    }
+  ],
+  "note": "Raw card credentials never leave this vault. Agents receive only a scoped DPAT token."
+}

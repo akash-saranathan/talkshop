@@ -1,0 +1,20 @@
+[
+  {
+    "merchant_id": "MERCHANT_A",
+    "merchant_name": "RunnerWorld",
+    "trust_status": "trusted",
+    "tier": "api"
+  },
+  {
+    "merchant_id": "MERCHANT_B",
+    "merchant_name": "TechStore",
+    "trust_status": "trusted",
+    "tier": "playwright"
+  },
+  {
+    "merchant_id": "MERCHANT_C",
+    "merchant_name": "FashionHub",
+    "trust_status": "trusted",
+    "tier": "local"
+  }
+]
