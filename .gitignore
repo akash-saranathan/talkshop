@@ -1,5 +1,6 @@
-# Env files — never commit real keys
+# Env files — never commit real keys (.env.example is safe to commit)
 .env
+.env.local
 
 # Python
 .venv/
