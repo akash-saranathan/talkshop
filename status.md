@@ -16,7 +16,16 @@
 ## Phase 1 — Foundation & Core Infrastructure ✅
 
 **Branch:** `phase-1/foundation`
-**Status:** Complete
+**Status:** Complete — 6 commits
+**Commits:**
+| Hash | Description |
+|------|-------------|
+| `fac291a` | Project scaffold and directory structure |
+| `674a8a4` | Agent config, SQLite schema, requirements.txt |
+| `eec192f` | Pydantic models for all 5 core contracts |
+| `988c9fb` | Seed data — 3 merchants, 45 products, mock wallet |
+| `90c8e1b` | FastAPI skeleton with /api/merchants and /api/products |
+| `ab0574c` | React + Vite frontend — 4 pages, router, Tailwind, Framer Motion |
 
 ### What was built
 
