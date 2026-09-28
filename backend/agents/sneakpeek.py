@@ -48,7 +48,7 @@ def rank_products(
     prefs_lower = [p.lower() for p in intent.preferences]
     max_price = intent.max_price or float("inf")
 
-    for product in products:
+    for i, product in enumerate(products):
         score = 0.0
 
         # Budget fit: closer to max_price ceiling = better value signal
@@ -90,8 +90,7 @@ def rank_products(
         if product.shipping_cost == 0.0:
             score += 3
 
-        product = product.model_copy(update={"rank_score": round(score, 2)})
-        products[products.index(product)] = product
+        products[i] = product.model_copy(update={"rank_score": round(score, 2)})
 
     return sorted(products, key=lambda p: p.rank_score, reverse=True)
 
