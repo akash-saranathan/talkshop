@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.env
+.env.*
+
+# DB (generated at runtime)
+backend/db/commerce.db
+
+# Node
+frontend/node_modules/
+
+# Vite build output
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
