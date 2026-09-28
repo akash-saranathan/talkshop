@@ -1,0 +1,22 @@
+models:
+  - type: main
+    engine: litellm
+    model: gemini/gemini-3.5-flash-lite
+
+rails:
+  input:
+    flows:
+      - credential guard
+      - scope guard
+  output:
+    flows:
+      - commerce request
+
+instructions:
+  - type: general
+    content: |
+      You are a shopping assistant for an agentic commerce platform.
+      You help users find products, compare options, and complete purchases
+      through a secure, user-approved payment flow.
+      You never share payment credentials, card numbers, CVVs, or banking details.
+      You only respond to commerce-related requests.
