@@ -66,10 +66,67 @@
 
 ---
 
-## Phase 2 — Agentic Discovery via MCP 🔲
+## Phase 2 — Agentic Discovery via MCP ✅
 
 **Branch:** `phase-2/agentic-discovery`
-**Status:** Not started
+**Status:** Complete — 8 commits
+**Commits:**
+| Hash | Description |
+|------|-------------|
+| `29a9901` | LLM config (gemini-3.5-flash-lite) and 3 merchant adapters |
+| `6774c6c` | FastMCP commerce server with 7 tools |
+| `110961f` | NeMo Guardrails (Colang rails) and Guardrails AI validators |
+| `c4024b7` | VibeCheck and SneakPeek agents |
+| `5f73942` | LangGraph 7-node discovery workflow |
+| `63d3a88` | SSE /api/chat/stream endpoint + main.py LLM startup check |
+| `0ba9748` | Frontend SSE client, ProductCard component, Chat.tsx rewire |
+| `2a27da2` | 23 passing tests + fix rank_products enumerate bug |
+
+### What was built
+
+#### LLM Layer
+- `backend/config/llm.py` — `gemini-3.5-flash-lite` via `langchain-google-genai`; hard stop if `GOOGLE_API_KEY` absent
+
+#### Merchant Adapters (3-tier)
+- `backend/merchants/local.py` — SQLite Tier 1 (always on); `search_products()` + `get_product()`
+- `backend/merchants/shopify.py` — Shopify Storefront GraphQL Tier 2; graceful `[]` fallback when no credentials
+- `backend/merchants/bestbuy.py` — Best Buy Open API Tier 2 + Playwright Tier 3 fallback; both return `[]` on failure
+
+#### MCP Commerce Server
+- `backend/mcp/server.py` — FastMCP server with 7 tools: `search_products`, `get_product`, `check_inventory`, `get_price`, `calculate_shipping`, `create_checkout`, `get_order_status`
+- Fan-out hits all 3 adapters in parallel; always falls back to local
+- Agents receive `NormalizedProduct` dicts — raw merchant JSON never exposed to LLM
+
+#### Guardrails
+- `backend/guardrails/nemo/` — NeMo Guardrails: `commerce.co` Colang rails (credential exposure guard, scope guard), `config.yml` (LiteLLM + Gemini), `check_input()` async function
+- `backend/guardrails/validators.py` — Guardrails AI + Pydantic fallback; `validate_shopping_intent()` catches hallucinated financial fields (e.g. price as string)
+
+#### Agents
+- `backend/agents/vibecheck.py` — Orchestrator (Agent 1): NeMo guard → Gemini LLM → Guardrails AI validation → `ShoppingIntent`; `generate_recommendation_text()` writes prose from factual data
+- `backend/agents/sneakpeek.py` — Product Search (Agent 2): deterministic `filter_products()` and `rank_products()`; no LLM in this agent
+
+#### LangGraph Workflow
+- `backend/graph/workflow.py` — 7-node Phase 2 graph: `input_guardrail → extract_intent → mcp_product_search → normalize_products → deterministic_filter → rank_products → generate_recommendation → stream_to_ui`
+- SSE events pushed to `asyncio.Queue` per session; `run_discovery()` is the entry point
+
+#### API + Streaming
+- `backend/routers/chat.py` — `GET /api/chat/stream?message=&session_id=`; streams LangGraph node events as SSE; 60s timeout guard
+- `backend/main.py` — updated to include chat router + `resolve_llm()` on startup
+
+#### Frontend
+- `frontend/src/api/chat.ts` — `streamChat()` SSE client; typed callbacks for all event types
+- `frontend/src/components/ProductCard.tsx` — Framer Motion animated card; merchant badge, rating, delivery, price, Select → `/checkout`
+- `frontend/src/pages/Chat.tsx` — live SSE wired; animated step list; product card grid; recommendation text; blocked guardrail panel
+
+### Milestone checks
+- [x] User types "Find running shoes size 10 under $100"
+- [x] System calls all 3 merchant adapters in parallel via MCP
+- [x] Products normalized and constraint-filtered deterministically
+- [x] Top recommendations shown with merchant badges and ranked scores
+- [x] Agent progress shown step-by-step in chat
+- [x] NeMo Guardrails blocks credential exposure attempts
+- [x] No payment flow yet
+- [x] 23 Phase 2 tests passing, 19 Phase 1 tests still passing (42 total)
 
 ---
 
