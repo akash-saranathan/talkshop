@@ -1,3 +1,6 @@
+# Env files — never commit real keys
+.env
+
 # Python
 .venv/
 __pycache__/
