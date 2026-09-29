@@ -52,6 +52,7 @@ export default function Checkout() {
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
   const [approved, setApproved] = useState(false);
+  const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const countdown = useCountdown(expiresAt);
@@ -120,20 +121,58 @@ export default function Checkout() {
       setTokenId(data.token_id);
       setExpiresAt(data.expires_at);
       setApproved(true);
-      setTimeout(() => navigate("/payment-result", {
-        state: {
-          status: "success",
-          tokenId: data.token_id,
-          orderId: checkout.checkout_id,
-          amount: checkout.total,
-          merchant: checkout.merchant_name,
-          summary: data.summary,
-        }
-      }), 1200);
+      setApproving(false);
+
+      setExecuting(true);
+      const execRes = await fetch("/api/payments/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token_id: data.token_id,
+          checkout_id: checkout.checkout_id,
+          checkout_hash: checkout.checkout_hash,
+          merchant_id: checkout.merchant_id,
+          merchant_name: checkout.merchant_name,
+          total: checkout.total,
+          currency: checkout.currency,
+          user_id: "USR001",
+          product_id: checkout.product_id,
+          product_title: checkout.product_title,
+          subtotal: checkout.subtotal,
+          tax: checkout.tax,
+          shipping: checkout.shipping,
+        }),
+      });
+      const execData = await execRes.json();
+      if (!execRes.ok) {
+        throw new Error(execData.detail || "Payment execution failed");
+      }
+
+      if (execData.status === "success") {
+        navigate("/payment-result", {
+          state: {
+            status: "success",
+            tokenId: data.token_id,
+            orderId: execData.order_id,
+            amount: execData.amount,
+            merchant: execData.merchant,
+            summary: execData.summary,
+          }
+        });
+      } else {
+        navigate("/payment-result", {
+          state: {
+            status: "blocked",
+            blockedReason: execData.blocked_reason,
+            orderId: execData.order_id,
+          }
+        });
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setApproving(false);
+      setExecuting(false);
     }
   }, [checkout, approving, approved, navigate]);
 
@@ -202,15 +241,21 @@ export default function Checkout() {
           <div className="mt-5 flex flex-col gap-2">
             <button
               onClick={handleApprove}
-              disabled={approving || approved}
+              disabled={approving || executing || approved}
               className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
-              {approving && <Loader size={14} className="animate-spin" />}
-              {approved ? "Approved ✓" : approving ? "Authorizing..." : "Approve Purchase"}
+              {(approving || executing) && <Loader size={14} className="animate-spin" />}
+              {executing
+                ? "Processing Payment..."
+                : approving
+                ? "Authorizing..."
+                : approved
+                ? "Approved ✓"
+                : "Approve Purchase"}
             </button>
             <button
               onClick={() => navigate("/")}
-              disabled={approving || approved}
+              disabled={approving || executing || approved}
               className="w-full py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40 transition-colors"
             >
               Cancel

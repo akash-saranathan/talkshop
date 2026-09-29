@@ -172,10 +172,22 @@ async def create_checkout(
 
 @mcp.tool()
 async def get_order_status(order_id: str) -> dict:
-    """Return current status of an order from the DB (Phase 4)."""
-    # Full implementation in Phase 4 — returns stub in Phase 2
-    return {
-        "order_id": order_id,
-        "status": "pending",
-        "message": "Order tracking available in Phase 4",
-    }
+    """Return current status of an order from the DB."""
+    def _query() -> dict:
+        from backend.db.schema import Order
+        from backend.db.session_utils import get_session
+
+        with get_session() as session:
+            order = session.query(Order).filter(Order.order_id == order_id).first()
+            if not order:
+                return {"order_id": order_id, "status": "not_found"}
+            return {
+                "order_id": order.order_id,
+                "status": order.status,
+                "amount": order.amount,
+                "currency": order.currency,
+                "merchant_id": order.merchant_id,
+                "transaction_id": order.transaction_id,
+            }
+
+    return await asyncio.to_thread(_query)

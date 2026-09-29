@@ -294,10 +294,75 @@ This avoids distributed state management across HTTP requests while delivering t
 
 ---
 
-## Phase 4 — Payment Execution, Orders & Observability 🔲
+## Phase 4 — Payment Execution, Orders & Observability ✅
 
 **Branch:** `phase-4/execution-observability`
-**Status:** Not started
+**Status:** Complete — 7 commits
+**Commits:**
+| Hash | Description |
+|------|-------------|
+| `c9826eb` | Mock payment processor + shared DB/token helpers |
+| `1e767c7` | PayIt (Agent 5) and TrackIt (Agent 6) + OpenTelemetry tracing |
+| `a3194bd` | Fix DPAT token scoping + signature verification |
+| `238d14e` | Payment execution service (3 endpoints) + wire into main |
+| `fc1e712` | Checkout.tsx real payment execution, Dashboard.tsx real orders |
+| `fa73143` | 21 Phase 4 tests |
+| `(pending)` | status.md milestone log |
+
+### What was built
+
+#### Bug fix: DPAT token scoping + signature verification
+
+Two latent issues surfaced while wiring PayIt to the guardrail engine, both fixed as part of this phase (no test in Phase 3 exercised either path, so neither was caught until Phase 4's payment-execution flow actually ran end-to-end):
+
+- `backend/agents/greenlight.py` — the DPAT token's `agent_id` was scoped to `GREENLIGHT.agent_id`, but guardrail check 5 requires the token to name the agent that *executes* payment. Fixed to `PAYIT.agent_id`.
+- `backend/routers/authorizations.py` / `backend/payment/token_lookup.py` — `/api/authorizations/validate`'s token-signature reconstruction didn't match the fields GreenLight actually signed (different key set, plus a raw `datetime` that would crash `json.dumps`). Fixed by having `approve_authorization` compute a second, storage-scoped HMAC signature over exactly the string/float columns `PaymentAuthorization` persists — this reconstructs identically from DB rows with no serialization ambiguity. GreenLight's original in-memory signature (and its Phase 3 unit test) is untouched.
+
+#### Mock Payment Processor (`backend/payment/mock_processor.py`)
+Deterministic charge simulation against `data/mock_wallet.json` — no network, no randomness. Declines only on wallet conditions (`NO_ACTIVE_PAYMENT_METHOD`, `CARD_EXPIRED`), so tests stay reproducible. Success returns a `TXN_`-prefixed transaction ID.
+
+#### PayIt — Agent 5 (`backend/agents/payit.py`) — NO LLM
+Runs the existing 12-check guardrail engine (`backend/payment/guardrail_engine.py`, unchanged) before ever calling the processor. A guardrail failure returns a blocked reason with zero processor calls and zero token mutation; a guardrail pass calls the mock processor and returns its result (success or decline) — a processor decline is distinct from a guardrail block.
+
+#### TrackIt — Agent 6 (`backend/agents/trackit.py`) — NO LLM
+Pure field/string builders: `confirm_order()` / `record_incomplete_order()` produce the `Order` row fields for confirmed vs. blocked/declined outcomes; `summarize_order()` / `summarize_decline()` are deterministic UI copy templates (no LLM), mirroring GreenLight's `summarize_authorization`.
+
+#### Payment Execution Service (`backend/routers/payments.py`)
+| Endpoint | What it does |
+|----------|--------------|
+| `POST /api/payments/execute` | PayIt validates + charges; TrackIt records the `Order` row and audit trail; token is consumed on any guardrail-pass outcome (success or decline), untouched on guardrail block |
+| `GET /api/orders` | Order list for the Dashboard — collapses to `paid`/`blocked` with the real block/decline reason pulled from the audit trail |
+| `GET /api/orders/{order_id}` | Single order detail, 404 if unknown |
+
+Order rows are inserted only on the first execute call for a given `order_id` (`_insert_order_if_absent`) — a later replay attempt (already blocked by the guardrail engine) can never overwrite a prior confirmed/declined outcome.
+
+#### Shared helpers
+- `backend/db/session_utils.py` — `get_session()`/`now_utc()`/`write_audit_event()`, extracted from `authorizations.py` so the new payments router uses identical DB/audit conventions.
+- `backend/payment/token_lookup.py` — `load_token_context()`, shared by `/api/authorizations/validate` and `/api/payments/execute` so token/signature assembly never drifts between the two call sites.
+
+#### Real order tracking (`backend/mcp/server.py`)
+`get_order_status` replaced its Phase 2 stub with a real query against the `Order` table (`"not_found"` for unknown IDs).
+
+#### Observability (`backend/observability/tracing.py`)
+OpenTelemetry, scoped to the payment-execution path only (`payments.execute`, `payit.execute_payment`, the guardrail check, `mock_processor.process_payment`, `trackit.confirm_order`) — not all 6 agents, disproportionate for a POC. Soft-fail by design (unlike `resolve_llm()`'s hard stop): OTel's default global tracer is already a no-op, so tracing code runs identically whether or not an OTLP collector (e.g. Arize Phoenix at `localhost:6006`) is listening. `init_tracing()` never raises.
+
+#### Frontend
+- **`Checkout.tsx`** — `handleApprove()` now calls `POST /api/payments/execute` right after authorization succeeds, and navigates to `/payment-result` based on the *real* execution outcome instead of an optimistic 1.2s timeout. New "Processing Payment..." button state.
+- **`Dashboard.tsx`** — replaced `MOCK_TRANSACTIONS` with a live `GET /api/orders` fetch.
+- **`PaymentResult.tsx`** — unchanged; existing success/blocked state shapes already covered the real execution response.
+
+### Milestone checks
+- [x] Guardrail engine (12 checks) reused unchanged by PayIt — not reimplemented
+- [x] Mock processor declines are deterministic (wallet-based), never random
+- [x] A guardrail block never reaches the mock processor; a processor decline is distinct from a guardrail block
+- [x] DPAT token is single-use — replaying a consumed token is blocked with `TOKEN_ALREADY_CONSUMED`
+- [x] Tampered checkout data is blocked with `CHECKOUT_HASH_MISMATCH`
+- [x] `Order` rows are never overwritten by a later blocked replay of the same order
+- [x] `/payment-result` shows a real `transaction_id` from a live execution call, not an assumed success
+- [x] `/dashboard` renders real orders from `GET /api/orders`
+- [x] Audit trail includes `PAYMENT_EXECUTED` / `ORDER_CONFIRMED` (and blocked/declined variants)
+- [x] App boots and payments execute successfully with no OTEL collector running
+- [x] 21 Phase 4 tests passing; 102 total (Phase 1 + 2 + 3 + 4) all green
 
 ---
 
