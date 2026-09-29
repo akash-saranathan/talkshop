@@ -130,6 +130,31 @@ class DelegatedToken(Base):
     status = Column(String(20), default="active")
 
 
+class ChatSession(Base):
+    """One chat thread — created lazily on the first message, matching
+    ChatGPT's 'New Chat' not existing until you actually send something."""
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False)
+    title = Column(String(200), default="New chat")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now())
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(50), ForeignKey("chat_sessions.session_id"), nullable=False)
+    role = Column(String(20), nullable=False)  # "user" | "assistant"
+    content = Column(Text, nullable=False)
+    products_json = Column(Text)
+    blocked_reason = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 
