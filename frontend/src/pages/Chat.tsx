@@ -2,8 +2,10 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Mic, MicOff, Store, LogOut } from "lucide-react";
-import { streamChat, type AgentEvent, type ProductData } from "../api/chat";
+import { streamChat, getSessionMessages, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
 import ProductCard from "../components/ProductCard";
+import ChatSidebar from "../components/ChatSidebar";
+import OrdersPanel from "../components/OrdersPanel";
 import { useAuth } from "../auth/AuthContext";
 
 interface Step {
@@ -21,6 +23,24 @@ interface Turn {
   blocked: string | null;
 }
 
+function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
+  const turns: Turn[] = [];
+  for (let i = 0; i < messages.length; i += 2) {
+    const userMsg = messages[i];
+    const assistantMsg = messages[i + 1];
+    if (!userMsg || userMsg.role !== "user") continue;
+    turns.push({
+      id: crypto.randomUUID(),
+      userMessage: userMsg.content,
+      steps: [],
+      products: assistantMsg?.products ?? [],
+      recommendation: assistantMsg?.content ?? "",
+      blocked: assistantMsg?.blocked_reason ?? null,
+    });
+  }
+  return turns;
+}
+
 export default function Chat() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -28,8 +48,13 @@ export default function Chat() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const mediaRef = useRef<MediaRecorder | null>(null);
-  const sessionId = useRef(crypto.randomUUID());
+  // sessionIdRef is the source of truth read inside async streaming
+  // callbacks (avoids stale-closure bugs); currentSessionId mirrors it so
+  // the sidebar can reactively highlight the active thread.
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
+  const [currentSessionId, setCurrentSessionId] = useState<string>(sessionIdRef.current);
   const closeStream = useRef<(() => void) | null>(null);
   const activeTurnId = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -47,6 +72,33 @@ export default function Chat() {
     if (!id) return;
     setTurns((prev) => prev.map((t) => (t.id === id ? updater(t) : t)));
   }, []);
+
+  const switchToSession = useCallback((id: string) => {
+    sessionIdRef.current = id;
+    setCurrentSessionId(id);
+  }, []);
+
+  const handleNewChat = useCallback(() => {
+    closeStream.current?.();
+    setLoading(false);
+    activeTurnId.current = null;
+    switchToSession(crypto.randomUUID());
+    setTurns([]);
+  }, [switchToSession]);
+
+  const handleSelectSession = useCallback(async (clickedId: string) => {
+    if (clickedId === sessionIdRef.current) return;
+    closeStream.current?.();
+    setLoading(false);
+    activeTurnId.current = null;
+    switchToSession(clickedId);
+    try {
+      const messages = await getSessionMessages(clickedId);
+      setTurns(messagesToTurns(messages));
+    } catch {
+      setTurns([]);
+    }
+  }, [switchToSession]);
 
   const handleSend = useCallback(() => {
     const msg = input.trim();
@@ -68,7 +120,7 @@ export default function Chat() {
     // Close any existing stream
     closeStream.current?.();
 
-    const close = streamChat(msg, sessionId.current, {
+    const close = streamChat(msg, sessionIdRef.current, {
       onStep: (event: AgentEvent) => {
         updateActiveTurn((turn) => {
           const prevSteps = turn.steps;
@@ -105,6 +157,9 @@ export default function Chat() {
       },
       onDone: () => {
         setLoading(false);
+        // The backend just persisted this turn (and maybe created a new
+        // session) — refresh the sidebar so it shows up without a manual reload.
+        setSidebarRefreshKey((k) => k + 1);
       },
     });
 
@@ -154,18 +209,15 @@ export default function Chat() {
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)]">
-      {/* Sidebar */}
-      <aside className="w-56 border-r border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex flex-col gap-2">
-        <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
-          Sessions
-        </span>
-        <button className="text-left text-sm px-3 py-2 rounded-lg bg-[var(--color-primary)] text-white font-medium">
-          Session 1
-        </button>
-      </aside>
+      <ChatSidebar
+        activeSessionId={currentSessionId}
+        onSelectSession={handleSelectSession}
+        onNewChat={handleNewChat}
+        refreshKey={sidebarRefreshKey}
+      />
 
       {/* Main */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
         <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--color-border)] shrink-0">
           <div className="flex items-center gap-2">
@@ -326,6 +378,8 @@ export default function Chat() {
           </div>
         </div>
       </div>
+
+      <OrdersPanel />
     </div>
   );
 }

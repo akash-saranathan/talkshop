@@ -3,7 +3,7 @@
  * Connects to the LangGraph streaming endpoint and invokes callbacks
  * for each event type as they arrive.
  */
-import { getToken } from "./client";
+import { authFetch, getToken } from "./client";
 
 export interface AgentEvent {
   type: "step_start" | "step_done" | "blocked" | "error" | "recommendation" | "done";
@@ -31,6 +31,32 @@ export interface ProductData {
   shipping_cost: number;
   rank_score: number;
   source: string;
+}
+
+export interface ChatSessionSummary {
+  session_id: string;
+  title: string;
+  updated_at: string | null;
+}
+
+export interface ChatMessageRecord {
+  role: "user" | "assistant";
+  content: string;
+  products: ProductData[];
+  blocked_reason: string | null;
+  created_at: string | null;
+}
+
+export async function listChatSessions(): Promise<ChatSessionSummary[]> {
+  const res = await authFetch("/api/chat/sessions");
+  if (!res.ok) throw new Error("Failed to load chat sessions");
+  return res.json();
+}
+
+export async function getSessionMessages(sessionId: string): Promise<ChatMessageRecord[]> {
+  const res = await authFetch(`/api/chat/sessions/${sessionId}/messages`);
+  if (!res.ok) throw new Error("Failed to load chat session");
+  return res.json();
 }
 
 export interface ChatCallbacks {
