@@ -604,3 +604,58 @@ delivery status badge with tracking number and estimated delivery date).
 - [x] Product cards in Chat show a distinct icon per product (shoes vs. headphones vs. watch), not a generic placeholder
 - [x] 148 tests passing (137 prior + 11 new), zero regressions
 - [x] `tsc --noEmit` clean
+
+---
+
+## Persistent Chat History + Orders Panel (ChatGPT-style layout) ✅
+
+**Branch:** `feature/chat-history-sidebar`
+**Status:** Complete — working tree only, not yet committed
+
+Another user-driven ask: the sidebar's "Session 1" was hardcoded — there
+was no actual chat history. Every conversation lived only in React state
+and vanished on refresh or "New Chat"; `session_id` was just a random UUID
+kept in a ref for the life of the tab, never persisted anywhere.
+
+### What was built
+
+#### Persistent sessions (backend)
+- `backend/db/schema.py` — new `ChatSession` and `ChatMessage` tables.
+  Deliberately **not** storing the granular step_start/step_done progress
+  events — those are ephemeral "thinking" UI, not chat history; reopening
+  a past session shows the final answer only, same as ChatGPT doesn't
+  replay its own "Thinking..." animation for old chats.
+- Sessions are created **lazily** — no row exists until the first message
+  is actually sent, so clicking "New Chat" repeatedly without typing
+  anything never litters the sidebar with empty entries.
+- `backend/routers/chat.py::_save_turn()` — after the discovery graph
+  finishes (the existing background `task` in `_event_stream`, whose
+  result used to just be discarded once the `None` sentinel was seen),
+  persists the user message + the assistant's final reply (recommendation
+  text, ranked products, any block reason) as one message pair. The
+  session's title is the first message, truncated — no extra LLM call for
+  something this cosmetic.
+- `GET /api/chat/sessions` / `GET /api/chat/sessions/{id}/messages` —
+  scoped to the current user; a foreign session_id 404s.
+
+#### Three-column Chat layout (frontend)
+- `frontend/src/components/ChatSidebar.tsx` (new) — "New Chat" button
+  (stops any in-flight stream first, so a late event from the old session
+  can't land in the new one) above the real session list, refetched after
+  every completed turn.
+- `frontend/src/components/OrdersPanel.tsx` (new) — a condensed live feed
+  of recent orders on the right, reusing the icon-tile product visuals
+  from the Dashboard work, with a link through to the full Dashboard.
+- `frontend/src/pages/Chat.tsx` — clicking a past session stops any
+  active stream, loads that session's real messages, and rebuilds the
+  conversation by pairing consecutive user/assistant messages (they're
+  always written together, so strict alternation holds).
+
+### Milestone checks
+- [x] Sending a message creates exactly one session, titled from that message
+- [x] A second message in the same session doesn't create a duplicate session or change the title
+- [x] Chat sessions are scoped per-user — another account can't see or load them
+- [x] Clicking "New Chat" then a past session in the sidebar correctly reloads that exact conversation
+- [x] The right panel shows real orders, matching the Dashboard
+- [x] 157 tests passing (148 prior + 9 new), zero regressions
+- [x] `tsc --noEmit` clean
