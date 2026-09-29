@@ -66,10 +66,115 @@
 
 ---
 
-## Phase 2 — Agentic Discovery via MCP 🔲
+## Phase 2 — Agentic Discovery via MCP ✅
 
 **Branch:** `phase-2/agentic-discovery`
-**Status:** Not started
+**Status:** Complete — 8 commits
+**Commits:**
+| Hash | Description |
+|------|-------------|
+| `29a9901` | LLM config (gemini-3.5-flash-lite) and 3 merchant adapters |
+| `6774c6c` | FastMCP commerce server with 7 tools |
+| `110961f` | NeMo Guardrails (Colang rails) and Guardrails AI validators |
+| `c4024b7` | VibeCheck and SneakPeek agents |
+| `5f73942` | LangGraph 7-node discovery workflow |
+| `63d3a88` | SSE /api/chat/stream endpoint + main.py LLM startup check |
+| `0ba9748` | Frontend SSE client, ProductCard component, Chat.tsx rewire |
+| `2a27da2` | 23 passing tests + fix rank_products enumerate bug |
+
+### What was built
+
+#### LLM Layer
+- `backend/config/llm.py` — `gemini-3.5-flash-lite` via `langchain-google-genai`; hard stop if `GOOGLE_API_KEY` absent
+
+#### Merchant Adapters (3-tier)
+- `backend/merchants/local.py` — SQLite Tier 1 (always on); `search_products()` + `get_product()`
+- `backend/merchants/shopify.py` — Shopify Storefront GraphQL Tier 2; graceful `[]` fallback when no credentials
+- `backend/merchants/bestbuy.py` — Best Buy Open API Tier 2 + Playwright Tier 3 fallback; both return `[]` on failure
+
+#### MCP Commerce Server (`backend/mcp/server.py`)
+FastMCP server — agents call these tools; tools return normalized data; raw merchant JSON never reaches the LLM.
+
+| # | Tool | What it does |
+|---|------|--------------|
+| 1 | `search_products(query, category, brand, max_price, size)` | Fan-out to all 3 adapters in parallel; merges results; always falls back to local if external adapters fail |
+| 2 | `get_product(product_id)` | Fetch a single product by ID from local DB |
+| 3 | `check_inventory(product_id, size)` | Returns `available`, `inventory`, `delivery_days` |
+| 4 | `get_price(product_id, size)` | Returns current price + currency for a product variant |
+| 5 | `calculate_shipping(product_id, merchant_id, quantity)` | Free shipping ≥ $50 order, else $5.99 flat |
+| 6 | `create_checkout(product_id, merchant_id, quantity)` | Builds `CheckoutObject` with subtotal/tax/shipping/total + SHA-256 `checkout_hash` |
+| 7 | `get_order_status(order_id)` | Post-purchase status lookup (stub in Phase 2, full in Phase 4) |
+
+#### Guardrails (2 layers active in Phase 2)
+
+**Guardrail 1 — NeMo Guardrails (input/conversation safety)**
+- `backend/guardrails/nemo/commerce.co` — Colang rails with 3 flows:
+  - `credential guard` — blocks "give merchant my card number", "share my CVV", etc.
+  - `scope guard` — blocks non-commerce requests ("tell me a joke", "write an essay")
+  - `commerce request` — allows product search and shopping queries
+- `backend/guardrails/nemo/config.yml` — LiteLLM + `gemini/gemini-3.5-flash-lite`
+- `check_input()` — async; fails open (allows) if NeMo is unavailable
+
+**Guardrail 4 — Guardrails AI (output schema validation)**
+- `backend/guardrails/validators.py` — `validate_shopping_intent()` validates LLM JSON output against `ShoppingIntent` Pydantic schema
+- Catches hallucinated financial fields before they enter the pipeline (e.g. `"max_price": "under a hundred"` → rejected)
+- Falls back to raw Pydantic parse if Guardrails AI library is not installed
+
+#### Agents
+
+**VibeCheck — Agent 1 (Orchestrator) — USES LLM**
+- `backend/agents/vibecheck.py`
+- `extract_intent(user_message)` pipeline: NeMo input guard → Gemini LLM → Guardrails AI validation → `ShoppingIntent`
+- System prompt enforces JSON-only output; numeric `max_price` ("under $100" → `100.0`); category normalisation
+- `generate_recommendation_text(intent, products)` — LLM writes a 2–3 sentence explanation; all prices/ratings come from the product list, LLM cannot invent them
+
+**SneakPeek — Agent 2 (Product Search) — NO LLM (by design)**
+- `backend/agents/sneakpeek.py`
+- `filter_products(products, intent)` — deterministic: drops out-of-stock, enforces price ceiling, size match, category match
+- `rank_products(products, intent)` — deterministic scoring formula:
+  ```
+  score = budget_fit (20pts) + brand match (20pts) + size match (15pts)
+        + preference keywords in title (10pts each)
+        + delivery speed (10pts) + rating × 3 + review bonus (5–10pts)
+        + free shipping bonus (3pts)
+  ```
+  rank_score is set here and frozen — LLM cannot alter it
+- `search_and_rank(intent)` — calls MCP `search_products`, normalises, filters, ranks, returns top 5 + stats dict for SSE messages
+- Why no LLM? Price, availability, and ranking are financial-adjacent data — deterministic code = auditable, tamper-proof, no hallucination risk
+
+#### LangGraph Workflow (`backend/graph/workflow.py`)
+
+7-node Phase 2 graph — each node emits SSE events the React UI renders as animated steps:
+
+| Node | Type | What it does | SSE message |
+|------|------|--------------|-------------|
+| `input_guardrail` | NeMo | Runs `check_input()` on raw user message | "Checking request safety..." |
+| `extract_intent` | LLM (VibeCheck) | Gemini extracts `ShoppingIntent` JSON | "Understanding your request..." |
+| `mcp_product_search` | Deterministic | Calls MCP `search_products`, fan-out to 3 adapters | "Searching 3 merchant sources via MCP..." |
+| `normalize_products` | Deterministic | Validates raw dicts → `NormalizedProduct` objects | "Normalized N products" |
+| `deterministic_filter` | Deterministic | Price, size, stock, category filter | "Applying your constraints..." |
+| `rank_products` | Deterministic | Scoring formula, sort descending | "Ranking by your preferences..." |
+| `generate_recommendation` | LLM (VibeCheck) | Prose explanation from factual ranked results | "Generating personalized recommendation..." |
+| `stream_to_ui` | — | Final `done` event with products + recommendation | "Search complete" |
+
+#### API + Streaming
+- `backend/routers/chat.py` — `GET /api/chat/stream?message=&session_id=`; streams LangGraph node events as SSE; 60s timeout guard
+- `backend/main.py` — updated to include chat router + `resolve_llm()` on startup
+
+#### Frontend
+- `frontend/src/api/chat.ts` — `streamChat()` SSE client; typed callbacks for all event types
+- `frontend/src/components/ProductCard.tsx` — Framer Motion animated card; merchant badge, rating, delivery, price, Select → `/checkout`
+- `frontend/src/pages/Chat.tsx` — live SSE wired; animated step list; product card grid; recommendation text; blocked guardrail panel
+
+### Milestone checks
+- [x] User types "Find running shoes size 10 under $100"
+- [x] System calls all 3 merchant adapters in parallel via MCP
+- [x] Products normalized and constraint-filtered deterministically
+- [x] Top recommendations shown with merchant badges and ranked scores
+- [x] Agent progress shown step-by-step in chat
+- [x] NeMo Guardrails blocks credential exposure attempts
+- [x] No payment flow yet
+- [x] 23 Phase 2 tests passing, 19 Phase 1 tests still passing (42 total)
 
 ---
 
