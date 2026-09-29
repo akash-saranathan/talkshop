@@ -6,7 +6,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db.init_db import init_db, run as seed_db
-from backend.routers import merchants, products, chat
+from backend.routers import merchants, products, chat, authorizations
 from backend.config.llm import resolve_llm
 
 DB_PATH = Path(__file__).parent / "db" / "commerce.db"
@@ -39,6 +39,7 @@ app.add_middleware(
 app.include_router(merchants.router)
 app.include_router(products.router)
 app.include_router(chat.router)
+app.include_router(authorizations.router)
 
 
 @app.get("/")
