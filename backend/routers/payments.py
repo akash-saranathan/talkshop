@@ -18,7 +18,7 @@ from sqlalchemy import update
 from backend.agents import payit, trackit
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.config.agents import PAYIT, TRACKIT
-from backend.db.schema import AuditEvent, DelegatedToken, Merchant, Order, PaymentAuthorization
+from backend.db.schema import AuditEvent, DelegatedToken, Merchant, Order, PaymentAuthorization, Product, Wallet
 from backend.db.session_utils import get_session, now_utc, write_audit_event
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import PaymentRequest
@@ -52,6 +52,7 @@ class ExecutePaymentResponse(BaseModel):
     summary: str
     transaction_id: Optional[str] = None
     blocked_reason: Optional[str] = None
+    wallet_balance: Optional[float] = None
 
 
 def _insert_order_if_absent(session, fields: dict):
@@ -185,6 +186,33 @@ async def execute_payment_endpoint(
                     blocked_reason=result.decline_reason,
                 )
 
+            # The mock processor says the card is fine — but the token-based
+            # "wallet" balance is a separate, layered check (matches a real
+            # network's "card valid but insufficient funds" decline). Kept
+            # here rather than inside mock_processor.py so that module and
+            # its existing tests stay untouched — identity/user_id only
+            # exists at this router layer.
+            wallet = session.query(Wallet).filter(Wallet.user_id == current_user.user_id).first()
+            if wallet is None or wallet.balance < result.amount:
+                auth = session.query(PaymentAuthorization).filter(
+                    PaymentAuthorization.order_id == req.checkout_id
+                ).order_by(PaymentAuthorization.approved_at.desc()).first()
+                if auth:
+                    auth.status = "declined"
+                write_audit_event(session, "PAYMENT_DECLINED", user_id=current_user.user_id,
+                                   agent_id=PAYIT.agent_id, order_id=req.checkout_id,
+                                   metadata={"reason": "INSUFFICIENT_BALANCE"})
+                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "declined", current_user.user_id))
+                session.commit()
+                return ExecutePaymentResponse(
+                    status="blocked", order_id=req.checkout_id, amount=req.total,
+                    merchant=req.merchant_name,
+                    summary=trackit.summarize_decline(req.checkout_id, "INSUFFICIENT_BALANCE"),
+                    blocked_reason="INSUFFICIENT_BALANCE",
+                    wallet_balance=wallet.balance if wallet else 0.0,
+                )
+            wallet.balance -= result.amount
+
             auth = session.query(PaymentAuthorization).filter(
                 PaymentAuthorization.order_id == req.checkout_id
             ).order_by(PaymentAuthorization.approved_at.desc()).first()
@@ -206,6 +234,7 @@ async def execute_payment_endpoint(
                 status="success", order_id=req.checkout_id, amount=result.amount,
                 merchant=req.merchant_name, transaction_id=result.transaction_id,
                 summary=trackit.summarize_order(checkout, result),
+                wallet_balance=wallet.balance,
             )
 
 
@@ -223,19 +252,32 @@ def _block_reason(session, order_id: str) -> Optional[str]:
     return None
 
 
+def _delivery_fields(order: Order, product: Optional[Product]) -> dict:
+    """Product info + time-based delivery simulation, shared by both order endpoints."""
+    delivery = trackit.compute_delivery_status(order.created_at, product.delivery_days if product else None)
+    return {
+        "product_title": product.name if product else None,
+        "product_category": product.category if product else None,
+        "tracking_number": order.tracking_number,
+        "delivery_status": delivery["status"] if order.status == "confirmed" else None,
+        "estimated_delivery": delivery["estimated_delivery"] if order.status == "confirmed" else None,
+    }
+
+
 @router.get("/api/orders")
 async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
     """Order list for the Dashboard — collapses status to 'paid' | 'blocked'."""
     with get_session() as session:
         rows = (
-            session.query(Order, Merchant)
+            session.query(Order, Merchant, Product)
             .join(Merchant, Order.merchant_id == Merchant.merchant_id)
+            .outerjoin(Product, Order.product_id == Product.product_id)
             .filter(Order.user_id == current_user.user_id)
             .order_by(Order.created_at.desc())
             .all()
         )
         results = []
-        for order, merchant in rows:
+        for order, merchant, product in rows:
             is_paid = order.status == "confirmed"
             results.append({
                 "order_id": order.order_id,
@@ -243,6 +285,8 @@ async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
                 "amount": order.amount,
                 "status": "paid" if is_paid else "blocked",
                 "reason": None if is_paid else _block_reason(session, order.order_id),
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                **_delivery_fields(order, product),
             })
         return results
 
@@ -251,14 +295,15 @@ async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
 async def get_order(order_id: str):
     with get_session() as session:
         row = (
-            session.query(Order, Merchant)
+            session.query(Order, Merchant, Product)
             .join(Merchant, Order.merchant_id == Merchant.merchant_id)
+            .outerjoin(Product, Order.product_id == Product.product_id)
             .filter(Order.order_id == order_id)
             .first()
         )
         if not row:
             raise HTTPException(status_code=404, detail="Order not found")
-        order, merchant = row
+        order, merchant, product = row
         is_confirmed = order.status == "confirmed"
         return {
             "order_id": order.order_id,
@@ -271,4 +316,15 @@ async def get_order(order_id: str):
             "transaction_id": order.transaction_id,
             "reason": None if is_confirmed else _block_reason(session, order.order_id),
             "created_at": order.created_at.isoformat() if order.created_at else None,
+            **_delivery_fields(order, product),
         }
+
+
+@router.get("/api/wallet")
+async def get_wallet(current_user: CurrentUser = Depends(get_current_user)):
+    """Current wallet balance for the Dashboard's hero card."""
+    with get_session() as session:
+        wallet = session.query(Wallet).filter(Wallet.user_id == current_user.user_id).first()
+        if not wallet:
+            raise HTTPException(status_code=404, detail="Wallet not found")
+        return {"balance": wallet.balance, "currency": wallet.currency}
