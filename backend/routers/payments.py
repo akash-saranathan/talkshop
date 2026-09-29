@@ -13,6 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import update
 
 from backend.agents import payit, trackit
 from backend.config.agents import PAYIT, TRACKIT
@@ -114,11 +115,42 @@ async def execute_payment_endpoint(req: ExecutePaymentRequest):
                     blocked_reason=sig_error,
                 )
 
+            # Atomically claim single-use consumption before charging — closes the
+            # race where two concurrent execute calls for the same token (two tabs,
+            # or a fast replay) could both read consumed_at=None and both charge.
+            # Losing the race is reported the same way check 4 would report it.
+            # This also means any execute attempt burns the token even if a later
+            # guardrail check fails — a single-use token gets a single attempt,
+            # which closes a tamper-probing vector (repeated retries against the
+            # same token with different tampered fields) that a "consume only on
+            # success" policy would otherwise leave open.
+            if token_dict is not None and token_dict.get("consumed_at") is None:
+                claim = session.execute(
+                    update(DelegatedToken)
+                    .where(DelegatedToken.token_id == req.token_id,
+                           DelegatedToken.consumed_at.is_(None))
+                    .values(consumed_at=now_utc())
+                )
+                if claim.rowcount == 0:
+                    write_audit_event(session, "PAYMENT_BLOCKED", user_id=req.user_id,
+                                       agent_id=PAYIT.agent_id, order_id=req.checkout_id,
+                                       metadata={"reason": "TOKEN_ALREADY_CONSUMED"})
+                    _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "blocked", req.user_id))
+                    session.commit()
+                    return ExecutePaymentResponse(
+                        status="blocked", order_id=req.checkout_id, amount=req.total,
+                        merchant=req.merchant_name,
+                        summary=trackit.summarize_decline(req.checkout_id, "TOKEN_ALREADY_CONSUMED"),
+                        blocked_reason="TOKEN_ALREADY_CONSUMED",
+                    )
+                session.commit()  # persist the claim immediately so a concurrent request sees it
+
             result, events, blocked_reason = await payit.execute_payment(
                 payment_request, token_dict, req.total, req.checkout_hash, consent_exists,
             )
 
-            # Guardrail-level block — no charge was ever attempted.
+            # One of the other 11 guardrail checks failed — no charge was attempted,
+            # but the token is already consumed (claimed above), by design.
             if blocked_reason is not None:
                 write_audit_event(session, "PAYMENT_BLOCKED", user_id=req.user_id,
                                    agent_id=PAYIT.agent_id, order_id=req.checkout_id,
@@ -131,15 +163,6 @@ async def execute_payment_endpoint(req: ExecutePaymentRequest):
                     summary=trackit.summarize_decline(req.checkout_id, blocked_reason),
                     blocked_reason=blocked_reason,
                 )
-
-            # Guardrails passed — token is consumed regardless of processor outcome.
-            # status stays "active" (reserved for revoke); consumed_at alone marks
-            # single-use consumption, matching guardrail check 4 (TOKEN_ALREADY_CONSUMED).
-            token_row = session.query(DelegatedToken).filter(
-                DelegatedToken.token_id == req.token_id
-            ).first()
-            if token_row:
-                token_row.consumed_at = now_utc()
 
             if result.status == "declined":
                 auth = session.query(PaymentAuthorization).filter(
@@ -183,6 +206,20 @@ async def execute_payment_endpoint(req: ExecutePaymentRequest):
             )
 
 
+def _block_reason(session, order_id: str) -> Optional[str]:
+    """Most recent block/decline reason for an order, from the audit trail."""
+    event = (
+        session.query(AuditEvent)
+        .filter(AuditEvent.order_id == order_id)
+        .filter(AuditEvent.event_type.in_(["PAYMENT_BLOCKED", "PAYMENT_DECLINED"]))
+        .order_by(AuditEvent.event_timestamp.desc())
+        .first()
+    )
+    if event and event.metadata_json:
+        return json.loads(event.metadata_json).get("reason")
+    return None
+
+
 @router.get("/api/orders")
 async def list_orders(user_id: str = "USR001"):
     """Order list for the Dashboard — collapses status to 'paid' | 'blocked'."""
@@ -197,23 +234,12 @@ async def list_orders(user_id: str = "USR001"):
         results = []
         for order, merchant in rows:
             is_paid = order.status == "confirmed"
-            reason = None
-            if not is_paid:
-                event = (
-                    session.query(AuditEvent)
-                    .filter(AuditEvent.order_id == order.order_id)
-                    .filter(AuditEvent.event_type.in_(["PAYMENT_BLOCKED", "PAYMENT_DECLINED"]))
-                    .order_by(AuditEvent.event_timestamp.desc())
-                    .first()
-                )
-                if event and event.metadata_json:
-                    reason = json.loads(event.metadata_json).get("reason")
             results.append({
                 "order_id": order.order_id,
                 "merchant": merchant.merchant_name,
                 "amount": order.amount,
                 "status": "paid" if is_paid else "blocked",
-                "reason": reason,
+                "reason": None if is_paid else _block_reason(session, order.order_id),
             })
         return results
 
@@ -221,16 +247,25 @@ async def list_orders(user_id: str = "USR001"):
 @router.get("/api/orders/{order_id}")
 async def get_order(order_id: str):
     with get_session() as session:
-        order = session.query(Order).filter(Order.order_id == order_id).first()
-        if not order:
+        row = (
+            session.query(Order, Merchant)
+            .join(Merchant, Order.merchant_id == Merchant.merchant_id)
+            .filter(Order.order_id == order_id)
+            .first()
+        )
+        if not row:
             raise HTTPException(status_code=404, detail="Order not found")
+        order, merchant = row
+        is_confirmed = order.status == "confirmed"
         return {
             "order_id": order.order_id,
             "merchant_id": order.merchant_id,
+            "merchant_name": merchant.merchant_name,
             "product_id": order.product_id,
             "amount": order.amount,
             "currency": order.currency,
             "status": order.status,
             "transaction_id": order.transaction_id,
+            "reason": None if is_confirmed else _block_reason(session, order.order_id),
             "created_at": order.created_at.isoformat() if order.created_at else None,
         }

@@ -366,7 +366,87 @@ OpenTelemetry, scoped to the payment-execution path only (`payments.execute`, `p
 
 ---
 
-## Phase 5 — Demo Polish, Failure Scenarios & Hardening 🔲
+## Phase 5 — Demo Polish, Failure Scenarios & Hardening ✅
 
 **Branch:** `phase-5/demo-polish`
-**Status:** Not started
+**Status:** Complete — 6 commits
+**Commits:**
+| Hash | Description |
+|------|-------------|
+| `70a0f0d` | Fix silent 60s hang on discovery-graph LLM/node failures |
+| `dc9f103` | Atomic token consumption + richer order detail endpoint |
+| `f4abb87` | Fix Dashboard->PaymentResult navigation + demo polish |
+| `dfb3118` | 6 passing tests |
+| `(pending)` | status.md milestone log |
+
+There was no written spec for this phase beyond its title — scope was derived
+by exploring the running app end-to-end and finding concrete, verified gaps
+(not speculative hardening). Merchant adapters, MCP fan-out, and NeMo/Guardrails
+AI failure handling were already solid and needed no changes.
+
+### What was built
+
+#### Tier 1 — Correctness bugs
+- **Dashboard → PaymentResult navigation fixed.** Dashboard linked via a query
+  string (`?status=`) that PaymentResult never read, so every "View Trail"
+  click — success or blocked — showed a generic fake "ORDER CONFIRMED."
+  Route is now `/payment-result/:orderId`; PaymentResult uses the fast
+  in-memory state right after a real purchase, and falls back to
+  `GET /api/orders/{orderId}` for Dashboard links, refreshes, or direct
+  navigation. An unknown ID shows a real "not found" state instead of a
+  fabricated success.
+- **`generate_recommendation_text()` LLM call is no longer a single point of
+  failure.** It runs *after* all real product search/filter/rank work is
+  done; an uncaught Gemini failure here (rate limit, timeout) used to
+  propagate silently and hang the SSE stream for a full 60s before a generic
+  timeout message, discarding already-computed results. Now falls back to a
+  deterministic sentence built from the product data already in hand.
+- **`run_discovery()` no longer swallows exceptions.** Any unhandled node
+  failure now pushes a real `error` SSE event immediately instead of letting
+  the frontend hang until the 60s timeout with no explanation.
+
+#### Tier 2 — Failure-scenario hardening
+- **Payment execution token consumption is now atomic.** The DPAT token's
+  single-use flag is claimed with a conditional `UPDATE ... WHERE
+  consumed_at IS NULL` (checking the row count) *before* any guardrail
+  checks or charge — closing a race where two concurrent execute calls for
+  the same token could both read "not consumed" and both charge. As a
+  deliberate side effect, a token is now burned on *any* execute attempt,
+  not just a successful one — closing a tamper-probing vector where the
+  same token could otherwise be retried indefinitely with different
+  (tampered) values until one slipped through.
+- **SSE `EventSource` now closes on error** instead of relying on the
+  browser's default auto-reconnect, which could otherwise retry indefinitely
+  and spam duplicate error rows after a single backend hiccup.
+- **Non-JSON error responses no longer leak raw parse errors.** A 502/504
+  returning an HTML body used to surface as `Unexpected token <...` in the
+  UI; error bodies are now read defensively with a clean fallback message.
+
+#### Tier 3 — Demo polish
+- **Dashboard has real loading/empty/error states** instead of silently
+  swallowing fetch failures into an indistinguishable empty table.
+- **Dead "Export" control is visibly disabled** instead of looking
+  interactive with no handler.
+- **Checkout execute-phase failures keep context.** If `/api/payments/execute`
+  fails after a token was already issued, the order summary and token stay
+  visible with an inline error and a "Retry Payment" button, instead of
+  collapsing to the full-page generic error view.
+
+#### Backend support for the navigation fix
+`GET /api/orders/{order_id}` now also returns `merchant_name` and, for
+non-confirmed orders, the block/decline `reason` — extracted into a shared
+`_block_reason()` helper (`backend/routers/payments.py`) used by both
+`GET /api/orders` and `GET /api/orders/{order_id}` so the two never drift.
+
+### Milestone checks
+- [x] Dashboard "View Trail" shows the real, correct outcome for both paid and blocked orders
+- [x] Refreshing or directly visiting `/payment-result/<real-id>` renders from a live fetch, not assumed state
+- [x] An unknown order ID shows a clean not-found state, never a fake success
+- [x] A simulated LLM failure on the recommendation step falls back cleanly instead of hanging 60s
+- [x] Any other discovery-graph exception surfaces as an immediate SSE error event
+- [x] A second concurrent/replayed execute call is blocked with `TOKEN_ALREADY_CONSUMED`
+- [x] A guardrail-blocked attempt (e.g. tampered hash) also consumes the token — no infinite retry surface
+- [x] SSE connection closes on error instead of auto-reconnecting indefinitely
+- [x] Non-JSON error bodies no longer leak raw parse errors to the user
+- [x] 108 tests passing (102 prior + 6 new), zero regressions
+- [x] `tsc --noEmit` clean
