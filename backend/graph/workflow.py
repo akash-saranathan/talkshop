@@ -193,18 +193,6 @@ async def run_discovery(
         "blocked": False,
         "sse_queue": sse_queue,
     }
-    try:
-        final_state = await commerce_graph.ainvoke(initial_state)
-    except Exception as e:
-        # Surface the real failure immediately instead of letting the SSE
-        # consumer hang until its 60s timeout with a generic message.
-        await sse_queue.put({
-            "type": "error",
-            "message": f"Something went wrong while searching: {e}",
-            "data": None,
-            "ts": datetime.utcnow().isoformat(),
-        })
-        await sse_queue.put(None)
-        return initial_state
+    final_state = await commerce_graph.ainvoke(initial_state)
     await sse_queue.put(None)  # sentinel — consumer knows stream is done
     return final_state

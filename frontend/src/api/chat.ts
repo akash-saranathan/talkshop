@@ -80,9 +80,6 @@ export function streamChat(message: string, sessionId: string, callbacks: ChatCa
   es.addEventListener("recommendation", (e) => handle(e.data));
   es.addEventListener("blocked", (e) => handle(e.data));
   es.addEventListener("error", (e) => {
-    // The native EventSource auto-reconnects after "error" unless closed —
-    // one backend hiccup would otherwise retry indefinitely and spam duplicate errors.
-    es.close();
     if ((e as MessageEvent).data) handle((e as MessageEvent).data);
     else callbacks.onError("Connection error");
   });

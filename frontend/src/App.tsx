@@ -10,7 +10,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Chat />} />
         <Route path="/checkout" element={<Checkout />} />
-        <Route path="/payment-result/:orderId" element={<PaymentResult />} />
+        <Route path="/payment-result" element={<PaymentResult />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
