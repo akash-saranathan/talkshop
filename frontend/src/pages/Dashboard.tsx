@@ -5,27 +5,26 @@ import { Download } from "lucide-react";
 interface Transaction {
   order_id: string;
   merchant: string;
-  amount: string;
+  amount: number;
   status: "paid" | "blocked";
   reason?: string;
 }
 
-const MOCK_TRANSACTIONS: Transaction[] = [
-  { order_id: "ORD-7821", merchant: "RunnerWorld", amount: "$117.99", status: "paid" },
-  { order_id: "ORD-7820", merchant: "TechStore", amount: "$89.99", status: "paid" },
-  { order_id: "ORD-7819", merchant: "RunnerWorld", amount: "$150.00", status: "blocked", reason: "AMT" },
-  { order_id: "ORD-7818", merchant: "FashionHub", amount: "$59.99", status: "paid" },
-];
-
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  // Phase 4: SSE subscription to /api/dashboard/stream for live updates
+  useEffect(() => {
+    fetch("/api/orders?user_id=USR001")
+      .then((res) => res.json())
+      .then((data: Transaction[]) => setTransactions(data))
+      .catch(() => setTransactions([]));
+  }, []);
+
   const approved = transactions.filter((t) => t.status === "paid").length;
   const blocked = transactions.filter((t) => t.status === "blocked").length;
   const totalSpend = transactions.filter((t) => t.status === "paid")
-    .reduce((sum, t) => sum + parseFloat(t.amount.replace("$", "")), 0);
+    .reduce((sum, t) => sum + t.amount, 0);
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] p-6">
@@ -69,7 +68,7 @@ export default function Dashboard() {
               <tr key={tx.order_id} className="border-b border-[var(--color-border)] hover:bg-white/60 transition-colors">
                 <td className="px-5 py-3 font-medium">{tx.order_id}</td>
                 <td className="px-5 py-3 text-[var(--color-text-muted)]">{tx.merchant}</td>
-                <td className="px-5 py-3">{tx.amount}</td>
+                <td className="px-5 py-3">${tx.amount.toFixed(2)}</td>
                 <td className="px-5 py-3">
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
                     tx.status === "paid"
