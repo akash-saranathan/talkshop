@@ -141,6 +141,7 @@ export default function Checkout() {
             amount: execData.amount,
             merchant: execData.merchant,
             summary: execData.summary,
+            walletBalance: execData.wallet_balance,
           }
         });
       } else {

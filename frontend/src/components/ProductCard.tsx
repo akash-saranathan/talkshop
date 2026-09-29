@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import type { ProductData } from "../api/chat";
+import { getProductVisual } from "../utils/productVisual";
 
 interface Props {
   product: ProductData;
@@ -16,6 +17,8 @@ const MERCHANT_COLORS: Record<string, string> = {
 export default function ProductCard({ product, index }: Props) {
   const navigate = useNavigate();
   const badgeClass = MERCHANT_COLORS[product.merchant_id] ?? "bg-slate-100 text-slate-600";
+  const visual = getProductVisual(product.title, product.category);
+  const VisualIcon = visual.icon;
 
   const handleSelect = () => {
     navigate("/checkout", { state: { product } });
@@ -28,6 +31,11 @@ export default function ProductCard({ product, index }: Props) {
       transition={{ delay: index * 0.08 }}
       className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 flex flex-col gap-3 hover:shadow-md transition-shadow"
     >
+      {/* Product visual tile */}
+      <div className={`h-28 rounded-lg grid place-items-center ${visual.bg}`}>
+        <VisualIcon size={40} className={visual.fg} strokeWidth={1.5} />
+      </div>
+
       {/* Merchant badge */}
       <div className="flex items-center justify-between">
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>

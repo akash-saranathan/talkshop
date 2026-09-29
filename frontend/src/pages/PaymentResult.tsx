@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { CheckCircle, XOctagon, Shield, Loader } from "lucide-react";
+import { CheckCircle, XOctagon, Shield, Loader, Wallet } from "lucide-react";
 import { motion } from "framer-motion";
 import { authFetch } from "../api/client";
 
@@ -11,6 +11,7 @@ interface SuccessState {
   amount: number;
   merchant: string;
   summary?: string;
+  walletBalance?: number;
 }
 
 interface BlockedState {
@@ -45,11 +46,14 @@ export default function PaymentResult() {
         if (!res.ok) throw new Error("Failed to load order");
         const data = await res.json();
         if (data.status === "confirmed") {
+          const walletRes = await authFetch("/api/wallet");
+          const walletData = walletRes.ok ? await walletRes.json() : null;
           setState({
             status: "success",
             orderId: data.order_id,
             amount: data.amount,
             merchant: data.merchant_name,
+            walletBalance: walletData?.balance,
           });
         } else {
           setState({
@@ -112,6 +116,15 @@ export default function PaymentResult() {
                 <span className="font-medium">{state.merchant}</span>
               </div>
             </div>
+
+            {state.walletBalance !== undefined && (
+              <div className="rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] p-3 mb-4 flex items-center justify-between">
+                <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1.5">
+                  <Wallet size={13} /> Wallet balance after this purchase
+                </span>
+                <span className="font-semibold text-[var(--color-text)]">${state.walletBalance.toFixed(2)}</span>
+              </div>
+            )}
 
             <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 mb-6 flex items-start gap-2 text-left">
               <Shield size={14} className="text-emerald-600 mt-0.5 shrink-0" />
