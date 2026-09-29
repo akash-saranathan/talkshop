@@ -432,13 +432,12 @@ def test_health_endpoint(client):
     assert resp.json()["status"] == "ok"
 
 
-def test_checkout_create_for_known_product(client):
+def test_checkout_create_for_known_product(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
         "product_id": "RW001",
         "merchant_id": "MERCHANT_A",
         "quantity": 1,
-        "user_id": "USR001",
-    })
+    }, headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert "checkout_id" in data
@@ -447,22 +446,31 @@ def test_checkout_create_for_known_product(client):
     assert data["total"] > 0
 
 
-def test_checkout_create_unknown_product(client):
+def test_checkout_create_unknown_product(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
         "product_id": "NONEXISTENT_999",
         "merchant_id": "MERCHANT_A",
         "quantity": 1,
-    })
+    }, headers=auth_headers)
     assert resp.status_code == 404
 
 
-def test_approve_then_revoke(client):
-    # First create a checkout
+def test_checkout_create_requires_auth(client):
     resp = client.post("/api/checkout/create", json={
         "product_id": "RW001",
         "merchant_id": "MERCHANT_A",
         "quantity": 1,
     })
+    assert resp.status_code == 401
+
+
+def test_approve_then_revoke(client, auth_headers):
+    # First create a checkout
+    resp = client.post("/api/checkout/create", json={
+        "product_id": "RW001",
+        "merchant_id": "MERCHANT_A",
+        "quantity": 1,
+    }, headers=auth_headers)
     assert resp.status_code == 200
     co = resp.json()
 
@@ -473,14 +481,13 @@ def test_approve_then_revoke(client):
         "merchant_id": co["merchant_id"],
         "total": co["total"],
         "currency": co["currency"],
-        "user_id": "USR001",
         "product_id": co["product_id"],
         "product_title": co["product_title"],
         "merchant_name": co["merchant_name"],
         "subtotal": co["subtotal"],
         "tax": co["tax"],
         "shipping": co["shipping"],
-    })
+    }, headers=auth_headers)
     assert resp.status_code == 200
     auth = resp.json()
     assert auth["token_id"].startswith("DPAT_")
@@ -495,12 +502,12 @@ def test_approve_then_revoke(client):
     assert resp.json()["status"] == "revoked"
 
 
-def test_revoke_already_revoked_is_idempotent(client):
+def test_revoke_already_revoked_is_idempotent(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
         "product_id": "RW001",
         "merchant_id": "MERCHANT_A",
         "quantity": 1,
-    })
+    }, headers=auth_headers)
     co = resp.json()
     resp = client.post("/api/authorizations/approve", json={
         "checkout_id": co["checkout_id"],
@@ -508,14 +515,13 @@ def test_revoke_already_revoked_is_idempotent(client):
         "merchant_id": co["merchant_id"],
         "total": co["total"],
         "currency": co["currency"],
-        "user_id": "USR001",
         "product_id": co["product_id"],
         "product_title": co["product_title"],
         "merchant_name": co["merchant_name"],
         "subtotal": co["subtotal"],
         "tax": co["tax"],
         "shipping": co["shipping"],
-    })
+    }, headers=auth_headers)
     token_id = resp.json()["token_id"]
 
     client.post("/api/authorizations/revoke", json={"token_id": token_id})
@@ -524,12 +530,12 @@ def test_revoke_already_revoked_is_idempotent(client):
     assert resp2.json()["status"] == "already_revoked"
 
 
-def test_audit_trail_returns_events(client):
+def test_audit_trail_returns_events(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
         "product_id": "RW001",
         "merchant_id": "MERCHANT_A",
         "quantity": 1,
-    })
+    }, headers=auth_headers)
     co = resp.json()
     client.post("/api/authorizations/approve", json={
         "checkout_id": co["checkout_id"],
@@ -537,14 +543,13 @@ def test_audit_trail_returns_events(client):
         "merchant_id": co["merchant_id"],
         "total": co["total"],
         "currency": co["currency"],
-        "user_id": "USR001",
         "product_id": co["product_id"],
         "product_title": co["product_title"],
         "merchant_name": co["merchant_name"],
         "subtotal": co["subtotal"],
         "tax": co["tax"],
         "shipping": co["shipping"],
-    })
+    }, headers=auth_headers)
     resp = client.get(f"/api/audit/{co['checkout_id']}")
     assert resp.status_code == 200
     events = resp.json()

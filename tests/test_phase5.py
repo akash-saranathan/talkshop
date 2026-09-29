@@ -43,6 +43,73 @@ async def test_generate_recommendation_empty_products_unaffected():
     assert "couldn't find" in text.lower()
 
 
+# ── VibeCheck: LLM content can be str OR list[str|dict] (LangChain typing) ──────
+# Found by actually running the app with a real Gemini key — every existing
+# test mocks response.content as a plain string, so this shape was never
+# exercised: `extract_json_from_llm(response.content)` and
+# `response.content.strip()` both crashed with "'list' object has no
+# attribute 'strip'" on a real response, breaking chat search entirely.
+
+def test_content_text_handles_plain_string():
+    from backend.agents.vibecheck import _content_text
+    assert _content_text("hello") == "hello"
+
+
+def test_content_text_handles_list_of_dicts():
+    from backend.agents.vibecheck import _content_text
+    content = [{"type": "text", "text": "hel"}, {"type": "text", "text": "lo"}]
+    assert _content_text(content) == "hello"
+
+
+def test_content_text_handles_list_of_strings():
+    from backend.agents.vibecheck import _content_text
+    assert _content_text(["hel", "lo"]) == "hello"
+
+
+@pytest.mark.asyncio
+async def test_generate_recommendation_handles_list_shaped_content():
+    from backend.agents.vibecheck import generate_recommendation_text
+
+    intent = ShoppingIntent(category="running_shoes", raw_query="fast shoes")
+    products = [{
+        "title": "Nike Pegasus 41", "price": 117.94, "rating": 4.5,
+        "merchant_name": "RunnerWorld", "available": True,
+    }]
+
+    fake_response = AsyncMock()
+    fake_response.content = [{"type": "text", "text": "Great pick for you."}]
+    llm = AsyncMock()
+    llm.ainvoke = AsyncMock(return_value=fake_response)
+
+    with patch("backend.agents.vibecheck.get_llm", return_value=llm):
+        text = await generate_recommendation_text(intent, products)
+
+    assert text == "Great pick for you."
+
+
+@pytest.mark.asyncio
+async def test_extract_intent_handles_list_shaped_content():
+    from backend.agents.vibecheck import extract_intent
+
+    fake_response = AsyncMock()
+    fake_response.content = [{"type": "text", "text": (
+        '{"category": "running_shoes", "brand": null, "size": null, "color": null, '
+        '"max_price": 100.0, "delivery_days": null, "preferences": [], '
+        '"use_case": null, "currency": "USD", "raw_query": null}'
+    )}]
+    llm = AsyncMock()
+    llm.ainvoke = AsyncMock(return_value=fake_response)
+
+    with patch("backend.agents.vibecheck.get_llm", return_value=llm), \
+         patch("backend.guardrails.nemo.check_input", AsyncMock(return_value=(True, None))):
+        intent, error = await extract_intent("find running shoes under 100")
+
+    assert error is None
+    assert intent is not None
+    assert intent.category == "running_shoes"
+    assert intent.max_price == 100.0
+
+
 # ── 2. Discovery graph surfaces failures immediately, no 60s hang ───────────────
 
 @pytest.mark.asyncio
@@ -73,10 +140,10 @@ def client():
     return TestClient(app)
 
 
-def _create_and_approve(client, product_id="RW001", merchant_id="MERCHANT_A"):
+def _create_and_approve(client, auth_headers, product_id="RW001", merchant_id="MERCHANT_A"):
     resp = client.post("/api/checkout/create", json={
         "product_id": product_id, "merchant_id": merchant_id, "quantity": 1,
-    })
+    }, headers=auth_headers)
     assert resp.status_code == 200
     co = resp.json()
 
@@ -86,14 +153,13 @@ def _create_and_approve(client, product_id="RW001", merchant_id="MERCHANT_A"):
         "merchant_id": co["merchant_id"],
         "total": co["total"],
         "currency": co["currency"],
-        "user_id": "USR001",
         "product_id": co["product_id"],
         "product_title": co["product_title"],
         "merchant_name": co["merchant_name"],
         "subtotal": co["subtotal"],
         "tax": co["tax"],
         "shipping": co["shipping"],
-    })
+    }, headers=auth_headers)
     assert resp.status_code == 200
     return co, resp.json()
 
@@ -107,7 +173,6 @@ def _execute_body(co, auth, **overrides):
         "merchant_name": co["merchant_name"],
         "total": co["total"],
         "currency": co["currency"],
-        "user_id": "USR001",
         "product_id": co["product_id"],
         "product_title": co["product_title"],
         "subtotal": co["subtotal"],
@@ -118,35 +183,35 @@ def _execute_body(co, auth, **overrides):
     return body
 
 
-def test_failed_attempt_still_consumes_token(client):
+def test_failed_attempt_still_consumes_token(client, auth_headers):
     """
     A guardrail-blocked attempt (e.g. tampered hash) now burns the token —
     closing a tamper-probing vector where the same token could otherwise be
     retried indefinitely with different values until one slipped through.
     """
-    co, auth = _create_and_approve(client)
+    co, auth = _create_and_approve(client, auth_headers)
 
-    first = client.post("/api/payments/execute", json=_execute_body(co, auth, checkout_hash="TAMPERED"))
+    first = client.post("/api/payments/execute", json=_execute_body(co, auth, checkout_hash="TAMPERED"), headers=auth_headers)
     assert first.json()["blocked_reason"] == "CHECKOUT_HASH_MISMATCH"
 
-    second = client.post("/api/payments/execute", json=_execute_body(co, auth))
+    second = client.post("/api/payments/execute", json=_execute_body(co, auth), headers=auth_headers)
     assert second.status_code == 200
     assert second.json()["blocked_reason"] == "TOKEN_ALREADY_CONSUMED"
 
 
-def test_execute_payment_still_succeeds_on_first_clean_attempt(client):
+def test_execute_payment_still_succeeds_on_first_clean_attempt(client, auth_headers):
     """Regression: the new atomic claim must not block the normal happy path."""
-    co, auth = _create_and_approve(client)
-    resp = client.post("/api/payments/execute", json=_execute_body(co, auth))
+    co, auth = _create_and_approve(client, auth_headers)
+    resp = client.post("/api/payments/execute", json=_execute_body(co, auth), headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["status"] == "success"
 
 
 # ── 4. GET /api/orders/{id} now includes merchant_name + reason ────────────────
 
-def test_get_order_detail_includes_merchant_name_and_reason(client):
-    co, auth = _create_and_approve(client)
-    client.post("/api/payments/execute", json=_execute_body(co, auth, checkout_hash="TAMPERED"))
+def test_get_order_detail_includes_merchant_name_and_reason(client, auth_headers):
+    co, auth = _create_and_approve(client, auth_headers)
+    client.post("/api/payments/execute", json=_execute_body(co, auth, checkout_hash="TAMPERED"), headers=auth_headers)
 
     resp = client.get(f"/api/orders/{co['checkout_id']}")
     assert resp.status_code == 200

@@ -221,10 +221,10 @@ def client():
     return TestClient(app)
 
 
-def _create_and_approve(client, product_id="RW001", merchant_id="MERCHANT_A"):
+def _create_and_approve(client, auth_headers, product_id="RW001", merchant_id="MERCHANT_A"):
     resp = client.post("/api/checkout/create", json={
         "product_id": product_id, "merchant_id": merchant_id, "quantity": 1,
-    })
+    }, headers=auth_headers)
     assert resp.status_code == 200
     co = resp.json()
 
@@ -234,14 +234,13 @@ def _create_and_approve(client, product_id="RW001", merchant_id="MERCHANT_A"):
         "merchant_id": co["merchant_id"],
         "total": co["total"],
         "currency": co["currency"],
-        "user_id": "USR001",
         "product_id": co["product_id"],
         "product_title": co["product_title"],
         "merchant_name": co["merchant_name"],
         "subtotal": co["subtotal"],
         "tax": co["tax"],
         "shipping": co["shipping"],
-    })
+    }, headers=auth_headers)
     assert resp.status_code == 200
     auth = resp.json()
     return co, auth
@@ -256,7 +255,6 @@ def _execute_body(co, auth, **overrides):
         "merchant_name": co["merchant_name"],
         "total": co["total"],
         "currency": co["currency"],
-        "user_id": "USR001",
         "product_id": co["product_id"],
         "product_title": co["product_title"],
         "subtotal": co["subtotal"],
@@ -267,9 +265,9 @@ def _execute_body(co, auth, **overrides):
     return body
 
 
-def test_execute_payment_success(client):
-    co, auth = _create_and_approve(client)
-    resp = client.post("/api/payments/execute", json=_execute_body(co, auth))
+def test_execute_payment_success(client, auth_headers):
+    co, auth = _create_and_approve(client, auth_headers)
+    resp = client.post("/api/payments/execute", json=_execute_body(co, auth), headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "success"
@@ -277,32 +275,32 @@ def test_execute_payment_success(client):
     assert data["order_id"] == co["checkout_id"]
 
 
-def test_execute_payment_blocks_replayed_token(client):
-    co, auth = _create_and_approve(client)
-    first = client.post("/api/payments/execute", json=_execute_body(co, auth))
+def test_execute_payment_blocks_replayed_token(client, auth_headers):
+    co, auth = _create_and_approve(client, auth_headers)
+    first = client.post("/api/payments/execute", json=_execute_body(co, auth), headers=auth_headers)
     assert first.json()["status"] == "success"
 
-    second = client.post("/api/payments/execute", json=_execute_body(co, auth))
+    second = client.post("/api/payments/execute", json=_execute_body(co, auth), headers=auth_headers)
     assert second.status_code == 200
     data = second.json()
     assert data["status"] == "blocked"
     assert data["blocked_reason"] == "TOKEN_ALREADY_CONSUMED"
 
 
-def test_execute_payment_blocks_tampered_checkout_hash(client):
-    co, auth = _create_and_approve(client)
-    resp = client.post("/api/payments/execute", json=_execute_body(co, auth, checkout_hash="TAMPERED"))
+def test_execute_payment_blocks_tampered_checkout_hash(client, auth_headers):
+    co, auth = _create_and_approve(client, auth_headers)
+    resp = client.post("/api/payments/execute", json=_execute_body(co, auth, checkout_hash="TAMPERED"), headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "blocked"
     assert data["blocked_reason"] == "CHECKOUT_HASH_MISMATCH"
 
 
-def test_get_orders_lists_paid_order(client):
-    co, auth = _create_and_approve(client)
-    client.post("/api/payments/execute", json=_execute_body(co, auth))
+def test_get_orders_lists_paid_order(client, auth_headers):
+    co, auth = _create_and_approve(client, auth_headers)
+    client.post("/api/payments/execute", json=_execute_body(co, auth), headers=auth_headers)
 
-    resp = client.get("/api/orders?user_id=USR001")
+    resp = client.get("/api/orders", headers=auth_headers)
     assert resp.status_code == 200
     orders = resp.json()
     match = next((o for o in orders if o["order_id"] == co["checkout_id"]), None)
@@ -315,9 +313,9 @@ def test_get_order_detail_404_for_unknown(client):
     assert resp.status_code == 404
 
 
-def test_audit_trail_includes_execution_events(client):
-    co, auth = _create_and_approve(client)
-    client.post("/api/payments/execute", json=_execute_body(co, auth))
+def test_audit_trail_includes_execution_events(client, auth_headers):
+    co, auth = _create_and_approve(client, auth_headers)
+    client.post("/api/payments/execute", json=_execute_body(co, auth), headers=auth_headers)
 
     resp = client.get(f"/api/audit/{co['checkout_id']}")
     assert resp.status_code == 200
@@ -329,9 +327,9 @@ def test_audit_trail_includes_execution_events(client):
 # ── 6. MCP get_order_status ──────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_get_order_status_returns_real_data_after_execution(client):
-    co, auth = _create_and_approve(client)
-    client.post("/api/payments/execute", json=_execute_body(co, auth))
+async def test_get_order_status_returns_real_data_after_execution(client, auth_headers):
+    co, auth = _create_and_approve(client, auth_headers)
+    client.post("/api/payments/execute", json=_execute_body(co, auth), headers=auth_headers)
 
     from backend.mcp.server import get_order_status
     status = await get_order_status(co["checkout_id"])
