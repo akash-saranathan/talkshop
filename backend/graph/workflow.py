@@ -1,17 +1,19 @@
 """
-LangGraph workflow — Phase 2 (7 nodes).
+LangGraph workflow — Phase 2 + Phase 3 nodes.
 
-Flow:
+Phase 2 flow (discovery):
   START
-    → input_guardrail        (NeMo check)
-    → extract_intent         (VibeCheck / LLM)
-    → mcp_product_search     (SneakPeek / deterministic MCP fan-out)
-    → normalize_products     (deterministic Pydantic validation)
-    → deterministic_filter   (SneakPeek / no LLM)
-    → rank_products          (SneakPeek / no LLM)
-    → generate_recommendation (VibeCheck / LLM prose)
-    → stream_to_ui
-  END
+    → input_guardrail → extract_intent → mcp_product_search
+    → normalize_products → deterministic_filter → rank_products
+    → generate_recommendation → stream_to_ui
+  END  ← user selects product on frontend, navigates to /checkout
+
+Phase 3 flow (checkout + authorization) runs via REST endpoints, not
+this graph — see backend/routers/authorizations.py. The graph handles
+the discovery half; the checkout/consent/DPAT half is driven by the
+Checkout page calling POST /api/checkout/create then POST /api/authorizations/approve.
+This keeps the LangGraph state simple and the human-in-the-loop pause
+modelled naturally as a page navigation rather than a graph interrupt.
 
 SSE events are pushed via an asyncio.Queue injected per-session.
 """

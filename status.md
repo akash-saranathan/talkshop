@@ -178,10 +178,119 @@ FastMCP server — agents call these tools; tools return normalized data; raw me
 
 ---
 
-## Phase 3 — Checkout, Consent & Payment Authorization 🔲
+## Phase 3 — Checkout, Consent & Payment Authorization ✅
 
 **Branch:** `phase-3/checkout-payment-auth`
-**Status:** Not started
+**Status:** Complete — 7 commits
+**Commits:**
+| Hash | Description |
+|------|-------------|
+| `dea9744` | Policy engine (rules) and HMAC-SHA256 signing |
+| `d79eb80` | 12-check deterministic payment guardrail engine |
+| `ff662ce` | CartUp (Agent 3) and GreenLight (Agent 4) |
+| `64bc307` | DPAT authorization service (5 endpoints) + wire into main |
+| `3fd98d2` | workflow docstring — Phase 3 runs via REST endpoints |
+| `(pending)` | Checkout.tsx live countdown + PaymentResult.tsx real data |
+| `(pending)` | 39 Phase 3 tests |
+
+### What was built
+
+#### Payment Policy Engine (`backend/payment/policy.py`)
+Deterministic rules — no LLM. Single source of truth for all authorization decisions.
+- `MAX_PURCHASE_AMOUNT = $500` — single-purchase ceiling
+- `ALLOWED_CURRENCIES = {"USD"}` — scope guard
+- `TOKEN_TTL_MINUTES = 15` — DPAT expiry
+- `ALLOWED_MERCHANTS = {"MERCHANT_A", "MERCHANT_B", "MERCHANT_C"}` — merchant allowlist
+- `evaluate_purchase(merchant_id, amount, currency)` → `PolicyResult(decision, reason_code, detail)`
+  - Returns `ALLOW`, `DENY`, or `REQUIRE_STEP_UP`
+
+#### HMAC-SHA256 Signing (`backend/payment/signing.py`)
+Tamper-detection layer for authorization objects stored in DB.
+- `sign_authorization(auth_data)` — canonical JSON (sorted keys, no whitespace) → HMAC-SHA256 hex digest
+- `verify_authorization(auth_data, signature)` — `hmac.compare_digest` to prevent timing attacks
+- Signature stored alongside auth record; verified by guardrail check before payment execution
+
+#### 12-Check Guardrail Engine (`backend/payment/guardrail_engine.py`)
+Deterministic Python — no LLM in any check. Stops at first failure.
+
+| # | Check | Reason code on fail |
+|---|-------|---------------------|
+| 1 | Token exists | `TOKEN_NOT_FOUND` |
+| 2 | Token status = active | `TOKEN_NOT_ACTIVE` |
+| 3 | Token not expired | `AUTHORIZATION_EXPIRED` |
+| 4 | Token not consumed | `TOKEN_ALREADY_CONSUMED` |
+| 5 | Agent ID matches | `AGENT_NOT_AUTHORIZED` |
+| 6 | Merchant ID matches | `MERCHANT_NOT_AUTHORIZED` |
+| 7 | Order ID matches | `ORDER_MISMATCH` |
+| 8 | Currency matches | `CURRENCY_MISMATCH` |
+| 9 | Amount ≤ token max_amount | `AMOUNT_EXCEEDS_AUTHORIZED_LIMIT` |
+| 10 | Amount = checkout total (±$0.01) | `AMOUNT_CHECKOUT_MISMATCH` |
+| 11 | Checkout hash matches | `CHECKOUT_HASH_MISMATCH` |
+| 12 | User consent record exists | `CONSENT_RECORD_MISSING` |
+
+#### CartUp — Agent 3 (`backend/agents/cartup.py`) — NO LLM
+Triggered after user selects a product. Calls MCP tools to produce a `CheckoutObject`.
+- `build_checkout(product, quantity, user_id)` → `(CheckoutObject, error)`
+- Calls MCP `check_inventory` → `get_price` → `calculate_shipping`
+- Computes subtotal, tax (8.2%), shipping (free ≥ $50, else $5.99)
+- Generates SHA-256 `checkout_hash` over canonicalized cart JSON — binds DPAT token to this exact cart; any tampering invalidates it
+
+#### GreenLight — Agent 4 (`backend/agents/greenlight.py`) — NO LLM
+Triggered only after confirmed user consent. Issues DPAT tokens.
+- `request_dpat(checkout, user_id, consent_authorization_id)` → `(token_id, full_token_dict, error)`
+- Runs `evaluate_purchase()` before issuing any token
+- Creates `DPATToken` with 15-min TTL, single-use, HMAC-SHA256 signed
+- Returns ONLY `token_id` to the agent — full auth object goes to DPAT service DB
+- `summarize_authorization(token_id, checkout)` — deterministic template string for UI
+
+#### DPAT Authorization Service (`backend/routers/authorizations.py`)
+5 FastAPI endpoints — all deterministic, no LLM.
+
+| Endpoint | What it does |
+|----------|--------------|
+| `POST /api/checkout/create` | CartUp builds `CheckoutObject` from selected product |
+| `POST /api/authorizations/approve` | Records user consent (AuditEvent) + issues DPAT token; returns `{token_id, authorization_id, expires_at, summary}` |
+| `POST /api/authorizations/validate` | HMAC verify + 12-check engine → `{passed, events, blocked_reason}` (used by PayIt in Phase 4) |
+| `POST /api/authorizations/revoke` | Idempotent token revocation |
+| `GET /api/audit/{order_id}` | Full chronological audit trail for an order |
+
+Trust model: agent receives only `token_id`. Card credentials, max_amount, raw auth fields — none of these are ever returned to the agent.
+
+#### Frontend — Checkout & Payment Result Pages
+
+**`frontend/src/pages/Checkout.tsx`** — real Phase 3 flow
+- Reads product from React Router state (`location.state.product`)
+- On mount: `POST /api/checkout/create` → builds `CheckoutObject` with live pricing
+- Authorization panel: shows what agent CAN'T see (card, CVV, credentials) vs. what the scoped token allows (merchant, max amount, single use, hash-bound)
+- "Approve Purchase" button: `POST /api/authorizations/approve` → disabled after first click (prevents duplicate submission)
+- Live countdown timer (`useCountdown` hook) — ticks every second after approval, shows MM:SS expiry
+- Navigates to `/payment-result` with full result state after 1.2s
+
+**`frontend/src/pages/PaymentResult.tsx`** — real result data
+- Reads result from React Router state (`location.state`)
+- Success state: shows order ID, DPAT token, amount, merchant, DPAT trust message
+- Blocked state: shows guardrail reason code (used by Phase 4 PayIt)
+- Fallback for direct navigation (no state)
+
+#### Human-in-the-Loop Design
+LangGraph interrupt was not used — the pause is modelled as page navigation:
+```
+Chat (discovery) → /checkout (user reviews + approves) → /payment-result
+```
+This avoids distributed state management across HTTP requests while delivering the same consent story. The approval is explicit, single-click, and non-revocable until the user navigates away.
+
+### Milestone checks
+- [x] User selects product → `/checkout` builds live order with real pricing from DB
+- [x] Authorization panel shows trust boundary (what agent can/cannot see)
+- [x] "Approve Purchase" calls `/api/authorizations/approve` — disabled after click
+- [x] DPAT token issued with HMAC signature + 15-min TTL
+- [x] Agent receives only `token_id` — full auth object stays in DB
+- [x] Countdown timer starts ticking after approval
+- [x] Payment result page shows real order/token data
+- [x] Guardrail engine covers all 12 checks with distinct reason codes
+- [x] `/api/authorizations/revoke` works and is idempotent
+- [x] Audit trail records USER_APPROVED_PURCHASE + DPAT_CREATED events
+- [x] 39 Phase 3 tests passing; 81 total (Phase 1 + 2 + 3) all green
 
 ---
 
