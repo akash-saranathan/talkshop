@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { CheckCircle, XOctagon, Shield, Loader } from "lucide-react";
 import { motion } from "framer-motion";
+import { authFetch } from "../api/client";
 
 interface SuccessState {
   status: "success";
@@ -36,7 +37,7 @@ export default function PaymentResult() {
     if (routerState || !orderId) return;
     (async () => {
       try {
-        const res = await fetch(`/api/orders/${orderId}`);
+        const res = await authFetch(`/api/orders/${orderId}`);
         if (res.status === 404) {
           setNotFound(true);
           return;

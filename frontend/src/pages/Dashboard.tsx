@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, Loader } from "lucide-react";
+import { authFetch } from "../api/client";
 
 interface Transaction {
   order_id: string;
@@ -17,7 +18,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/orders?user_id=USR001")
+    authFetch("/api/orders")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load orders");
         return res.json();

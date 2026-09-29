@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Shield, CheckCircle, XCircle, Clock, Loader, AlertTriangle } from "lucide-react";
 import type { ProductData } from "../api/chat";
+import { authFetch } from "../api/client";
 
 interface CheckoutData {
   checkout_id: string;
@@ -82,14 +83,12 @@ export default function Checkout() {
     }
     (async () => {
       try {
-        const res = await fetch("/api/checkout/create", {
+        const res = await authFetch("/api/checkout/create", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             product_id: product.product_id,
             merchant_id: product.merchant_id,
             quantity: 1,
-            user_id: "USR001",
           }),
         });
         if (!res.ok) {
@@ -111,9 +110,8 @@ export default function Checkout() {
     setExecuting(true);
     setExecuteError(null);
     try {
-      const execRes = await fetch("/api/payments/execute", {
+      const execRes = await authFetch("/api/payments/execute", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token_id: token,
           checkout_id: checkout.checkout_id,
@@ -122,7 +120,6 @@ export default function Checkout() {
           merchant_name: checkout.merchant_name,
           total: checkout.total,
           currency: checkout.currency,
-          user_id: "USR001",
           product_id: checkout.product_id,
           product_title: checkout.product_title,
           subtotal: checkout.subtotal,
@@ -167,16 +164,14 @@ export default function Checkout() {
     if (!checkout || approving || approved) return;
     setApproving(true);
     try {
-      const res = await fetch("/api/authorizations/approve", {
+      const res = await authFetch("/api/authorizations/approve", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           checkout_id: checkout.checkout_id,
           checkout_hash: checkout.checkout_hash,
           merchant_id: checkout.merchant_id,
           total: checkout.total,
           currency: checkout.currency,
-          user_id: "USR001",
           product_id: checkout.product_id,
           product_title: checkout.product_title,
           merchant_name: checkout.merchant_name,

@@ -3,6 +3,7 @@
  * Connects to the LangGraph streaming endpoint and invokes callbacks
  * for each event type as they arrive.
  */
+import { getToken } from "./client";
 
 export interface AgentEvent {
   type: "step_start" | "step_done" | "blocked" | "error" | "recommendation" | "done";
@@ -41,7 +42,10 @@ export interface ChatCallbacks {
 }
 
 export function streamChat(message: string, sessionId: string, callbacks: ChatCallbacks): () => void {
-  const params = new URLSearchParams({ message, session_id: sessionId });
+  // EventSource can't set custom headers, so the token travels as a query
+  // param here — the backend's get_current_user() accepts either.
+  const token = getToken();
+  const params = new URLSearchParams({ message, session_id: sessionId, ...(token ? { token } : {}) });
   const url = `/api/chat/stream?${params}`;
   const es = new EventSource(url);
 
