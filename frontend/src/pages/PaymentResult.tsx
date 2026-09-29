@@ -1,14 +1,15 @@
-import { useLocation, useNavigate } from "react-router-dom";
-import { CheckCircle, XOctagon, Shield } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { CheckCircle, XOctagon, Shield, Loader } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface SuccessState {
   status: "success";
-  tokenId: string;
+  tokenId?: string;
   orderId: string;
   amount: number;
   merchant: string;
-  summary: string;
+  summary?: string;
 }
 
 interface BlockedState {
@@ -22,9 +23,58 @@ type ResultState = SuccessState | BlockedState;
 export default function PaymentResult() {
   const navigate = useNavigate();
   const location = useLocation();
-  const state = location.state as ResultState | null;
+  const { orderId } = useParams<{ orderId: string }>();
+  const routerState = location.state as ResultState | null;
+
+  const [state, setState] = useState<ResultState | null>(routerState);
+  const [loading, setLoading] = useState(!routerState);
+  const [notFound, setNotFound] = useState(false);
+
+  // If we navigated here without state (Dashboard link, refresh, direct URL),
+  // fetch the real order instead of guessing at its outcome.
+  useEffect(() => {
+    if (routerState || !orderId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`);
+        if (res.status === 404) {
+          setNotFound(true);
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to load order");
+        const data = await res.json();
+        if (data.status === "confirmed") {
+          setState({
+            status: "success",
+            orderId: data.order_id,
+            amount: data.amount,
+            merchant: data.merchant_name,
+          });
+        } else {
+          setState({
+            status: "blocked",
+            orderId: data.order_id,
+            blockedReason: data.reason ?? data.status,
+          });
+        }
+      } catch {
+        setNotFound(true);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [orderId, routerState]);
 
   const isSuccess = state?.status === "success";
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center">
+        <Loader size={24} className="animate-spin text-[var(--color-primary)]" />
+        <span className="ml-3 text-sm text-[var(--color-text-muted)]">Loading order...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-6">
@@ -37,17 +87,21 @@ export default function PaymentResult() {
           <>
             <CheckCircle size={48} className="text-[var(--color-success)] mx-auto mb-4" />
             <h1 className="text-xl font-bold text-[var(--color-success)] mb-1">ORDER CONFIRMED</h1>
-            <p className="text-sm text-[var(--color-text-muted)] mb-6">{state.summary}</p>
+            {state.summary && (
+              <p className="text-sm text-[var(--color-text-muted)] mb-6">{state.summary}</p>
+            )}
 
             <div className="space-y-2 text-sm text-left mb-6">
               <div className="flex justify-between">
                 <span className="text-[var(--color-text-muted)]">Order</span>
                 <span className="font-mono font-medium">{state.orderId}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--color-text-muted)]">DPAT Token</span>
-                <span className="font-mono text-xs text-emerald-600 break-all max-w-[200px] text-right">{state.tokenId}</span>
-              </div>
+              {state.tokenId && (
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-text-muted)]">DPAT Token</span>
+                  <span className="font-mono text-xs text-emerald-600 break-all max-w-[200px] text-right">{state.tokenId}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-[var(--color-text-muted)]">Amount</span>
                 <span className="font-medium">${state.amount.toFixed(2)}</span>
@@ -80,11 +134,16 @@ export default function PaymentResult() {
             </p>
           </>
         ) : (
-          /* Fallback: navigated here directly without state */
           <>
-            <CheckCircle size={48} className="text-[var(--color-success)] mx-auto mb-4" />
-            <h1 className="text-xl font-bold text-[var(--color-success)] mb-6">ORDER CONFIRMED</h1>
-            <p className="text-sm text-[var(--color-text-muted)] mb-6">Your purchase was authorized and processed.</p>
+            <XOctagon size={48} className="text-[var(--color-text-muted)] mx-auto mb-4" />
+            <h1 className="text-xl font-bold text-[var(--color-text)] mb-1">
+              {notFound ? "Order Not Found" : "No Order Information"}
+            </h1>
+            <p className="text-sm text-[var(--color-text-muted)] mb-6">
+              {notFound
+                ? `No order matches "${orderId}".`
+                : "This page needs an order to show. Start a new purchase or check the dashboard."}
+            </p>
           </>
         )}
 
