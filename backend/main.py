@@ -6,8 +6,9 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db.init_db import init_db, run as seed_db
-from backend.routers import merchants, products, chat, authorizations
+from backend.routers import merchants, products, chat, authorizations, payments
 from backend.config.llm import resolve_llm
+from backend.observability.tracing import init_tracing
 
 DB_PATH = Path(__file__).parent / "db" / "commerce.db"
 
@@ -18,6 +19,8 @@ async def lifespan(app: FastAPI):
     seed_db()
     llm_info = resolve_llm()
     print(f"[LLM] Using {llm_info['provider']} / {llm_info['model']}")
+    tracing_enabled, endpoint = init_tracing()
+    print(f"[Observability] Tracing {'enabled -> ' + endpoint if tracing_enabled else 'disabled'}")
     yield
 
 
@@ -40,6 +43,7 @@ app.include_router(merchants.router)
 app.include_router(products.router)
 app.include_router(chat.router)
 app.include_router(authorizations.router)
+app.include_router(payments.router)
 
 
 @app.get("/")
