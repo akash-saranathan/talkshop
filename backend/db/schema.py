@@ -80,7 +80,22 @@ class Order(Base):
     currency = Column(String(10), default="USD")
     status = Column(String(30), default="pending")
     transaction_id = Column(String(100))
+    tracking_number = Column(String(50))
     created_at = Column(DateTime, server_default=func.now())
+
+
+class Wallet(Base):
+    """Per-user mock stored-value balance — separate from the payment-method
+    vault (data/mock_wallet.json); this is what actually draws down on a
+    purchase, since DPAT tokens authorize against a balance here, not a
+    real card swipe."""
+    __tablename__ = "wallets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(50), unique=True, nullable=False)
+    balance = Column(Float, nullable=False, default=1000.0)
+    currency = Column(String(10), default="USD")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class PaymentAuthorization(Base):

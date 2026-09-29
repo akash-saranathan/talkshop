@@ -11,7 +11,8 @@ from pydantic import BaseModel, EmailStr, Field
 
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.auth.security import create_access_token, hash_password, verify_password
-from backend.db.schema import User
+from backend.db.init_db import STARTING_WALLET_BALANCE
+from backend.db.schema import User, Wallet
 from backend.db.session_utils import get_session
 
 router = APIRouter()
@@ -48,6 +49,7 @@ async def register(req: RegisterRequest):
             password_hash=hash_password(req.password),
             status="active",
         ))
+        session.add(Wallet(user_id=user_id, balance=STARTING_WALLET_BALANCE))
         session.commit()
 
     current = CurrentUser(user_id=user_id, name=req.name, email=req.email)
