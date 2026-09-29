@@ -11,52 +11,24 @@ Endpoints:
 """
 import json
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 from backend.agents.cartup import build_checkout
 from backend.agents.greenlight import request_dpat, summarize_authorization
-from backend.db.schema import (
-    AuditEvent, DelegatedToken, PaymentAuthorization, Product, Merchant
-)
+from backend.db.schema import AuditEvent, DelegatedToken, PaymentAuthorization, Product, Merchant
+from backend.db.session_utils import get_session as _session, now_utc as _now, write_audit_event as _audit
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import GuardrailEvent, PaymentRequest
 from backend.models.product import NormalizedProduct
 from backend.payment.guardrail_engine import run_guardrails
-from backend.payment.signing import verify_authorization
+from backend.payment.signing import sign_authorization
+from backend.payment.token_lookup import load_token_context
 
 router = APIRouter()
-
-DB_PATH = Path(__file__).parent.parent / "db" / "commerce.db"
-
-
-def _session() -> Session:
-    engine = create_engine(f"sqlite:///{DB_PATH}")
-    return Session(engine)
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _audit(session: Session, event_type: str, user_id: str = "USR001",
-           agent_id: str = "", order_id: str = "",
-           authorization_id: str = "", metadata: dict = {}):
-    session.add(AuditEvent(
-        event_id=f"EVT_{uuid.uuid4().hex[:10].upper()}",
-        user_id=user_id,
-        agent_id=agent_id,
-        authorization_id=authorization_id,
-        order_id=order_id,
-        event_type=event_type,
-        metadata_json=json.dumps(metadata),
-    ))
 
 
 # ── Request / Response schemas ────────────────────────────────────────────────
@@ -182,8 +154,22 @@ async def approve_authorization(req: ApproveRequest):
     # Persist authorization + token + consent audit event
     with _session() as session:
         now = _now()
-        from datetime import datetime as dt
-        expires_at = dt.fromisoformat(token_dict["expires_at"].replace("Z", "+00:00"))
+        expires_at = datetime.fromisoformat(token_dict["expires_at"].replace("Z", "+00:00"))
+
+        # Re-sign over exactly the columns PaymentAuthorization persists (no datetime,
+        # no mutable lifecycle state like status/consumed_at) so token_lookup.load_token_context
+        # can reconstruct an identical payload later and verify it byte-for-byte — the
+        # in-memory signature GreenLight computed over the full DPATToken dump can't be
+        # exactly reconstructed from relational columns after a DB round-trip.
+        storage_signature = sign_authorization({
+            "token_id": token_id,
+            "agent_id": token_dict["agent_id"],
+            "merchant_id": req.merchant_id,
+            "order_id": req.checkout_id,
+            "currency": req.currency,
+            "max_amount": req.total,
+            "checkout_hash": req.checkout_hash,
+        })
 
         auth = PaymentAuthorization(
             authorization_id=authorization_id,
@@ -194,7 +180,7 @@ async def approve_authorization(req: ApproveRequest):
             max_amount=req.total,
             currency=req.currency,
             checkout_hash=req.checkout_hash,
-            signature=token_dict.get("signature"),
+            signature=storage_signature,
             approved_at=now,
             expires_at=expires_at,
             status="active",
@@ -238,48 +224,20 @@ async def validate_authorization(req: ValidateRequest):
     Returns pass/fail + all guardrail events.
     """
     with _session() as session:
-        auth = (
-            session.query(PaymentAuthorization)
-            .filter(PaymentAuthorization.order_id == req.payment_request.order_id)
-            .order_by(PaymentAuthorization.approved_at.desc())
-            .first()
+        token_dict, consent_exists, sig_error = load_token_context(
+            session, req.payment_request.order_id, req.payment_request.token_id
         )
-        token = (
-            session.query(DelegatedToken)
-            .filter(DelegatedToken.token_id == req.payment_request.token_id)
-            .first()
-        )
-        consent_exists = auth is not None and auth.approved_at is not None
 
-        token_dict = None
-        if token and auth:
-            token_dict = {
-                "token_id": token.token_id,
-                "status": token.status,
-                "expires_at": token.expires_at,
-                "consumed_at": token.consumed_at,
-                "agent_id": auth.agent_id,
-                "merchant_id": auth.merchant_id,
-                "order_id": auth.order_id,
-                "currency": auth.currency,
-                "max_amount": auth.max_amount,
-                "checkout_hash": auth.checkout_hash,
-                "signature": auth.signature,
-            }
-
-            # Verify HMAC signature before running checks
-            sig = token_dict.pop("signature", None)
-            if sig and not verify_authorization(token_dict, sig):
-                return ValidateResponse(
-                    passed=False,
-                    events=[GuardrailEvent(
-                        check_number=0, check_name="signature_verify",
-                        passed=False, reason_code="SIGNATURE_INVALID",
-                        detail="Authorization object signature is invalid — possible tampering",
-                    )],
-                    blocked_reason="SIGNATURE_INVALID",
-                )
-            token_dict["signature"] = sig
+        if sig_error:
+            return ValidateResponse(
+                passed=False,
+                events=[GuardrailEvent(
+                    check_number=0, check_name="signature_verify",
+                    passed=False, reason_code=sig_error,
+                    detail="Authorization object signature is invalid — possible tampering",
+                )],
+                blocked_reason=sig_error,
+            )
 
         passed, events = run_guardrails(
             req.payment_request, token_dict,

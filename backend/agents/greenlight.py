@@ -13,7 +13,7 @@ from backend.models.checkout import CheckoutObject
 from backend.models.payment import DPATToken
 from backend.payment.policy import evaluate_purchase, TOKEN_TTL_MINUTES
 from backend.payment.signing import sign_authorization
-from backend.config.agents import GREENLIGHT
+from backend.config.agents import PAYIT
 
 
 async def request_dpat(
@@ -39,7 +39,7 @@ async def request_dpat(
         token_id=token_id,
         authorization_id=authorization_id,
         customer_id=user_id,
-        agent_id=GREENLIGHT.agent_id,
+        agent_id=PAYIT.agent_id,  # delegated to the agent that executes payment, not the issuer
         merchant_id=checkout.merchant_id,
         order_id=checkout.checkout_id,
         max_amount=checkout.total,
