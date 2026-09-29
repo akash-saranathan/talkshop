@@ -6,13 +6,32 @@ LLM only touches intent extraction and prose explanations.
 Financial fields (price, inventory, etc.) come from merchant tools, never from here.
 """
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.config.llm import get_llm
 from backend.guardrails.validators import validate_shopping_intent, extract_json_from_llm
 from backend.models.intent import ShoppingIntent
+
+
+def _content_text(content: Any) -> str:
+    """
+    LangChain message content is typed as str | list[str | dict] — some
+    Gemini responses come back as a list of content parts rather than a
+    plain string. Normalize to plain text either way.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict):
+                parts.append(part.get("text", ""))
+        return "".join(parts)
+    return str(content)
 
 _SYSTEM_PROMPT = """You are VibeCheck, an intent extraction agent for an agentic commerce platform.
 
@@ -35,16 +54,26 @@ The JSON must match this schema exactly:
 
 Rules:
 - max_price must be a number, not a string ("under $100" → 100.0)
-- category must be one of: running_shoes, electronics, accessories, general
+- category must be one of: running_shoes, electronics, accessories, general, chitchat
+- Use "chitchat" when the message is a greeting, thanks, or anything else that
+  isn't actually a product request (e.g. "hi", "hello", "thanks", "how are you")
+  — leave every other field null in that case
 - If you are uncertain about a field, use null
 - Never invent product facts, prices, or inventory — that is done by other agents
 """
 
 
-async def extract_intent(user_message: str) -> tuple[Optional[ShoppingIntent], Optional[str]]:
+async def extract_intent(
+    user_message: str,
+    prior_intent: Optional[dict] = None,
+) -> tuple[Optional[ShoppingIntent], Optional[str]]:
     """
     Run NeMo input guard → LLM extraction → Guardrails AI validation.
     Returns (intent, error_message). error_message is non-None if blocked.
+
+    prior_intent, when given, is merged with — not replaced by — the new
+    message, so a follow-up answer ("size 10, under $100") completes the
+    same intent instead of starting a fresh, under-specified one.
     """
     from backend.guardrails.nemo import check_input
     allowed, block_msg = await check_input(user_message)
@@ -52,14 +81,22 @@ async def extract_intent(user_message: str) -> tuple[Optional[ShoppingIntent], O
         return None, block_msg
 
     llm = get_llm(temperature=0.1)
+    user_content = user_message
+    if prior_intent:
+        user_content = (
+            f"Previously gathered info: {json.dumps(prior_intent)}\n"
+            f'User\'s new message: "{user_message}"\n'
+            f"Merge the new message into the previous info — keep fields "
+            f"already known unless the new message changes them."
+        )
     messages = [
         SystemMessage(content=_SYSTEM_PROMPT),
-        HumanMessage(content=user_message),
+        HumanMessage(content=user_content),
     ]
 
     try:
         response = await llm.ainvoke(messages)
-        raw = extract_json_from_llm(response.content)
+        raw = extract_json_from_llm(_content_text(response.content))
     except Exception as e:
         return None, f"llm_error: {e}"
 
@@ -78,6 +115,47 @@ async def extract_intent(user_message: str) -> tuple[Optional[ShoppingIntent], O
         intent = intent.model_copy(update={"raw_query": user_message})
 
     return intent, None
+
+
+_DISTINGUISHING_FIELDS = ("brand", "size", "color", "max_price")
+
+
+def needs_followup(intent: ShoppingIntent) -> bool:
+    """
+    True when we know the product category but nothing else distinguishing —
+    exactly the case where a real shopkeeper would ask before suggesting
+    anything, rather than guessing from one vague word.
+
+    use_case is deliberately excluded from the "distinguishing" fields: the
+    LLM tends to restate the category there ("running shoes" -> use_case=
+    "running") even for a genuinely vague message, which would otherwise
+    make this check falsely think enough detail was already given.
+    """
+    if intent.category in ("chitchat", "general"):
+        return False
+    has_detail = any(getattr(intent, f) for f in _DISTINGUISHING_FIELDS) or bool(intent.preferences)
+    return not has_detail
+
+
+def generate_followup_question(intent: ShoppingIntent) -> str:
+    """Deterministic, category-aware — no LLM call needed for one clarifying question."""
+    label = intent.category.replace("_", " ")
+    return (
+        f"Got it, {label}! To find the best options — "
+        f"do you have a preferred size, color, brand, or budget in mind?"
+    )
+
+
+def generate_greeting_reply() -> str:
+    """
+    Deterministic friendly reply for non-shopping chitchat (greetings, thanks,
+    etc.) — no LLM call needed for something this simple, and it keeps the
+    tone consistent every time instead of leaving it to chance.
+    """
+    return (
+        "Hi! I'm your shopping assistant — tell me what you're looking for "
+        "(a product, brand, size, or budget) and I'll find the best options for you."
+    )
 
 
 async def generate_recommendation_text(
@@ -109,7 +187,7 @@ Be specific about the price and key feature. Do not invent any facts not listed 
     try:
         llm = get_llm(temperature=0.3)
         response = await llm.ainvoke([HumanMessage(content=prompt)])
-        return response.content.strip()
+        return _content_text(response.content).strip()
     except Exception:
         # LLM is prose-only here — fall back to a deterministic sentence built
         # from data already in `products` rather than losing the search results.

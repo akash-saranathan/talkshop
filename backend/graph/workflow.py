@@ -24,6 +24,7 @@ from typing import Any, AsyncGenerator, Optional, TypedDict
 from langgraph.graph import StateGraph, START, END
 
 from backend.agents import vibecheck, sneakpeek
+from backend.graph import session_state
 from backend.models.intent import ShoppingIntent
 from backend.models.product import NormalizedProduct
 
@@ -41,6 +42,8 @@ class CommerceState(TypedDict):
     stats: dict
     error: Optional[str]
     blocked: bool
+    chitchat: bool  # greeting/thanks/etc — skip search, reply with a friendly prompt
+    awaiting_followup: bool  # category known but under-specified — ask before searching
     sse_queue: Optional[asyncio.Queue]  # injected per request, not serialized
 
 
@@ -69,16 +72,28 @@ async def extract_intent(state: CommerceState) -> CommerceState:
     if state.get("blocked"):
         return state
     await _emit(state, "step_start", "Understanding your request...")
-    intent, error = await vibecheck.extract_intent(state["user_message"])
+    session_id = state["session_id"]
+    prior = session_state.get_partial_intent(session_id)
+    intent, error = await vibecheck.extract_intent(state["user_message"], prior_intent=prior)
     if error or not intent:
         await _emit(state, "error", f"Could not understand request: {error}")
         return {**state, "error": error or "intent_extraction_failed", "blocked": True}
+    if intent.category == "chitchat":
+        await _emit(state, "step_done", "Just saying hello, not shopping yet")
+        return {**state, "intent": intent, "chitchat": True}
+
+    if not session_state.has_asked_followup(session_id) and vibecheck.needs_followup(intent):
+        await _emit(state, "step_done", f"Intent understood: {intent.category} — need a bit more detail")
+        session_state.save_followup_asked(session_id, intent.model_dump(mode="json"))
+        return {**state, "intent": intent, "awaiting_followup": True}
+
+    session_state.clear(session_id)
     await _emit(state, "step_done", f"Intent understood: {intent.category}", {"intent": intent.model_dump()})
     return {**state, "intent": intent}
 
 
 async def mcp_product_search(state: CommerceState) -> CommerceState:
-    if state.get("blocked"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
     sources_msg = "Searching 3 merchant sources via MCP..."
@@ -92,7 +107,7 @@ async def mcp_product_search(state: CommerceState) -> CommerceState:
 
 
 async def normalize_products(state: CommerceState) -> CommerceState:
-    if state.get("blocked"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
         return state
     products = [NormalizedProduct.model_validate(p) for p in state["raw_products"]]
     await _emit(state, "step_done", f"Normalized {len(products)} products")
@@ -100,7 +115,7 @@ async def normalize_products(state: CommerceState) -> CommerceState:
 
 
 async def deterministic_filter(state: CommerceState) -> CommerceState:
-    if state.get("blocked"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "Applying your constraints...")
@@ -110,7 +125,7 @@ async def deterministic_filter(state: CommerceState) -> CommerceState:
 
 
 async def rank_products_node(state: CommerceState) -> CommerceState:
-    if state.get("blocked"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "Ranking by your preferences...")
@@ -123,6 +138,14 @@ async def rank_products_node(state: CommerceState) -> CommerceState:
 async def generate_recommendation(state: CommerceState) -> CommerceState:
     if state.get("blocked"):
         return state
+    if state.get("chitchat"):
+        text = vibecheck.generate_greeting_reply()
+        await _emit(state, "recommendation", text, [])
+        return {**state, "recommendation_text": text}
+    if state.get("awaiting_followup"):
+        text = vibecheck.generate_followup_question(state["intent"])
+        await _emit(state, "recommendation", text, [])
+        return {**state, "recommendation_text": text}
     await _emit(state, "step_start", "Generating personalized recommendation...")
     text = await vibecheck.generate_recommendation_text(
         state["intent"],
@@ -191,6 +214,8 @@ async def run_discovery(
         "stats": {},
         "error": None,
         "blocked": False,
+        "chitchat": False,
+        "awaiting_followup": False,
         "sse_queue": sse_queue,
     }
     try:
