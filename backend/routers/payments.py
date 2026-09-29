@@ -11,11 +11,12 @@ Endpoints:
 import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import update
 
 from backend.agents import payit, trackit
+from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.config.agents import PAYIT, TRACKIT
 from backend.db.schema import AuditEvent, DelegatedToken, Merchant, Order, PaymentAuthorization
 from backend.db.session_utils import get_session, now_utc, write_audit_event
@@ -36,7 +37,6 @@ class ExecutePaymentRequest(BaseModel):
     merchant_name: str
     total: float
     currency: str = "USD"
-    user_id: str = "USR001"
     product_id: str
     product_title: str
     subtotal: float
@@ -66,7 +66,10 @@ def _insert_order_if_absent(session, fields: dict):
 
 
 @router.post("/api/payments/execute", response_model=ExecutePaymentResponse)
-async def execute_payment_endpoint(req: ExecutePaymentRequest):
+async def execute_payment_endpoint(
+    req: ExecutePaymentRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     PayIt runs the 12-check guardrail engine, then charges via the mock
     processor. TrackIt records the resulting Order row + audit trail.
@@ -103,10 +106,10 @@ async def execute_payment_endpoint(req: ExecutePaymentRequest):
             )
 
             if sig_error:
-                write_audit_event(session, "PAYMENT_BLOCKED", user_id=req.user_id,
+                write_audit_event(session, "PAYMENT_BLOCKED", user_id=current_user.user_id,
                                    order_id=req.checkout_id,
                                    metadata={"reason": sig_error})
-                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "blocked", req.user_id))
+                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "blocked", current_user.user_id))
                 session.commit()
                 return ExecutePaymentResponse(
                     status="blocked", order_id=req.checkout_id, amount=req.total,
@@ -132,10 +135,10 @@ async def execute_payment_endpoint(req: ExecutePaymentRequest):
                     .values(consumed_at=now_utc())
                 )
                 if claim.rowcount == 0:
-                    write_audit_event(session, "PAYMENT_BLOCKED", user_id=req.user_id,
+                    write_audit_event(session, "PAYMENT_BLOCKED", user_id=current_user.user_id,
                                        agent_id=PAYIT.agent_id, order_id=req.checkout_id,
                                        metadata={"reason": "TOKEN_ALREADY_CONSUMED"})
-                    _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "blocked", req.user_id))
+                    _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "blocked", current_user.user_id))
                     session.commit()
                     return ExecutePaymentResponse(
                         status="blocked", order_id=req.checkout_id, amount=req.total,
@@ -152,10 +155,10 @@ async def execute_payment_endpoint(req: ExecutePaymentRequest):
             # One of the other 11 guardrail checks failed — no charge was attempted,
             # but the token is already consumed (claimed above), by design.
             if blocked_reason is not None:
-                write_audit_event(session, "PAYMENT_BLOCKED", user_id=req.user_id,
+                write_audit_event(session, "PAYMENT_BLOCKED", user_id=current_user.user_id,
                                    agent_id=PAYIT.agent_id, order_id=req.checkout_id,
                                    metadata={"reason": blocked_reason})
-                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "blocked", req.user_id))
+                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "blocked", current_user.user_id))
                 session.commit()
                 return ExecutePaymentResponse(
                     status="blocked", order_id=req.checkout_id, amount=req.total,
@@ -170,10 +173,10 @@ async def execute_payment_endpoint(req: ExecutePaymentRequest):
                 ).order_by(PaymentAuthorization.approved_at.desc()).first()
                 if auth:
                     auth.status = "declined"
-                write_audit_event(session, "PAYMENT_DECLINED", user_id=req.user_id,
+                write_audit_event(session, "PAYMENT_DECLINED", user_id=current_user.user_id,
                                    agent_id=PAYIT.agent_id, order_id=req.checkout_id,
                                    metadata={"reason": result.decline_reason})
-                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "declined", req.user_id))
+                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "declined", current_user.user_id))
                 session.commit()
                 return ExecutePaymentResponse(
                     status="blocked", order_id=req.checkout_id, amount=req.total,
@@ -188,13 +191,13 @@ async def execute_payment_endpoint(req: ExecutePaymentRequest):
             if auth:
                 auth.status = "completed"
 
-            order_fields = trackit.confirm_order(checkout, result, req.user_id)
+            order_fields = trackit.confirm_order(checkout, result, current_user.user_id)
             _insert_order_if_absent(session, order_fields)
 
-            write_audit_event(session, "PAYMENT_EXECUTED", user_id=req.user_id,
+            write_audit_event(session, "PAYMENT_EXECUTED", user_id=current_user.user_id,
                                agent_id=PAYIT.agent_id, order_id=req.checkout_id,
                                metadata={"transaction_id": result.transaction_id, "amount": result.amount})
-            write_audit_event(session, "ORDER_CONFIRMED", user_id=req.user_id,
+            write_audit_event(session, "ORDER_CONFIRMED", user_id=current_user.user_id,
                                agent_id=TRACKIT.agent_id, order_id=req.checkout_id,
                                metadata={"transaction_id": result.transaction_id})
             session.commit()
@@ -221,13 +224,13 @@ def _block_reason(session, order_id: str) -> Optional[str]:
 
 
 @router.get("/api/orders")
-async def list_orders(user_id: str = "USR001"):
+async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
     """Order list for the Dashboard — collapses status to 'paid' | 'blocked'."""
     with get_session() as session:
         rows = (
             session.query(Order, Merchant)
             .join(Merchant, Order.merchant_id == Merchant.merchant_id)
-            .filter(Order.user_id == user_id)
+            .filter(Order.user_id == current_user.user_id)
             .order_by(Order.created_at.desc())
             .all()
         )

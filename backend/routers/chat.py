@@ -7,9 +7,10 @@ import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
+from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.graph.workflow import run_discovery
 
 router = APIRouter()
@@ -41,11 +42,16 @@ async def _event_stream(user_message: str, session_id: str):
 async def chat_stream(
     message: str = Query(..., description="User's natural language shopping request"),
     session_id: str = Query(default_factory=lambda: uuid.uuid4().hex),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     SSE endpoint. React Chat page connects here and receives step events.
     Each event: { type, message, data, ts }
     Event types: step_start, step_done, blocked, error, recommendation, done
+
+    Auth note: EventSource can't set custom headers, so the frontend passes
+    the token as ?token= — get_current_user() accepts either that or a
+    normal Authorization header.
     """
     return StreamingResponse(
         _event_stream(message, session_id),
