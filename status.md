@@ -297,14 +297,17 @@ This avoids distributed state management across HTTP requests while delivering t
 ## Phase 4 — Payment Execution, Orders & Observability ✅
 
 **Branch:** `phase-4/execution-observability`
-**Status:** Complete — working tree only, not yet committed
+**Status:** Complete — 7 commits
 **Commits:**
 | Hash | Description |
 |------|-------------|
-| `(pending)` | Mock payment processor, PayIt + TrackIt agents, `/api/payments/execute` + `/api/orders` endpoints |
-| `(pending)` | DPAT signature-verification fix (storage-scoped signing/verification) |
-| `(pending)` | Real `get_order_status` MCP tool, OpenTelemetry tracing, frontend rewiring |
-| `(pending)` | 21 Phase 4 tests |
+| `c9826eb` | Mock payment processor + shared DB/token helpers |
+| `1e767c7` | PayIt (Agent 5) and TrackIt (Agent 6) + OpenTelemetry tracing |
+| `a3194bd` | Fix DPAT token scoping + signature verification |
+| `238d14e` | Payment execution service (3 endpoints) + wire into main |
+| `fc1e712` | Checkout.tsx real payment execution, Dashboard.tsx real orders |
+| `fa73143` | 21 Phase 4 tests |
+| `(pending)` | status.md milestone log |
 
 ### What was built
 
