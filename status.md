@@ -370,10 +370,3 @@ OpenTelemetry, scoped to the payment-execution path only (`payments.execute`, `p
 
 **Branch:** `phase-5/demo-polish`
 **Status:** Not started
-
----
-
-## Phase 5 — Demo Polish, Failure Scenarios & Hardening 🔲
-
-**Branch:** `phase-5/demo-polish`
-**Status:** Not started
