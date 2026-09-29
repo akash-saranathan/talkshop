@@ -369,7 +369,15 @@ OpenTelemetry, scoped to the payment-execution path only (`payments.execute`, `p
 ## Phase 5 — Demo Polish, Failure Scenarios & Hardening ✅
 
 **Branch:** `phase-5/demo-polish`
-**Status:** Complete — working tree only, not yet committed
+**Status:** Complete — 6 commits
+**Commits:**
+| Hash | Description |
+|------|-------------|
+| `70a0f0d` | Fix silent 60s hang on discovery-graph LLM/node failures |
+| `dc9f103` | Atomic token consumption + richer order detail endpoint |
+| `f4abb87` | Fix Dashboard->PaymentResult navigation + demo polish |
+| `dfb3118` | 6 passing tests |
+| `(pending)` | status.md milestone log |
 
 There was no written spec for this phase beyond its title — scope was derived
 by exploring the running app end-to-end and finding concrete, verified gaps
