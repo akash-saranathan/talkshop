@@ -450,3 +450,89 @@ non-confirmed orders, the block/decline `reason` — extracted into a shared
 - [x] Non-JSON error bodies no longer leak raw parse errors to the user
 - [x] 108 tests passing (102 prior + 6 new), zero regressions
 - [x] `tsc --noEmit` clean
+
+---
+
+## Real Authentication + Conversational Shopkeeper + "Talkshop" Rebrand ✅
+
+**Branch:** `feature/auth-and-shopkeeper-chat`
+**Status:** Complete — working tree only, not yet committed
+
+Not one of the original 5 planned phases — a manager-driven feature request
+prompted by a demo prototype. Scope: real login (not a UI mock), a chat
+agent that asks clarifying questions like a real shopkeeper instead of
+guessing from one vague word, and rebranding from "AgentCommerce" to the
+app's real name, **Talkshop**.
+
+### What was built
+
+#### Real authentication
+- `backend/auth/security.py` — bcrypt password hashing, JWT access tokens
+  (`JWT_SECRET_KEY` env var, demo fallback default — same pattern as
+  `backend/payment/signing.py`'s `SIGNING_KEY`)
+- `backend/auth/dependencies.py` — `get_current_user()`, the single source
+  of truth for request identity. Accepts the token via the `Authorization`
+  header **or** a `?token=` query param — the latter because browser
+  `EventSource` can't set custom headers, which is how the chat SSE
+  endpoint authenticates
+- `backend/routers/auth.py` — `POST /api/auth/register`, `POST
+  /api/auth/login`, `GET /api/auth/me`. Logout is client-side only
+  (discard the token) — no server-side revocation list for a demo JWT
+- `backend/db/schema.py` + `init_db.py` — `User.password_hash`, with a
+  defensive `ALTER TABLE` migration for existing dev databases (`Base.
+  metadata.create_all()` never alters an existing table) and a real seeded
+  password for the demo account
+- Every endpoint that used to trust a client-supplied `user_id` field
+  (`chat.py`'s SSE endpoint, `authorizations.py`'s checkout/approve,
+  `payments.py`'s execute/orders) now derives identity from
+  `Depends(get_current_user)` instead — the client can no longer claim to
+  be anyone it wants
+
+#### Conversational shopkeeper
+The main functional ask. VibeCheck previously did one-shot intent
+extraction with zero memory — a vague "I need running shoes" went straight
+to weak recommendations instead of asking what a real shopkeeper would ask
+first (size, color, brand, budget).
+- `backend/graph/session_state.py` — in-memory per-session conversation
+  state (partial intent + whether a follow-up was already asked), keyed by
+  the browser tab's stable `session_id`
+- `backend/agents/vibecheck.py` — `extract_intent()` now merges a
+  `prior_intent` into the LLM prompt instead of treating every message as
+  unrelated; `needs_followup()` detects "category known, nothing else
+  distinguishing given" (deliberately ignoring `use_case`, since the LLM
+  tends to restate the category there even for a genuinely vague message);
+  `generate_followup_question()` is a deterministic, category-aware
+  clarifying question — no LLM call needed for something this simple
+- `backend/graph/workflow.py` — same short-circuit pattern already used
+  for `blocked`/`chitchat`: a new `awaiting_followup` flag skips the
+  search pipeline and replies with the question instead, capped at one
+  round so it never turns into an interrogation
+- Live-verified: "I need running shoes" → "Got it, running shoes! ... do
+  you have a preferred size, color, brand, or budget in mind?" → "size 10,
+  under 100 dollars" → real, correctly filtered recommendations
+
+#### Rebrand
+"AgentCommerce" → "Talkshop" in `frontend/index.html` and the Chat header.
+
+#### Frontend
+- `frontend/src/auth/AuthContext.tsx` — session persisted via `localStorage`,
+  restored on load via `GET /api/auth/me`
+- `frontend/src/pages/Login.tsx` — one page, toggle between Login/Register
+- `frontend/src/api/client.ts` — `authFetch()` wrapper attaching the bearer
+  token; replaces raw `fetch()` in Checkout/Dashboard/PaymentResult
+- `App.tsx` — routes gated behind a `RequireAuth` redirect to `/login`
+- `Chat.tsx` — Talkshop branding, user name + logout in the header, a
+  shopkeeper avatar next to assistant messages, and a typing indicator
+  before the first step event arrives
+
+### Milestone checks
+- [x] Registering a new account and logging in both issue a working token
+- [x] Protected endpoints reject requests with no token or a garbage token (401)
+- [x] `?token=` query param auth works (proven against `/api/auth/me`, used for real by the SSE endpoint)
+- [x] A vague product message gets a clarifying question, not weak/empty results
+- [x] Answering the follow-up in the same session merges into the original intent and returns real recommendations
+- [x] A fully-specific single message skips the follow-up entirely
+- [x] "hi" still gets the plain greeting reply, unaffected by the follow-up logic
+- [x] A full authenticated purchase (checkout → approve → execute) succeeds and shows up under that user's own Dashboard
+- [x] 137 tests passing (108 prior + 29 new), zero regressions
+- [x] `tsc --noEmit` clean
