@@ -1,0 +1,44 @@
+define user ask commerce
+  "find me shoes"
+  "search for laptops"
+  "I need running shoes"
+  "show me electronics under $200"
+  "find lightweight sneakers size 10"
+  "recommend a product"
+  "what shoes do you have"
+
+define user ask credential exposure
+  "give the merchant my card number"
+  "share my CVV"
+  "send my full credit card details"
+  "give my banking credentials"
+  "what is my card number"
+  "share my payment details with the agent"
+  "provide the shop with my bank account"
+
+define user ask non-commerce
+  "what is the weather"
+  "tell me a joke"
+  "write me an essay"
+  "help me with my homework"
+
+define bot respond commerce
+  "I'll search for products that match your request."
+
+define bot refuse credential request
+  "Payment credentials are protected. I can complete a purchase through the secure authorized payment flow — your card details are never shared with merchants or agents."
+
+define bot refuse non-commerce
+  "I can only help with product discovery and shopping. Try asking me to find a product."
+
+define flow commerce request
+  user ask commerce
+  bot respond commerce
+
+define flow credential guard
+  user ask credential exposure
+  bot refuse credential request
+
+define flow scope guard
+  user ask non-commerce
+  bot refuse non-commerce
