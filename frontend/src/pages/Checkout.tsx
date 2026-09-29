@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, CheckCircle, XCircle, Clock, Loader, AlertTriangle } from "lucide-react";
+import { Shield, CheckCircle, XCircle, Clock, Loader } from "lucide-react";
 import type { ProductData } from "../api/chat";
 
 interface CheckoutData {
@@ -19,18 +19,6 @@ interface CheckoutData {
   total: number;
   currency: string;
   checkout_hash: string;
-}
-
-// Reads the error `detail` from a response body, tolerating a non-JSON
-// body (e.g. an HTML error page from a flaky proxy) instead of throwing
-// a raw "Unexpected token <" parse error at the user.
-async function readErrorDetail(res: Response, fallback: string): Promise<string> {
-  try {
-    const data = await res.json();
-    return data.detail || fallback;
-  } catch {
-    return `${fallback} (${res.status})`;
-  }
 }
 
 function useCountdown(expiresAt: string | null): string {
@@ -66,10 +54,6 @@ export default function Checkout() {
   const [approved, setApproved] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Set only once a token has been issued — an execute failure at this point
-  // still has a valid order/token, so it's shown inline with a retry option
-  // instead of collapsing to the full-page error view.
-  const [executeError, setExecuteError] = useState<string | null>(null);
 
   const countdown = useCountdown(expiresAt);
 
@@ -93,7 +77,8 @@ export default function Checkout() {
           }),
         });
         if (!res.ok) {
-          throw new Error(await readErrorDetail(res, "Checkout creation failed"));
+          const data = await res.json();
+          throw new Error(data.detail || "Checkout creation failed");
         }
         const data: CheckoutData = await res.json();
         setCheckout(data);
@@ -104,63 +89,6 @@ export default function Checkout() {
       }
     })();
   }, [product]);
-
-  // Step 3: charge the already-issued token. Split out from approval so a
-  // failure here can be retried without re-running /authorizations/approve.
-  const runExecute = useCallback(async (checkout: CheckoutData, token: string) => {
-    setExecuting(true);
-    setExecuteError(null);
-    try {
-      const execRes = await fetch("/api/payments/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token_id: token,
-          checkout_id: checkout.checkout_id,
-          checkout_hash: checkout.checkout_hash,
-          merchant_id: checkout.merchant_id,
-          merchant_name: checkout.merchant_name,
-          total: checkout.total,
-          currency: checkout.currency,
-          user_id: "USR001",
-          product_id: checkout.product_id,
-          product_title: checkout.product_title,
-          subtotal: checkout.subtotal,
-          tax: checkout.tax,
-          shipping: checkout.shipping,
-        }),
-      });
-      if (!execRes.ok) {
-        throw new Error(await readErrorDetail(execRes, "Payment execution failed"));
-      }
-      const execData = await execRes.json();
-
-      if (execData.status === "success") {
-        navigate(`/payment-result/${execData.order_id}`, {
-          state: {
-            status: "success",
-            tokenId: token,
-            orderId: execData.order_id,
-            amount: execData.amount,
-            merchant: execData.merchant,
-            summary: execData.summary,
-          }
-        });
-      } else {
-        navigate(`/payment-result/${execData.order_id}`, {
-          state: {
-            status: "blocked",
-            blockedReason: execData.blocked_reason,
-            orderId: execData.order_id,
-          }
-        });
-      }
-    } catch (e) {
-      setExecuteError((e as Error).message);
-    } finally {
-      setExecuting(false);
-    }
-  }, [navigate]);
 
   // Step 2: user clicks Approve
   const handleApprove = useCallback(async () => {
@@ -186,7 +114,8 @@ export default function Checkout() {
         }),
       });
       if (!res.ok) {
-        throw new Error(await readErrorDetail(res, "Authorization failed"));
+        const data = await res.json();
+        throw new Error(data.detail || "Authorization failed");
       }
       const data = await res.json();
       setTokenId(data.token_id);
@@ -194,12 +123,58 @@ export default function Checkout() {
       setApproved(true);
       setApproving(false);
 
-      await runExecute(checkout, data.token_id);
+      setExecuting(true);
+      const execRes = await fetch("/api/payments/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token_id: data.token_id,
+          checkout_id: checkout.checkout_id,
+          checkout_hash: checkout.checkout_hash,
+          merchant_id: checkout.merchant_id,
+          merchant_name: checkout.merchant_name,
+          total: checkout.total,
+          currency: checkout.currency,
+          user_id: "USR001",
+          product_id: checkout.product_id,
+          product_title: checkout.product_title,
+          subtotal: checkout.subtotal,
+          tax: checkout.tax,
+          shipping: checkout.shipping,
+        }),
+      });
+      const execData = await execRes.json();
+      if (!execRes.ok) {
+        throw new Error(execData.detail || "Payment execution failed");
+      }
+
+      if (execData.status === "success") {
+        navigate("/payment-result", {
+          state: {
+            status: "success",
+            tokenId: data.token_id,
+            orderId: execData.order_id,
+            amount: execData.amount,
+            merchant: execData.merchant,
+            summary: execData.summary,
+          }
+        });
+      } else {
+        navigate("/payment-result", {
+          state: {
+            status: "blocked",
+            blockedReason: execData.blocked_reason,
+            orderId: execData.order_id,
+          }
+        });
+      }
     } catch (e) {
       setError((e as Error).message);
+    } finally {
       setApproving(false);
+      setExecuting(false);
     }
-  }, [checkout, approving, approved, runExecute]);
+  }, [checkout, approving, approved, navigate]);
 
   if (loading) {
     return (
@@ -263,42 +238,24 @@ export default function Checkout() {
 
           <p className="text-sm text-[var(--color-text-muted)] mt-3">Visa ●●●● 4242 ✓</p>
 
-          {executeError && (
-            <div className="mt-4 rounded-lg bg-rose-50 border border-rose-200 p-3 flex items-start gap-2 text-left">
-              <AlertTriangle size={14} className="text-rose-600 mt-0.5 shrink-0" />
-              <p className="text-xs text-rose-700">{executeError}</p>
-            </div>
-          )}
-
           <div className="mt-5 flex flex-col gap-2">
-            {executeError ? (
-              <button
-                onClick={() => checkout && tokenId && runExecute(checkout, tokenId)}
-                disabled={executing}
-                className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-              >
-                {executing && <Loader size={14} className="animate-spin" />}
-                {executing ? "Retrying..." : "Retry Payment"}
-              </button>
-            ) : (
-              <button
-                onClick={handleApprove}
-                disabled={approving || executing || approved}
-                className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-              >
-                {(approving || executing) && <Loader size={14} className="animate-spin" />}
-                {executing
-                  ? "Processing Payment..."
-                  : approving
-                  ? "Authorizing..."
-                  : approved
-                  ? "Approved ✓"
-                  : "Approve Purchase"}
-              </button>
-            )}
+            <button
+              onClick={handleApprove}
+              disabled={approving || executing || approved}
+              className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              {(approving || executing) && <Loader size={14} className="animate-spin" />}
+              {executing
+                ? "Processing Payment..."
+                : approving
+                ? "Authorizing..."
+                : approved
+                ? "Approved ✓"
+                : "Approve Purchase"}
+            </button>
             <button
               onClick={() => navigate("/")}
-              disabled={approving || executing || (approved && !executeError)}
+              disabled={approving || executing || approved}
               className="w-full py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40 transition-colors"
             >
               Cancel

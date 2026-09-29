@@ -106,15 +106,6 @@ Top matching products found:
 Write a 2–3 sentence recommendation explaining which product best fits their needs and why.
 Be specific about the price and key feature. Do not invent any facts not listed above."""
 
-    try:
-        llm = get_llm(temperature=0.3)
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
-        return response.content.strip()
-    except Exception:
-        # LLM is prose-only here — fall back to a deterministic sentence built
-        # from data already in `products` rather than losing the search results.
-        best = top[0]
-        return (
-            f"Here's what I found: {best['title']} for ${best['price']} "
-            f"at {best['merchant_name']}."
-        )
+    llm = get_llm(temperature=0.3)
+    response = await llm.ainvoke([HumanMessage(content=prompt)])
+    return response.content.strip()
