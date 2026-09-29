@@ -6,7 +6,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db.init_db import init_db, run as seed_db
-from backend.routers import merchants, products, chat, authorizations, payments
+from backend.routers import auth, merchants, products, chat, authorizations, payments
 from backend.config.llm import resolve_llm
 from backend.observability.tracing import init_tracing
 
@@ -39,6 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(merchants.router)
 app.include_router(products.router)
 app.include_router(chat.router)

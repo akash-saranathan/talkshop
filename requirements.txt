@@ -29,6 +29,10 @@ faster-whisper>=1.0.0
 # ── Cryptography (Phase 3+) ───────────────────────────────────────────────────
 cryptography>=42.0.0
 
+# ── Authentication ────────────────────────────────────────────────────────────
+bcrypt>=4.1.0
+pyjwt>=2.9.0
+
 # ── Observability (Phase 4+) ──────────────────────────────────────────────────
 arize-phoenix>=4.0.0
 opentelemetry-sdk>=1.24.0
