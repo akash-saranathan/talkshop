@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Mic, Square, X, Store, LogOut, ShoppingCart } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
-import { getCart } from "../api/cart";
+import { getCart, addToCart } from "../api/cart";
 import ProductCard from "../components/ProductCard";
 import ChatSidebar from "../components/ChatSidebar";
-import OrdersPanel from "../components/OrdersPanel";
+import AgentTrailPanel from "../components/AgentTrailPanel";
+import ThemeToggle from "../components/ThemeToggle";
 import { useAuth } from "../auth/AuthContext";
 
 interface Step {
@@ -71,6 +72,8 @@ export default function Chat() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+  const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
+  const [addingToCheckout, setAddingToCheckout] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftWidth, setLeftWidth] = useState(256);
@@ -447,6 +450,29 @@ export default function Chat() {
     navigate("/login");
   };
 
+  const handleToggleSelect = useCallback((product: ProductData) => {
+    setSelectedProducts((prev) => {
+      const next = new Map(prev);
+      if (next.has(product.product_id)) next.delete(product.product_id);
+      else next.set(product.product_id, product);
+      return next;
+    });
+  }, []);
+
+  const handleBuySelected = useCallback(async () => {
+    if (addingToCheckout || selectedProducts.size === 0) return;
+    setAddingToCheckout(true);
+    try {
+      for (const product of selectedProducts.values()) {
+        await addToCart(product);
+      }
+      setSelectedProducts(new Map());
+      navigate("/cart");
+    } catch {
+      setAddingToCheckout(false);
+    }
+  }, [addingToCheckout, selectedProducts, navigate]);
+
   return (
     <div className="flex h-screen bg-[var(--color-bg)]">
       <ChatSidebar
@@ -476,7 +502,7 @@ export default function Chat() {
             </div>
             <span className="font-semibold text-[var(--color-primary)]">Talkshop</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <a href="/dashboard" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">
               Dashboard ↗
             </a>
@@ -488,7 +514,8 @@ export default function Chat() {
                 </span>
               )}
             </a>
-            <div className="flex items-center gap-2 text-sm border-l border-[var(--color-border)] pl-4">
+            <ThemeToggle />
+            <div className="flex items-center gap-2 text-sm border-l border-[var(--color-border)] pl-3">
               <span className="text-[var(--color-text-muted)]">{user?.name}</span>
               <button
                 onClick={handleLogout}
@@ -588,7 +615,13 @@ export default function Chat() {
                     {turn.products.length > 0 && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {turn.products.map((p, i) => (
-                          <ProductCard key={p.product_id} product={p} index={i} />
+                          <ProductCard
+                            key={p.product_id}
+                            product={p}
+                            index={i}
+                            selected={selectedProducts.has(p.product_id)}
+                            onToggleSelect={handleToggleSelect}
+                          />
                         ))}
                       </div>
                     )}
@@ -626,6 +659,41 @@ export default function Chat() {
             </div>
           )}
         </div>
+
+        {/* Floating multi-select checkout bar */}
+        {selectedProducts.size > 0 && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            className="mx-6 mb-2 rounded-xl bg-[var(--color-primary)] text-white px-4 py-3 flex items-center justify-between shadow-lg"
+          >
+            <div className="flex items-center gap-3">
+              <ShoppingCart size={16} />
+              <span className="text-sm font-medium">
+                {selectedProducts.size} item{selectedProducts.size > 1 ? "s" : ""} selected
+              </span>
+              <span className="text-sm text-white/70">
+                · ${Array.from(selectedProducts.values()).reduce((s, p) => s + p.price, 0).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedProducts(new Map())}
+                className="text-xs text-white/70 hover:text-white transition-colors"
+              >
+                Clear
+              </button>
+              <button
+                onClick={handleBuySelected}
+                disabled={addingToCheckout}
+                className="text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors disabled:opacity-60"
+              >
+                {addingToCheckout ? "Adding..." : "Buy Selected"}
+              </button>
+            </div>
+          </motion.div>
+        )}
 
         {/* Input bar */}
         <div className="px-6 py-4 border-t border-[var(--color-border)] shrink-0">
@@ -736,10 +804,12 @@ export default function Chat() {
           className="w-1 shrink-0 cursor-col-resize hover:bg-[var(--color-primary)] transition-colors"
         />
       )}
-      <OrdersPanel
+      <AgentTrailPanel
         collapsed={rightCollapsed}
         onToggleCollapse={() => setRightCollapsed((c) => !c)}
         width={rightWidth}
+        activeTurnSteps={turns.find((t) => t.id === activeTurnId.current)?.steps ?? []}
+        activeLoading={loading}
       />
     </div>
   );

@@ -1,6 +1,17 @@
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognitionResult {
+  isFinal: boolean;
+  length: number;
+  [index: number]: SpeechRecognitionAlternative;
+}
+
 interface SpeechRecognitionResultEvent extends Event {
   resultIndex: number;
-  results: { [index: number]: { [index: number]: { transcript: string } }; length: number };
+  results: { [index: number]: SpeechRecognitionResult; length: number };
 }
 
 interface SpeechRecognitionErrorEvent extends Event {

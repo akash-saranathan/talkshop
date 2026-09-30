@@ -13,6 +13,7 @@ from backend.models.checkout import CheckoutObject
 from backend.merchants import local as local_adapter
 from backend.merchants import shopify as shopify_adapter
 from backend.merchants import bestbuy as bestbuy_adapter
+from backend.merchants import dummyjson as dummyjson_adapter
 
 mcp = FastMCP("commerce-server")
 
@@ -42,13 +43,16 @@ async def search_products(
     bestbuy_task = bestbuy_adapter.search_products(
         category=category, brand=brand, max_price=max_price, query=query
     )
+    dummyjson_task = dummyjson_adapter.search_products(
+        category=category, brand=brand, max_price=max_price, query=query
+    )
 
-    local_results, shopify_results, bestbuy_results = await asyncio.gather(
-        local_task, shopify_task, bestbuy_task, return_exceptions=True
+    local_results, shopify_results, bestbuy_results, dummyjson_results = await asyncio.gather(
+        local_task, shopify_task, bestbuy_task, dummyjson_task, return_exceptions=True
     )
 
     combined: list[NormalizedProduct] = []
-    for batch in (local_results, shopify_results, bestbuy_results):
+    for batch in (local_results, shopify_results, bestbuy_results, dummyjson_results):
         if isinstance(batch, list):
             combined.extend(batch)
 

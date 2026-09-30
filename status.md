@@ -689,15 +689,17 @@ task is independently committable. See `plan.md` for the full task tracker.
 | 7 — Seed data expansion | `data/products.json` expanded from 80 → 137 products across 11 categories (running_shoes, sneakers, boots, clothing, laptops, phones, watches, bags, sunglasses, electronics, accessories); real brand names, Pexels images, colors, delivery days 1–7 | `data/products.json` |
 | 9 — Color + delivery filters | `filter_products()` enforces color (substring match) and delivery_days constraints; `rank_products()` adds +12 pts for color match | `backend/agents/sneakpeek.py` |
 
-### Remaining tasks (from plan.md)
+### Completed (Batch 3 — UI polish + agent trail + dark mode)
 
-| # | Task | Status |
-|---|------|--------|
-| 5 | Multi-select products → floating checkout bar | ⏳ Pending |
-| 8 | DummyJSON free product API adapter | ⏳ Pending |
-| 10 | Agent trail right panel (live agent activity per query) | ⏳ Pending |
-| 11 | Card selection on checkout (multi-card wallet) | ⏳ Pending |
-| 12 | Dashboard rebuild — table + inline audit trail expand | ⏳ Pending |
-| 13 | Ranked recommendation cards with score explanation | ⏳ Pending |
-| 14 | Dark / light mode toggle | ⏳ Pending |
-| 15 | Logo left-aligned, header polish | ⏳ Pending |
+| Task | What changed | File(s) |
+|------|-------------|---------|
+| 14 — Dark/light mode | CSS dark-mode tokens; `ThemeToggle` component; `index.html` init script prevents FOUC | `index.css`, `ThemeToggle.tsx`, `index.html` |
+| 15 — Header polish | ThemeToggle added to Chat header; compact right-side controls | `Chat.tsx` |
+| 13 — Ranked cards | #1/#2/#3 gold/silver/bronze badges on ProductCard; score tag (e.g. "42pts") | `ProductCard.tsx` |
+| 10 — Agent trail panel | `AgentTrailPanel` replaces OrdersPanel: 6 agents with live status dots (idle/running/done), step timeline, recent orders widget | `AgentTrailPanel.tsx`, `Chat.tsx` |
+| 11 — Card selection | 3 mock saved cards (Visa ●●●● 4242, MC ●●●● 8317, Amex ●●●● 5591) with radio selection on Checkout | `Checkout.tsx` |
+| 12 — Dashboard audit | Per-order "Audit ▼" expand button fetches `/api/audit/{id}` and shows event timeline inline | `Dashboard.tsx` |
+| 5 — Multi-select bar | Checkbox on each ProductCard; floating "Buy Selected" bar (count + total + Clear) navigates to cart for checkout | `ProductCard.tsx`, `Chat.tsx` |
+| 8 — DummyJSON adapter | `backend/merchants/dummyjson.py`: free public API, no key, 20 results/call, wired into MCP fan-out as 4th source | `dummyjson.py`, `mcp/server.py` |
+
+### All 15 tasks — COMPLETE ✅

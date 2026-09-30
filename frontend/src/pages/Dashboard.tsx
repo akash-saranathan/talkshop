@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Loader, Wallet as WalletIcon, Package, Truck, PackageCheck, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Download, Loader, Wallet as WalletIcon, Package, Truck, PackageCheck, ChevronDown, ChevronUp, type LucideIcon } from "lucide-react";
 import { authFetch } from "../api/client";
 import { getProductVisual } from "../utils/productVisual";
 
@@ -26,6 +26,13 @@ interface WalletBalance {
   currency: string;
 }
 
+interface AuditEvent {
+  event_id: string;
+  event_type: string;
+  agent_id: string | null;
+  timestamp: string | null;
+}
+
 const DELIVERY_BADGE: Record<DeliveryStatus, { label: string; icon: LucideIcon; className: string }> = {
   processing: { label: "Processing", icon: Package, className: "bg-slate-100 text-slate-600" },
   shipped: { label: "Shipped", icon: Truck, className: "bg-blue-100 text-blue-700" },
@@ -46,6 +53,25 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+  const [expandedAudit, setExpandedAudit] = useState<string | null>(null);
+  const [auditData, setAuditData] = useState<Record<string, AuditEvent[]>>({});
+  const [auditLoading, setAuditLoading] = useState<Set<string>>(new Set());
+
+  const toggleAudit = async (orderId: string) => {
+    if (expandedAudit === orderId) { setExpandedAudit(null); return; }
+    setExpandedAudit(orderId);
+    if (auditData[orderId]) return;
+    setAuditLoading((prev) => new Set(prev).add(orderId));
+    try {
+      const res = await authFetch(`/api/audit/${orderId}`);
+      const events: AuditEvent[] = res.ok ? await res.json() : [];
+      setAuditData((prev) => ({ ...prev, [orderId]: events }));
+    } catch {
+      setAuditData((prev) => ({ ...prev, [orderId]: [] }));
+    } finally {
+      setAuditLoading((prev) => { const s = new Set(prev); s.delete(orderId); return s; });
+    }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -146,8 +172,9 @@ export default function Dashboard() {
             return (
               <div
                 key={order.order_id}
-                className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex items-center gap-4"
+                className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex flex-col gap-0"
               >
+              <div className="flex items-center gap-4">
                 {/* Product visual — real photo when available, icon tile otherwise */}
                 {order.product_image_url && !imageErrors.has(order.order_id) ? (
                   <img
@@ -203,16 +230,56 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Amount + trail link */}
+                {/* Amount + trail toggle */}
                 <div className="text-right shrink-0">
                   <p className="font-semibold text-[var(--color-text)]">${order.amount.toFixed(2)}</p>
                   <button
-                    onClick={() => navigate(`/payment-result/${order.order_id}`)}
-                    className="text-xs text-[var(--color-primary)] hover:underline mt-1"
+                    onClick={() => toggleAudit(order.order_id)}
+                    className="text-xs text-[var(--color-primary)] hover:underline mt-1 flex items-center gap-0.5 ml-auto"
                   >
-                    View Trail →
+                    Audit {expandedAudit === order.order_id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                   </button>
                 </div>
+              </div> {/* end inner flex row */}
+
+              {/* Inline audit trail */}
+              {expandedAudit === order.order_id && (
+                <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                  {auditLoading.has(order.order_id) ? (
+                    <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                      <Loader size={12} className="animate-spin" /> Loading audit trail...
+                    </div>
+                  ) : (auditData[order.order_id] ?? []).length === 0 ? (
+                    <p className="text-xs text-[var(--color-text-muted)]">No audit events found.</p>
+                  ) : (
+                    <div className="flex flex-col gap-2 relative">
+                      <div className="absolute left-[5px] top-1 bottom-1 w-px bg-[var(--color-border)]" />
+                      {(auditData[order.order_id] ?? []).map((ev) => (
+                        <div key={ev.event_id} className="flex items-start gap-3 pl-4 relative">
+                          <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/40 shrink-0" />
+                          <div className="min-w-0">
+                            <span className="text-xs font-mono text-[var(--color-text)]">{ev.event_type}</span>
+                            {ev.agent_id && (
+                              <span className="text-[10px] text-[var(--color-text-muted)] ml-2">via {ev.agent_id}</span>
+                            )}
+                            {ev.timestamp && (
+                              <span className="text-[10px] text-[var(--color-text-muted)] ml-2">
+                                {new Date(ev.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => navigate(`/payment-result/${order.order_id}`)}
+                    className="text-xs text-[var(--color-primary)] hover:underline mt-3 block"
+                  >
+                    Full payment result →
+                  </button>
+                </div>
+              )}
               </div>
             );
           })}

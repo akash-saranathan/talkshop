@@ -10,6 +10,8 @@ import ProductDetailModal from "./ProductDetailModal";
 interface Props {
   product: ProductData;
   index: number;
+  selected?: boolean;
+  onToggleSelect?: (product: ProductData) => void;
 }
 
 const MERCHANT_COLORS: Record<string, string> = {
@@ -18,7 +20,7 @@ const MERCHANT_COLORS: Record<string, string> = {
   MERCHANT_C: "bg-emerald-100 text-emerald-700",
 };
 
-export default function ProductCard({ product, index }: Props) {
+export default function ProductCard({ product, index, selected = false, onToggleSelect }: Props) {
   const navigate = useNavigate();
   const [imageFailed, setImageFailed] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -39,30 +41,62 @@ export default function ProductCard({ product, index }: Props) {
     }
   };
 
+  const RANK_BADGE: Record<number, { label: string; className: string }> = {
+    0: { label: "#1", className: "bg-amber-400 text-white" },
+    1: { label: "#2", className: "bg-slate-400 text-white" },
+    2: { label: "#3", className: "bg-amber-700 text-white" },
+  };
+  const rankBadge = index < 3 ? RANK_BADGE[index] : null;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.08 }}
-      className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 flex flex-col gap-3 hover:shadow-md transition-shadow"
+      className={`bg-[var(--color-surface)] rounded-xl p-4 flex flex-col gap-3 hover:shadow-md transition-all ${
+        selected
+          ? "border-2 border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/20"
+          : "border border-[var(--color-border)]"
+      }`}
     >
       {/* Product visual — real photo when available, icon tile otherwise */}
-      {showImage ? (
-        <img
-          src={product.image_url!}
-          alt={product.title}
-          onError={() => setImageFailed(true)}
-          onClick={() => setShowDetail(true)}
-          className="h-28 w-full rounded-lg object-cover cursor-pointer"
-        />
-      ) : (
-        <div
-          onClick={() => setShowDetail(true)}
-          className={`h-28 rounded-lg grid place-items-center cursor-pointer ${visual.bg}`}
-        >
-          <VisualIcon size={40} className={visual.fg} strokeWidth={1.5} />
-        </div>
-      )}
+      <div className="relative">
+        {rankBadge && (
+          <span className={`absolute top-1.5 left-1.5 z-10 w-7 h-7 rounded-full text-[11px] font-bold grid place-items-center shadow-sm ${rankBadge.className}`}>
+            {rankBadge.label}
+          </span>
+        )}
+        {onToggleSelect && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(product); }}
+            className={`absolute top-1.5 right-1.5 z-10 w-5 h-5 rounded border-2 grid place-items-center transition-colors ${
+              selected
+                ? "border-[var(--color-primary)] bg-[var(--color-primary)]"
+                : "border-white bg-white/80"
+            }`}
+            title={selected ? "Deselect" : "Select"}
+          >
+            {selected && <span className="text-white text-[10px] font-bold leading-none">✓</span>}
+          </button>
+        )}
+        {showImage ? (
+          <img
+            src={product.image_url!}
+            alt={product.title}
+            onError={() => setImageFailed(true)}
+            onClick={() => setShowDetail(true)}
+            className="h-28 w-full rounded-lg object-cover cursor-pointer"
+          />
+        ) : (
+          <div
+            onClick={() => setShowDetail(true)}
+            className={`h-28 rounded-lg grid place-items-center cursor-pointer ${visual.bg}`}
+          >
+            <VisualIcon size={40} className={visual.fg} strokeWidth={1.5} />
+          </div>
+        )}
+      </div>
 
       {/* Merchant badge */}
       <div className="flex items-center justify-between">
@@ -80,7 +114,7 @@ export default function ProductCard({ product, index }: Props) {
       </p>
 
       {/* Details row */}
-      <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
+      <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--color-text-muted)]">
         {product.rating > 0 && (
           <span>★ {product.rating.toFixed(1)}</span>
         )}
@@ -88,6 +122,11 @@ export default function ProductCard({ product, index }: Props) {
           <span>Ships {product.delivery_days}d</span>
         )}
         {product.size && <span>Size {product.size}</span>}
+        {product.rank_score > 0 && (
+          <span className="ml-auto text-[10px] bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text-muted)] px-1.5 py-0.5 rounded font-mono">
+            {product.rank_score.toFixed(0)}pts
+          </span>
+        )}
       </div>
 
       {/* Price + CTA */}

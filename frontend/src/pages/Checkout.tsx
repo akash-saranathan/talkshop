@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, CheckCircle, XCircle, Clock, Loader, AlertTriangle, RotateCcw } from "lucide-react";
+import { Shield, CheckCircle, XCircle, Clock, Loader, AlertTriangle, RotateCcw, CreditCard } from "lucide-react";
 import type { CartItemData } from "../api/cart";
 import { removeFromCart } from "../api/cart";
 import { authFetch } from "../api/client";
@@ -89,6 +89,12 @@ const STATUS_CLASS: Record<ItemStatus, string> = {
   error: "bg-rose-100 text-rose-700",
 };
 
+const MOCK_CARDS = [
+  { id: "card_visa_4242",  network: "Visa",       last4: "4242", expiry: "09/27", isDefault: true },
+  { id: "card_mc_8317",   network: "Mastercard", last4: "8317", expiry: "03/26", isDefault: false },
+  { id: "card_amex_5591", network: "Amex",       last4: "5591", expiry: "11/28", isDefault: false },
+];
+
 export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -100,6 +106,7 @@ export default function Checkout() {
   const [started, setStarted] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [selectedCard, setSelectedCard] = useState(MOCK_CARDS[0].id);
 
   const active = activeIndex !== null ? queue[activeIndex] : null;
   const countdown = useCountdown(active?.expiresAt);
@@ -264,9 +271,41 @@ export default function Checkout() {
             </div>
           )}
 
-          <p className="text-sm text-[var(--color-text-muted)] mt-4">Visa ●●●● 4242 ✓</p>
+          {/* Card selector */}
+          <div className="mt-4">
+            <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <CreditCard size={12} /> Payment Method
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {MOCK_CARDS.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  disabled={started}
+                  onClick={() => setSelectedCard(card.id)}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm text-left transition-colors disabled:cursor-default ${
+                    selectedCard === card.id
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-text)]"
+                      : "border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/40"
+                  }`}
+                >
+                  <span className={`w-3 h-3 rounded-full border-2 shrink-0 ${
+                    selectedCard === card.id
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary)]"
+                      : "border-[var(--color-border)]"
+                  }`} />
+                  <span className="font-medium text-xs">{card.network}</span>
+                  <span className="text-xs">●●●● {card.last4}</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] ml-auto">{card.expiry}</span>
+                  {card.isDefault && (
+                    <span className="text-[10px] text-[var(--color-success)] font-semibold">Default</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          <div className="mt-5 flex flex-col gap-2">
+          <div className="mt-4 flex flex-col gap-2">
             {!started ? (
               <button
                 onClick={handleApproveAll}
