@@ -126,11 +126,6 @@ export default function Login() {
           </button>
         </form>
 
-        {mode === "login" && (
-          <p className="text-xs text-[var(--color-text-muted)] text-center mt-5">
-            Demo account: demo@agentcommerce.local / demo1234
-          </p>
-        )}
       </motion.div>
     </div>
   );
