@@ -181,9 +181,22 @@ async def search_and_rank(
     """
     from backend.mcp.server import search_products as mcp_search
 
+    # If the intent category is a composite alias (e.g. "shoes" maps to
+    # running_shoes + sneakers + boots), passing it directly to the DB would
+    # return nothing because no row has category="shoes". Fetch broadly with
+    # category=None so SQLite returns all products, then let filter_products
+    # handle narrowing via CATEGORY_ALIASES.
+    resolved_cats = _resolve_categories(intent.category) if intent.category else None
+    intent_cat_key = intent.category.lower().replace(" ", "_").replace("-", "_") if intent.category else None
+    mcp_category = (
+        None
+        if (resolved_cats and intent_cat_key not in resolved_cats)
+        else intent.category
+    )
+
     raw = await mcp_search(
         query=intent.raw_query or intent.category,
-        category=intent.category,
+        category=mcp_category,
         brand=intent.brand,
         max_price=None,  # Pre-filter by price AFTER normalization; let MCP fetch broadly
         size=intent.size,
