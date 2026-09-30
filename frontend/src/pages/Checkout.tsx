@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, CheckCircle, XCircle, Clock, Loader, AlertTriangle, RotateCcw, CreditCard } from "lucide-react";
+import { Shield, CheckCircle, Loader, AlertTriangle, RotateCcw, CreditCard, Lock, Sparkles } from "lucide-react";
 import type { CartItemData } from "../api/cart";
 import { removeFromCart } from "../api/cart";
 import { authFetch } from "../api/client";
@@ -99,15 +99,30 @@ const MOCK_CARDS = [
 export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const initialItems = (location.state?.items as CartItemData[] | undefined) ?? [];
+  const locationItems = (location.state?.items as CartItemData[] | undefined) ?? null;
 
+  const [initialItems, setInitialItems] = useState<CartItemData[]>(locationItems ?? []);
+  const [cartLoading, setCartLoading] = useState(!locationItems);
   const [queue, setQueue] = useState<QueueEntry[]>(
-    initialItems.map((item) => ({ item, status: "queued" as ItemStatus }))
+    (locationItems ?? []).map((item) => ({ item, status: "queued" as ItemStatus }))
   );
   const [started, setStarted] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [selectedCard, setSelectedCard] = useState(MOCK_CARDS[0].id);
+
+  // Fall back to loading cart from API when no items passed via navigate state
+  // (e.g. when auto-checkout countdown fires directly to /checkout).
+  useEffect(() => {
+    if (locationItems) return;
+    import("../api/cart").then(({ getCart }) =>
+      getCart().then((items) => {
+        setInitialItems(items);
+        setQueue(items.map((item) => ({ item, status: "queued" as ItemStatus })));
+      }).catch(() => {}).finally(() => setCartLoading(false))
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const active = activeIndex !== null ? queue[activeIndex] : null;
   const countdown = useCountdown(active?.expiresAt);
@@ -196,14 +211,25 @@ export default function Checkout() {
     await processItem(index, initialItems[index]);
   };
 
+  if (cartLoading) {
+    return (
+      <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
+        <AppHeader title="Checkout" backHref="/cart" backLabel="Cart" />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader size={24} className="animate-spin text-[var(--color-primary)]" />
+        </div>
+      </div>
+    );
+  }
+
   if (initialItems.length === 0) {
     return (
       <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
         <AppHeader title="Checkout" backHref="/cart" backLabel="Cart" />
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
-          <p className="text-rose-500 text-sm">No items selected. Go back to your cart and pick something to buy.</p>
-          <button onClick={() => navigate("/cart")} className="text-sm text-[var(--color-primary)] underline">
-            Back to cart
+          <p className="text-rose-500 text-sm">Your cart is empty. Add items from the chat first.</p>
+          <button onClick={() => navigate("/")} className="text-sm text-[var(--color-primary)] underline">
+            Back to shopping
           </button>
         </div>
       </div>
@@ -345,86 +371,80 @@ export default function Checkout() {
                 </p>
                 {redirectIn !== null && (
                   <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                    Returning to chat in {redirectIn}s...
+                    Opening your order tracker in {redirectIn}s...
                   </p>
                 )}
               </div>
             )}
             <button
-              onClick={() => navigate(finished ? "/" : "/cart")}
+              onClick={() => navigate(finished ? "/dashboard" : "/cart")}
               disabled={processing}
               className="w-full py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40 transition-colors"
             >
-              {finished ? "Back to Chat" : "Cancel"}
+              {finished ? "View Order Tracker" : "Cancel"}
             </button>
-            {finished && (
-              <button
-                onClick={() => navigate("/dashboard")}
-                className="w-full py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
-              >
-                View in Dashboard
-              </button>
-            )}
+            <button
+              onClick={() => navigate("/")}
+              disabled={processing}
+              className="w-full py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40 transition-colors"
+            >
+              Back to Chat
+            </button>
           </div>
         </motion.div>
 
-        {/* Authorization Panel */}
+        {/* AI Security Panel */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="rounded-2xl border border-[var(--color-border)] p-5 bg-[var(--color-surface)]"
+          className="rounded-2xl border border-[var(--color-border)] p-5 bg-[var(--color-surface)] flex flex-col gap-5"
         >
-          <div className="flex items-center gap-2 mb-4">
-            <Shield size={18} className="text-[var(--color-primary)]" />
-            <h2 className="font-semibold text-[var(--color-text)]">Payment Authorization</h2>
-          </div>
-
-          <div className="space-y-1.5 mb-5">
-            <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
-              Agent Access
-            </p>
-            <div className="flex items-center gap-2 text-sm text-rose-500">
-              <XCircle size={14} /> Card number (never exposed)
+          {/* Hero */}
+          <div className="flex flex-col items-center text-center py-4 gap-3">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[var(--color-primary)] to-violet-600 grid place-items-center shadow-lg">
+                <Shield size={28} className="text-white" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[var(--color-success)] grid place-items-center border-2 border-[var(--color-surface)]">
+                <Sparkles size={12} className="text-white" />
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-sm text-rose-500">
-              <XCircle size={14} /> CVV (never exposed)
-            </div>
-            <div className="flex items-center gap-2 text-sm text-rose-500">
-              <XCircle size={14} /> Banking credentials
+            <div>
+              <p className="font-semibold text-[var(--color-text)]">AI-Powered Secure Checkout</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                Your payment is processed by our agentic pipeline with multi-layer security
+              </p>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
-              Scoped Authorization {queue.length > 1 && "(current item)"}
-            </p>
-            <div className="flex items-center gap-2 text-sm text-[var(--color-success)]">
-              <CheckCircle size={14} /> Merchant: {active?.checkoutData?.merchant_name ?? "—"}
-            </div>
-            <div className="flex items-center gap-2 text-sm text-[var(--color-success)]">
-              <CheckCircle size={14} /> Max Amount: {active?.checkoutData ? `$${active.checkoutData.total.toFixed(2)}` : "—"}
-            </div>
-            <div className={`flex items-center gap-2 text-sm ${active?.tokenId ? "text-[var(--color-success)]" : "text-[var(--color-text-muted)]"}`}>
-              <Clock size={14} />
-              {active?.tokenId ? `Expires in: ${countdown}` : "Expires in: 15:00 (after approval)"}
-            </div>
-            <div className="flex items-center gap-2 text-sm text-[var(--color-success)]">
-              <CheckCircle size={14} /> Single use only
-            </div>
-            <div className="flex items-center gap-2 text-sm text-[var(--color-success)]">
-              <CheckCircle size={14} /> Checkout hash bound
-            </div>
+          {/* Trust badges */}
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { icon: Lock,      label: "Card details never exposed to AI" },
+              { icon: Shield,    label: "12-layer guardrail checks" },
+              { icon: CheckCircle, label: "One-time scoped authorization" },
+              { icon: Sparkles,  label: "Real-time fraud detection" },
+            ].map(({ icon: Icon, label }) => (
+              <div key={label} className="flex items-start gap-2 p-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)]">
+                <Icon size={14} className="text-[var(--color-success)] shrink-0 mt-0.5" />
+                <p className="text-[11px] text-[var(--color-text-muted)] leading-tight">{label}</p>
+              </div>
+            ))}
           </div>
 
-          {active?.tokenId && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-4 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 font-mono break-all"
-            >
-              Token: {active.tokenId}
-            </motion.div>
+          {/* Active order details when processing */}
+          {active?.checkoutData && (
+            <div className="rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] p-3 text-sm flex flex-col gap-1.5">
+              <div className="flex justify-between">
+                <span className="text-[var(--color-text-muted)]">Merchant</span>
+                <span className="font-medium text-[var(--color-text)]">{active.checkoutData.merchant_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--color-text-muted)]">Authorized Amount</span>
+                <span className="font-semibold text-[var(--color-primary)]">${active.checkoutData.total.toFixed(2)}</span>
+              </div>
+            </div>
           )}
         </motion.div>
       </div>

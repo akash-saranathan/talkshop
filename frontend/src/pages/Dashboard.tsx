@@ -174,9 +174,9 @@ export default function Dashboard() {
             <p className="text-2xl font-bold">{loading ? "—" : wallet ? `$${wallet.balance.toFixed(2)}` : "$0.00"}</p>
           </div>
           {[
-            { label: "Authorized", value: paid.length,            cls: "text-[var(--color-success)]" },
-            { label: "Blocked",    value: blocked.length,          cls: "text-[var(--color-blocked)]" },
-            { label: "Total Spent", value: `$${spend.toFixed(2)}`, cls: "text-[var(--color-text)]" },
+            { label: "Items Purchased", value: paid.length,            cls: "text-[var(--color-success)]" },
+            { label: "Blocked",         value: blocked.length,          cls: "text-[var(--color-blocked)]" },
+            { label: "Total Spent",     value: `$${spend.toFixed(2)}`, cls: "text-[var(--color-text)]" },
           ].map((k) => (
             <div key={k.label} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
               <p className="text-xs text-[var(--color-text-muted)] mb-1">{k.label}</p>

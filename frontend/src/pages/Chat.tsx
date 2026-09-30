@@ -125,6 +125,7 @@ export default function Chat() {
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [autoCheckoutIn, setAutoCheckoutIn] = useState<number | null>(null);
   const autoCheckoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastAddedItemRef = useRef<import("../api/cart").CartItemData | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -222,6 +223,9 @@ export default function Chat() {
   const switchToSession = useCallback((id: string) => {
     sessionIdRef.current = id;
     setCurrentSessionId(id);
+    // sessionStorage (not localStorage) so it persists within this tab
+    // (cart → back → chat restores session) but clears on fresh tab open.
+    try { sessionStorage.setItem("talkshop_session", id); } catch { /* noop */ }
   }, []);
 
   const handleNewChat = useCallback(() => {
@@ -254,7 +258,19 @@ export default function Chat() {
     await loadSession(clickedId);
   }, [loadSession]);
 
-  const triggerCheckoutCountdown = useCallback(() => {
+  // Restore session within the same browser tab (e.g. returning from /cart).
+  // sessionStorage clears on new-tab / browser-restart so the app starts fresh there.
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem("talkshop_session");
+      if (saved) loadSession(saved);
+    } catch { /* noop */ }
+    // Mount-only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const triggerCheckoutCountdown = useCallback((item?: import("../api/cart").CartItemData) => {
+    if (item) lastAddedItemRef.current = item;
     if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
     setAutoCheckoutIn(10);
     let remaining = 10;
@@ -265,7 +281,10 @@ export default function Chat() {
         clearInterval(autoCheckoutTimerRef.current!);
         autoCheckoutTimerRef.current = null;
         setAutoCheckoutIn(null);
-        navigate("/checkout");
+        // Navigate with just the added item as state so Checkout doesn't need
+        // to load the whole cart — feels instant and avoids showing stale items.
+        const checkoutItems = lastAddedItemRef.current ? [lastAddedItemRef.current] : [];
+        navigate("/checkout", { state: { items: checkoutItems } });
       }
     }, 1000);
   }, [navigate]);
@@ -678,9 +697,9 @@ export default function Chat() {
                             index={i}
                             selected={selectedProducts.has(p.product_id)}
                             onToggleSelect={handleToggleSelect}
-                            onAdded={() => {
+                            onAdded={(cartItem) => {
                               getCart().then((items) => setCartCount(items.length)).catch(() => {});
-                              triggerCheckoutCountdown();
+                              triggerCheckoutCountdown(cartItem);
                             }}
                           />
                         ))}
@@ -747,7 +766,11 @@ export default function Chat() {
                   Stay here
                 </button>
                 <button
-                  onClick={() => { cancelCheckoutCountdown(); navigate("/checkout"); }}
+                  onClick={() => {
+                    cancelCheckoutCountdown();
+                    const checkoutItems = lastAddedItemRef.current ? [lastAddedItemRef.current] : [];
+                    navigate("/checkout", { state: { items: checkoutItems } });
+                  }}
                   className="flex items-center gap-1.5 text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors"
                 >
                   Go now <ArrowRight size={14} />

@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Loader, Eye, Plus, Minus } from "lucide-react";
 import type { ProductData } from "../api/chat";
 import { getProductVisual } from "../utils/productVisual";
-import { addToCart, updateCartItemQuantity, removeFromCart } from "../api/cart";
+import { addToCart, updateCartItemQuantity, removeFromCart, type CartItemData } from "../api/cart";
 import ProductDetailModal from "./ProductDetailModal";
 
 interface Props {
@@ -11,7 +11,7 @@ interface Props {
   index: number;
   selected?: boolean;
   onToggleSelect?: (product: ProductData) => void;
-  onAdded?: () => void;
+  onAdded?: (item?: CartItemData) => void;
 }
 
 const MERCHANT_COLORS: Record<string, string> = {
@@ -47,7 +47,7 @@ export default function ProductCard({ product, index, selected = false, onToggle
       const item = await addToCart(product);
       setCartItemId(item.cart_item_id);
       setQty(1);
-      onAdded?.();
+      onAdded?.(item);
     } catch {
       // silent — don't crash the card
     } finally {
