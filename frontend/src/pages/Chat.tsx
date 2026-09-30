@@ -303,6 +303,7 @@ export default function Chat() {
     switchToSession(crypto.randomUUID());
     setTurns([]);
     setSessionCartCount(0);
+    try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
   }, [switchToSession]);
 
   // Shared by "click a session in the sidebar" and "restore on page load" —
@@ -325,6 +326,7 @@ export default function Chat() {
     setLoading(false);
     activeTurnId.current = null;
     setSessionCartCount(0);
+    try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
     await loadSession(clickedId);
   }, [loadSession]);
 
@@ -451,8 +453,11 @@ export default function Chat() {
       },
       onDone: () => {
         setLoading(false);
-        // The backend just persisted this turn (and maybe created a new
-        // session) — refresh the sidebar so it shows up without a manual reload.
+        // Mark any still-running steps done so their spinners clear.
+        updateActiveTurn((turn) => ({
+          ...turn,
+          steps: turn.steps.map((s) => s.status === "running" ? { ...s, status: "done" } : s),
+        }));
         setSidebarRefreshKey((k) => k + 1);
       },
     });
@@ -761,8 +766,10 @@ export default function Chat() {
 
                     {/* Skeleton cards — shown while the active turn is loading */}
                     {isActiveTurn && turn.products.length === 0 && turn.steps.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {[0, 1, 2].map((i) => <SkeletonProductCard key={i} />)}
+                      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+                        {[0, 1, 2].map((i) => (
+                          <div key={i} className="w-64 shrink-0"><SkeletonProductCard /></div>
+                        ))}
                       </div>
                     )}
 
@@ -806,22 +813,30 @@ export default function Chat() {
                               </button>
                             ))}
                           </div>
-                          {/* Cards */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {/* Cards — horizontal scroll row */}
+                          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
                             {sorted.map((p, i) => (
-                              <ProductCard
-                                key={p.product_id}
-                                product={p}
-                                index={i}
-                                selected={selectedProducts.has(p.product_id)}
-                                onToggleSelect={handleToggleSelect}
-                                matchTags={computeMatchTags(turn.intent, p)}
-                                onAdded={(cartItem) => {
-                                  getCart().then((items) => setCartCount(items.length)).catch(() => {});
-                                  if (cartItem) setSessionCartCount((n) => n + 1);
-                                  triggerCheckoutCountdown(cartItem);
-                                }}
-                              />
+                              <div key={p.product_id} className="w-64 shrink-0">
+                                <ProductCard
+                                  product={p}
+                                  index={i}
+                                  selected={selectedProducts.has(p.product_id)}
+                                  onToggleSelect={handleToggleSelect}
+                                  matchTags={computeMatchTags(turn.intent, p)}
+                                  onAdded={(cartItem) => {
+                                    getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                                    if (cartItem) {
+                                      setSessionCartCount((n) => n + 1);
+                                      try {
+                                        const ids: string[] = JSON.parse(sessionStorage.getItem("talkshop_session_cart_ids") || "[]");
+                                        ids.push(cartItem.cart_item_id);
+                                        sessionStorage.setItem("talkshop_session_cart_ids", JSON.stringify(ids));
+                                      } catch { /* noop */ }
+                                    }
+                                    triggerCheckoutCountdown(cartItem);
+                                  }}
+                                />
+                              </div>
                             ))}
                           </div>
                         </div>

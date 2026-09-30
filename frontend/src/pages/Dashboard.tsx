@@ -9,7 +9,9 @@ import { getProductVisual } from "../utils/productVisual";
 import AppHeader from "../components/AppHeader";
 
 type DeliveryStatus = "processing" | "shipped" | "delivered";
-type FilterKey = "all" | "arrived" | "arriving3" | "arriving5";
+type FilterKey = "all" | "arrived";
+type SortCol = "purchase_date" | "arrival_date";
+type SortDir = "asc" | "desc";
 
 interface Order {
   order_id: string;
@@ -42,10 +44,8 @@ const DELIVERY_META: Record<DeliveryStatus, { label: string; icon: LucideIcon; c
 };
 
 const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "all",       label: "All Orders" },
-  { key: "arrived",   label: "Arrived" },
-  { key: "arriving3", label: "Arriving in 3 Days" },
-  { key: "arriving5", label: "In Transit (5 Days)" },
+  { key: "all",     label: "All Orders" },
+  { key: "arrived", label: "Arrived" },
 ];
 
 function daysFromNow(isoDate: string | null): number | null {
@@ -57,20 +57,6 @@ function daysFromNow(isoDate: string | null): number | null {
 function applyFilter(orders: Order[], filter: FilterKey): Order[] {
   if (filter === "all") return orders;
   if (filter === "arrived") return orders.filter((o) => o.delivery_status === "delivered");
-  if (filter === "arriving3") {
-    return orders.filter((o) => {
-      if (o.delivery_status === "delivered") return false;
-      const d = daysFromNow(o.estimated_delivery);
-      return d !== null && d >= 0 && d <= 3;
-    });
-  }
-  if (filter === "arriving5") {
-    return orders.filter((o) => {
-      if (o.delivery_status === "delivered") return false;
-      const d = daysFromNow(o.estimated_delivery);
-      return d !== null && d >= 0 && d <= 5;
-    });
-  }
   return orders;
 }
 
@@ -88,7 +74,7 @@ function formatExpected(iso: string | null): string {
   if (days < 0) return "Delivered";
   if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
-  return `In ${days} days`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function AISummary({ orders, wallet }: { orders: Order[]; wallet: WalletBalance | null }) {
@@ -130,6 +116,10 @@ export default function Dashboard() {
   const [auditData, setAuditData] = useState<Record<string, AuditEvent[]>>({});
   const [auditLoading, setAuditLoading] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortCol, setSortCol] = useState<SortCol>("purchase_date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   useEffect(() => {
     Promise.all([
@@ -162,7 +152,22 @@ export default function Dashboard() {
   const inTransit = paid.filter((o) => o.delivery_status !== "delivered");
   const arrived   = paid.filter((o) => o.delivery_status === "delivered");
   const spend     = paid.reduce((s, o) => s + o.amount, 0);
-  const visible = applyFilter(orders, activeFilter);
+
+  const toggleSort = (col: SortCol) => {
+    if (sortCol === col) setSortDir((d) => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("desc"); }
+  };
+
+  const visible = (() => {
+    let result = applyFilter(orders, activeFilter);
+    if (dateFrom) result = result.filter((o) => o.created_at && o.created_at >= dateFrom);
+    if (dateTo)   result = result.filter((o) => o.created_at && o.created_at <= dateTo + "T23:59:59");
+    return [...result].sort((a, b) => {
+      const av = sortCol === "purchase_date" ? (a.created_at ?? "") : (a.estimated_delivery ?? "");
+      const bv = sortCol === "purchase_date" ? (b.created_at ?? "") : (b.estimated_delivery ?? "");
+      return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+  })();
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
@@ -191,9 +196,9 @@ export default function Dashboard() {
         {/* AI Summary */}
         <AISummary orders={orders} wallet={wallet} />
 
-        {/* Filter tabs */}
+        {/* Filter bar */}
         {!loading && !error && orders.length > 0 && (
-          <div className="flex gap-1 mb-4 flex-wrap">
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
@@ -212,6 +217,30 @@ export default function Dashboard() {
                 )}
               </button>
             ))}
+            <div className="flex items-center gap-1.5 ml-2 border-l border-[var(--color-border)] pl-3">
+              <span className="text-xs text-[var(--color-text-muted)]">From</span>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-2 py-1 text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+              />
+              <span className="text-xs text-[var(--color-text-muted)]">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-2 py-1 text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+              />
+              {(dateFrom || dateTo) && (
+                <button
+                  onClick={() => { setDateFrom(""); setDateTo(""); }}
+                  className="text-xs text-[var(--color-text-muted)] hover:text-rose-500 transition-colors px-1"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -242,8 +271,20 @@ export default function Dashboard() {
               <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Product</span>
               <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Amount</span>
               <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Status</span>
-              <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Purchase Date</span>
-              <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Expected Arrival</span>
+              <button
+                onClick={() => toggleSort("purchase_date")}
+                className="flex items-center gap-1 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider hover:text-[var(--color-primary)] transition-colors"
+              >
+                Date
+                <span className="opacity-60">{sortCol === "purchase_date" ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
+              </button>
+              <button
+                onClick={() => toggleSort("arrival_date")}
+                className="flex items-center gap-1 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider hover:text-[var(--color-primary)] transition-colors"
+              >
+                Arrival
+                <span className="opacity-60">{sortCol === "arrival_date" ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
+              </button>
               <span />
             </div>
 

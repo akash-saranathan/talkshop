@@ -191,6 +191,29 @@ async def search_and_rank(
 
     all_products = [NormalizedProduct.model_validate(p) for p in raw]
     filtered = filter_products(all_products, intent)
+
+    # Color-miss fallback: if color-filtered search returned nothing for a specific
+    # shoe subcategory, expand to all footwear before giving up.
+    if (
+        len(filtered) == 0
+        and intent.color
+        and intent.category
+        and intent.category.lower() in ("sneakers", "running_shoes", "boots", "casual_shoes")
+    ):
+        expanded_raw = await mcp_search(
+            query=intent.raw_query or "shoes",
+            category=None,
+            brand=intent.brand,
+            max_price=None,
+            size=intent.size,
+        )
+        expanded_products = [NormalizedProduct.model_validate(p) for p in expanded_raw]
+        expanded_intent = intent.model_copy(update={"category": "shoes"})
+        fallback = filter_products(expanded_products, expanded_intent)
+        if fallback:
+            all_products = expanded_products
+            filtered = fallback
+
     ranked = rank_products(filtered, intent)
     top = ranked[:top_n]
 
