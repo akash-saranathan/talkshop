@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Loader, Eye, Check } from "lucide-react";
+import { Loader, Eye, Plus, Minus } from "lucide-react";
 import type { ProductData } from "../api/chat";
 import { getProductVisual } from "../utils/productVisual";
-import { addToCart } from "../api/cart";
+import { addToCart, updateCartItemQuantity, removeFromCart } from "../api/cart";
 import ProductDetailModal from "./ProductDetailModal";
 
 interface Props {
@@ -29,7 +29,9 @@ const RANK_BADGE: Record<number, { label: string; className: string }> = {
 export default function ProductCard({ product, index, selected = false, onToggleSelect, onAdded }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [added, setAdded] = useState(false);
+  const [qty, setQty] = useState(0);
+  const [cartItemId, setCartItemId] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const badgeClass = MERCHANT_COLORS[product.merchant_id] ?? "bg-slate-100 text-slate-600";
   const visual = getProductVisual(product.title, product.category);
@@ -39,16 +41,56 @@ export default function ProductCard({ product, index, selected = false, onToggle
 
   const handleAddToCart = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (adding || added) return;
+    if (adding) return;
     setAdding(true);
     try {
-      await addToCart(product);
-      setAdding(false);
-      setAdded(true);
+      const item = await addToCart(product);
+      setCartItemId(item.cart_item_id);
+      setQty(1);
       onAdded?.();
-      setTimeout(() => setAdded(false), 2000);
     } catch {
+      // silent — don't crash the card
+    } finally {
       setAdding(false);
+    }
+  };
+
+  const handleIncrement = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (updating || !cartItemId) return;
+    setUpdating(true);
+    try {
+      const newQty = qty + 1;
+      await updateCartItemQuantity(cartItemId, newQty);
+      setQty(newQty);
+      onAdded?.();
+    } catch {
+      // silent
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDecrement = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (updating || !cartItemId) return;
+    setUpdating(true);
+    try {
+      if (qty <= 1) {
+        await removeFromCart(cartItemId);
+        setQty(0);
+        setCartItemId(null);
+        onAdded?.();
+      } else {
+        const newQty = qty - 1;
+        await updateCartItemQuantity(cartItemId, newQty);
+        setQty(newQty);
+        onAdded?.();
+      }
+    } catch {
+      // silent
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -142,18 +184,35 @@ export default function ProductCard({ product, index, selected = false, onToggle
           >
             <Eye size={16} />
           </button>
-          <button
-            onClick={handleAddToCart}
-            disabled={adding}
-            className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-              added
-                ? "bg-[var(--color-success)] text-white"
-                : "bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-light)] disabled:opacity-60"
-            }`}
-          >
-            {adding ? <Loader size={13} className="animate-spin" /> : added ? <Check size={13} /> : null}
-            {adding ? "Adding..." : added ? "Added ✓" : "Add to Cart"}
-          </button>
+
+          {qty > 0 ? (
+            <div className="flex items-center gap-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg overflow-hidden">
+              <button
+                onClick={handleDecrement}
+                disabled={updating}
+                className="w-8 h-8 flex items-center justify-center text-[var(--color-text-muted)] hover:bg-[var(--color-border)] hover:text-[var(--color-primary)] transition-colors disabled:opacity-40"
+              >
+                {updating && qty === 1 ? <Loader size={12} className="animate-spin" /> : <Minus size={13} />}
+              </button>
+              <span className="text-sm font-semibold text-[var(--color-text)] w-6 text-center">{qty}</span>
+              <button
+                onClick={handleIncrement}
+                disabled={updating}
+                className="w-8 h-8 flex items-center justify-center text-[var(--color-text-muted)] hover:bg-[var(--color-border)] hover:text-[var(--color-primary)] transition-colors disabled:opacity-40"
+              >
+                {updating && qty > 0 ? <Loader size={12} className="animate-spin" /> : <Plus size={13} />}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleAddToCart}
+              disabled={adding}
+              className="text-sm px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-light)] disabled:opacity-60"
+            >
+              {adding ? <Loader size={13} className="animate-spin" /> : null}
+              {adding ? "Adding..." : "Add to Cart"}
+            </button>
+          )}
         </div>
       </div>
 

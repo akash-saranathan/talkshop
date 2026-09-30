@@ -224,7 +224,7 @@ export default function Checkout() {
         return c - 1;
       });
     }, 1000);
-    const timeout = setTimeout(() => navigate("/"), 3000);
+    const timeout = setTimeout(() => navigate("/dashboard"), 3000);
     return () => { clearInterval(interval); clearTimeout(timeout); };
   }, [finished, succeeded, navigate]);
 

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, Store, LogOut, ShoppingCart } from "lucide-react";
+import { Send, Mic, Square, X, Store, LogOut, ShoppingCart, Sparkles, ArrowRight } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
 import { getCart, addToCart } from "../api/cart";
 import ProductCard from "../components/ProductCard";
@@ -40,10 +40,50 @@ async function resizeImageForUpload(file: Blob, maxDim = 768, quality = 0.7): Pr
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-// Which session was last open, so navigating back from Dashboard (a full
-// page reload of this component) resumes it instead of starting a blank
-// new chat every time.
-const LAST_SESSION_KEY = "talkshop_last_session";
+// Map robotic agent step messages to first-person friendly text.
+// Returns null to suppress zero-count noise steps.
+function humanizeStep(message: string): string | null {
+  const m = message.toLowerCase();
+
+  // Suppress zero-product noise
+  if (/\b0 products?\b/.test(m) || /catalogued 0/.test(m) || /top 0 picks/.test(m)) return null;
+
+  // VibeCheck
+  if (m.includes("vibecheck")) {
+    if (m.includes("all clear") || m.includes("ready to shop")) return "Let me figure out what you're looking for...";
+    if (m.includes("understood") || m.includes("looking for")) {
+      const hit = message.match(/[Ll]ooking for (.+)/);
+      return hit ? `Got it! I'm searching for ${hit[1]}...` : "On it! Starting the search...";
+    }
+    if (m.includes("writing") || m.includes("recommendation")) return "Picking the best options for you...";
+    if (m.includes("chitchat") || m.includes("greeting") || m.includes("no products")) return "Hey there! What can I help you find?";
+  }
+
+  // SneakPeek
+  if (m.includes("sneakpeek")) {
+    const found = message.match(/found (\d+) products? across (\d+)/i);
+    if (found) {
+      const n = parseInt(found[1]);
+      if (n === 0) return null;
+      return `Found ${n} option${n !== 1 ? "s" : ""} across ${found[2]} store${found[2] !== "1" ? "s" : ""}!`;
+    }
+    const top = message.match(/top (\d+) picks/i);
+    if (top) {
+      const n = parseInt(top[1]);
+      if (n === 0) return null;
+      return `Here are your top ${n} picks!`;
+    }
+    return null;
+  }
+
+  // CartUp / GreenLight / PayIt / TrackIt
+  if (m.includes("cartup")) return "Setting up your order...";
+  if (m.includes("greenlight")) return m.includes("authorized") || m.includes("approved") ? "Transaction approved!" : "Running security checks...";
+  if (m.includes("payit")) return m.includes("success") || m.includes("confirm") ? "Payment confirmed!" : "Processing payment securely...";
+  if (m.includes("trackit")) return "Your order is confirmed and on its way!";
+
+  return message;
+}
 
 function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
   const turns: Turn[] = [];
@@ -83,6 +123,8 @@ export default function Chat() {
   const [micError, setMicError] = useState<string | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(4));
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const [autoCheckoutIn, setAutoCheckoutIn] = useState<number | null>(null);
+  const autoCheckoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -155,7 +197,7 @@ export default function Chat() {
     };
   }, []);
 
-  // Cleanup SSE + mic on unmount
+  // Cleanup SSE + mic + checkout timer on unmount
   useEffect(() => () => {
     closeStream.current?.();
     stoppingRef.current = true;
@@ -163,6 +205,7 @@ export default function Chat() {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     audioCtxRef.current?.close().catch(() => {});
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
   }, []);
 
   // Auto-scroll to the newest turn, matching standard chat UX.
@@ -179,7 +222,6 @@ export default function Chat() {
   const switchToSession = useCallback((id: string) => {
     sessionIdRef.current = id;
     setCurrentSessionId(id);
-    localStorage.setItem(LAST_SESSION_KEY, id);
   }, []);
 
   const handleNewChat = useCallback(() => {
@@ -212,24 +254,36 @@ export default function Chat() {
     await loadSession(clickedId);
   }, [loadSession]);
 
-  // Resume whatever chat was last open instead of always starting blank —
-  // e.g. coming back from the Dashboard's "Back to Chat" link.
-  useEffect(() => {
-    const lastSessionId = localStorage.getItem(LAST_SESSION_KEY);
-    if (lastSessionId) {
-      loadSession(lastSessionId);
-    }
-    // Mount-only: this restores whatever was open when the page loaded.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const triggerCheckoutCountdown = useCallback(() => {
+    if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
+    setAutoCheckoutIn(10);
+    let remaining = 10;
+    autoCheckoutTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      setAutoCheckoutIn(remaining);
+      if (remaining <= 0) {
+        clearInterval(autoCheckoutTimerRef.current!);
+        autoCheckoutTimerRef.current = null;
+        setAutoCheckoutIn(null);
+        navigate("/checkout");
+      }
+    }, 1000);
+  }, [navigate]);
+
+  const cancelCheckoutCountdown = useCallback(() => {
+    if (autoCheckoutTimerRef.current) { clearInterval(autoCheckoutTimerRef.current); autoCheckoutTimerRef.current = null; }
+    setAutoCheckoutIn(null);
   }, []);
+
+  const handleSessionDeleted = useCallback((deletedId: string) => {
+    if (deletedId === sessionIdRef.current) {
+      handleNewChat();
+    }
+  }, [handleNewChat]);
 
   const handleSend = useCallback(async () => {
     const msg = input.trim();
     if (!msg || loading) return;
-
-    // Covers the very first default session, which is never routed through
-    // switchToSession() until a message actually makes it real server-side.
-    localStorage.setItem(LAST_SESSION_KEY, sessionIdRef.current);
 
     const turnId = crypto.randomUUID();
     const imageForTurn = pastedImage;
@@ -479,6 +533,7 @@ export default function Chat() {
         activeSessionId={currentSessionId}
         onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
+        onSessionDeleted={handleSessionDeleted}
         refreshKey={sidebarRefreshKey}
         collapsed={leftCollapsed}
         onToggleCollapse={() => setLeftCollapsed((c) => !c)}
@@ -544,10 +599,14 @@ export default function Chat() {
                   </div>
                 </div>
 
-                {/* Assistant response, with a Talkshop avatar */}
+                {/* Assistant response — AI shopping agent avatar */}
                 <div className="flex gap-3">
-                  <div className="w-7 h-7 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] grid place-items-center shrink-0">
-                    <Store size={14} />
+                  <div className={`w-8 h-8 rounded-full grid place-items-center shrink-0 ${
+                    isActiveTurn
+                      ? "bg-gradient-to-br from-[var(--color-primary)] to-violet-500 shadow-md shadow-[var(--color-primary)]/30"
+                      : "bg-[var(--color-primary)]/15"
+                  }`}>
+                    <Sparkles size={14} className={isActiveTurn ? "text-white animate-pulse" : "text-[var(--color-primary)]"} />
                   </div>
                   <div className="flex-1 flex flex-col gap-3 min-w-0 pt-1">
                     {/* Typing indicator — shown until the first step event arrives */}
@@ -559,33 +618,31 @@ export default function Chat() {
                       </div>
                     )}
 
-                    {/* Agent steps */}
+                    {/* Agent steps — humanized first-person messages */}
                     <AnimatePresence>
-                      {turn.steps.map((step, i) => (
-                        <motion.div
-                          key={step.id + i}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center gap-3 text-sm"
-                        >
-                          {step.status === "done" ? (
-                            <span className="text-[var(--color-success)] font-bold text-base">✓</span>
-                          ) : step.status === "error" ? (
-                            <span className="text-rose-500 font-bold text-base">✗</span>
-                          ) : (
-                            <span className="w-3 h-3 rounded-full bg-[var(--color-primary)] animate-pulse shrink-0" />
-                          )}
-                          <span
-                            className={`${
-                              step.status === "error"
-                                ? "text-rose-500"
-                                : "text-[var(--color-text-muted)]"
-                            }`}
+                      {turn.steps.map((step, i) => {
+                        const friendly = humanizeStep(step.message);
+                        if (!friendly) return null;
+                        return (
+                          <motion.div
+                            key={step.id + i}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="flex items-center gap-2.5 text-sm"
                           >
-                            {step.message}
-                          </span>
-                        </motion.div>
-                      ))}
+                            {step.status === "done" ? (
+                              <span className="w-4 h-4 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] text-[10px] grid place-items-center shrink-0 font-bold">✓</span>
+                            ) : step.status === "error" ? (
+                              <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-500 text-[10px] grid place-items-center shrink-0 font-bold">✗</span>
+                            ) : (
+                              <span className="w-4 h-4 rounded-full border-2 border-[var(--color-primary)] border-t-transparent animate-spin shrink-0" />
+                            )}
+                            <span className={step.status === "error" ? "text-rose-500" : "text-[var(--color-text-muted)]"}>
+                              {friendly}
+                            </span>
+                          </motion.div>
+                        );
+                      })}
                     </AnimatePresence>
 
                     {/* Blocked message */}
@@ -621,7 +678,10 @@ export default function Chat() {
                             index={i}
                             selected={selectedProducts.has(p.product_id)}
                             onToggleSelect={handleToggleSelect}
-                            onAdded={() => getCart().then((items) => setCartCount(items.length)).catch(() => {})}
+                            onAdded={() => {
+                              getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                              triggerCheckoutCountdown();
+                            }}
                           />
                         ))}
                       </div>
@@ -660,6 +720,42 @@ export default function Chat() {
             </div>
           )}
         </div>
+
+        {/* Auto-checkout countdown toast — appears after "Add to Cart" */}
+        <AnimatePresence>
+          {autoCheckoutIn !== null && (
+            <motion.div
+              initial={{ y: 80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 80, opacity: 0 }}
+              className="mx-6 mb-2 rounded-xl bg-gradient-to-r from-[var(--color-primary)] to-violet-600 text-white px-5 py-3 flex items-center justify-between shadow-lg"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-white/20 grid place-items-center shrink-0">
+                  <ShoppingCart size={15} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Item added! Heading to checkout...</p>
+                  <p className="text-xs text-white/70">Taking you there in {autoCheckoutIn}s</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={cancelCheckoutCountdown}
+                  className="text-xs text-white/70 hover:text-white transition-colors px-2 py-1"
+                >
+                  Stay here
+                </button>
+                <button
+                  onClick={() => { cancelCheckoutCountdown(); navigate("/checkout"); }}
+                  className="flex items-center gap-1.5 text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors"
+                >
+                  Go now <ArrowRight size={14} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Floating multi-select checkout bar */}
         {selectedProducts.size > 0 && (

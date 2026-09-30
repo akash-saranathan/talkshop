@@ -141,6 +141,23 @@ async def list_chat_sessions(current_user: CurrentUser = Depends(get_current_use
         ]
 
 
+@router.delete("/api/chat/sessions/{session_id}")
+async def delete_chat_session(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
+    """Delete a chat session and all its messages — scoped to the current user."""
+    with get_session() as db:
+        chat_session = (
+            db.query(ChatSession)
+            .filter(ChatSession.session_id == session_id, ChatSession.user_id == current_user.user_id)
+            .first()
+        )
+        if not chat_session:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+        db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+        db.delete(chat_session)
+        db.commit()
+    return {"ok": True}
+
+
 @router.get("/api/chat/sessions/{session_id}/messages")
 async def get_chat_session_messages(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """One thread's messages in order — scoped to the current user."""

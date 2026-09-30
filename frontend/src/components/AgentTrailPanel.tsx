@@ -4,6 +4,32 @@ import { ChevronLeft, ChevronRight, Activity } from "lucide-react";
 import { authFetch } from "../api/client";
 import { getProductVisual } from "../utils/productVisual";
 
+function humanizeStep(message: string): string | null {
+  const m = message.toLowerCase();
+  if (/\b0 products?\b/.test(m) || /catalogued 0/.test(m) || /top 0 picks/.test(m)) return null;
+  if (m.includes("vibecheck")) {
+    if (m.includes("all clear") || m.includes("ready to shop")) return "Figuring out what you need...";
+    if (m.includes("understood") || m.includes("looking for")) {
+      const hit = message.match(/[Ll]ooking for (.+)/);
+      return hit ? `Searching for ${hit[1]}...` : "Starting the search...";
+    }
+    if (m.includes("writing") || m.includes("recommendation")) return "Picking the best options...";
+    if (m.includes("chitchat") || m.includes("greeting")) return "Hey there!";
+  }
+  if (m.includes("sneakpeek")) {
+    const found = message.match(/found (\d+) products? across (\d+)/i);
+    if (found) { const n = parseInt(found[1]); return n === 0 ? null : `Found ${n} option${n !== 1 ? "s" : ""}!`; }
+    const top = message.match(/top (\d+) picks/i);
+    if (top) { const n = parseInt(top[1]); return n === 0 ? null : `Top ${n} picks ready!`; }
+    return null;
+  }
+  if (m.includes("cartup")) return "Setting up order...";
+  if (m.includes("greenlight")) return "Running security checks...";
+  if (m.includes("payit")) return "Processing payment...";
+  if (m.includes("trackit")) return "Order confirmed!";
+  return message;
+}
+
 interface Step {
   id: string;
   message: string;
@@ -48,7 +74,8 @@ function agentStatus(agentId: string, steps: Step[]): AgentStatus {
 
 function lastMessage(agentId: string, steps: Step[]): string | null {
   const mine = [...steps].reverse().find((s) => s.message.includes(agentId));
-  return mine?.message ?? null;
+  if (!mine) return null;
+  return humanizeStep(mine.message);
 }
 
 function StatusDot({ status }: { status: AgentStatus }) {
@@ -152,16 +179,20 @@ export default function AgentTrailPanel({ collapsed, onToggleCollapse, width, ac
             </p>
             <div className="flex flex-col gap-1.5 relative">
               <div className="absolute left-[5px] top-2 bottom-2 w-px bg-[var(--color-border)]" />
-              {activeTurnSteps.map((step, i) => (
-                <div key={step.id + i} className="flex items-start gap-2 pl-4 relative">
-                  <span className={`absolute left-0 top-1 w-2.5 h-2.5 rounded-full border-2 border-[var(--color-surface)] shrink-0 ${
-                    step.status === "done" ? "bg-[var(--color-success)]" :
-                    step.status === "error" ? "bg-[var(--color-blocked)]" :
-                    "bg-amber-400 animate-pulse"
-                  }`} />
-                  <p className="text-[11px] text-[var(--color-text-muted)] leading-tight">{step.message}</p>
-                </div>
-              ))}
+              {activeTurnSteps.map((step, i) => {
+                const friendly = humanizeStep(step.message);
+                if (!friendly) return null;
+                return (
+                  <div key={step.id + i} className="flex items-start gap-2 pl-4 relative">
+                    <span className={`absolute left-0 top-1 w-2.5 h-2.5 rounded-full border-2 border-[var(--color-surface)] shrink-0 ${
+                      step.status === "done" ? "bg-[var(--color-success)]" :
+                      step.status === "error" ? "bg-[var(--color-blocked)]" :
+                      "bg-amber-400 animate-pulse"
+                    }`} />
+                    <p className="text-[11px] text-[var(--color-text-muted)] leading-tight">{friendly}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
-import { listChatSessions, type ChatSessionSummary } from "../api/chat";
+import { Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { listChatSessions, deleteChatSession, type ChatSessionSummary } from "../api/chat";
 
 interface Props {
   activeSessionId: string;
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
+  onSessionDeleted: (sessionId: string) => void;
   refreshKey: number;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -16,16 +17,33 @@ export default function ChatSidebar({
   activeSessionId,
   onSelectSession,
   onNewChat,
+  onSessionDeleted,
   refreshKey,
   collapsed,
   onToggleCollapse,
   width,
 }: Props) {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     listChatSessions().then(setSessions).catch(() => setSessions([]));
   }, [refreshKey]);
+
+  const handleDelete = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    if (deletingId) return;
+    setDeletingId(sessionId);
+    try {
+      await deleteChatSession(sessionId);
+      setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
+      onSessionDeleted(sessionId);
+    } catch {
+      // silent
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   if (collapsed) {
     return (
@@ -83,19 +101,39 @@ export default function ChatSidebar({
         </p>
       ) : (
         sessions.map((s) => (
-          <button
+          <div
             key={s.session_id}
-            onClick={() => onSelectSession(s.session_id)}
-            title={s.title}
-            className={`flex items-center gap-2 text-left text-sm px-3 py-2 rounded-lg truncate transition-colors ${
+            className={`group flex items-center gap-1 rounded-lg transition-colors ${
               s.session_id === activeSessionId
-                ? "bg-[var(--color-primary)] text-white font-medium"
-                : "text-[var(--color-text)] hover:bg-[var(--color-bg)]"
+                ? "bg-[var(--color-primary)]"
+                : "hover:bg-[var(--color-bg)]"
             }`}
           >
-            <MessageSquare size={14} className="shrink-0" />
-            <span className="truncate">{s.title}</span>
-          </button>
+            <button
+              onClick={() => onSelectSession(s.session_id)}
+              title={s.title}
+              className={`flex items-center gap-2 text-left text-sm px-3 py-2 truncate flex-1 min-w-0 ${
+                s.session_id === activeSessionId
+                  ? "text-white font-medium"
+                  : "text-[var(--color-text)]"
+              }`}
+            >
+              <MessageSquare size={14} className="shrink-0" />
+              <span className="truncate">{s.title}</span>
+            </button>
+            <button
+              onClick={(e) => handleDelete(e, s.session_id)}
+              disabled={deletingId === s.session_id}
+              title="Delete chat"
+              className={`shrink-0 p-1.5 mr-1 rounded opacity-0 group-hover:opacity-100 transition-all ${
+                s.session_id === activeSessionId
+                  ? "text-white/60 hover:text-white hover:bg-white/10"
+                  : "text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-rose-50"
+              } disabled:opacity-30`}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
         ))
       )}
     </aside>
