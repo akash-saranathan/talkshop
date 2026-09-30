@@ -12,6 +12,15 @@ interface Props {
   selected?: boolean;
   onToggleSelect?: (product: ProductData) => void;
   onAdded?: (item?: CartItemData) => void;
+  matchTags?: string[];
+}
+
+function getDeliveryLabel(days: number): string {
+  if (days === 0) return "Arrives today";
+  if (days === 1) return "Arrives tomorrow";
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `Arrives ${d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}`;
 }
 
 const MERCHANT_COLORS: Record<string, string> = {
@@ -26,7 +35,7 @@ const RANK_BADGE: Record<number, { label: string; className: string }> = {
   2: { label: "#3", className: "bg-amber-700 text-white" },
 };
 
-export default function ProductCard({ product, index, selected = false, onToggleSelect, onAdded }: Props) {
+export default function ProductCard({ product, index, selected = false, onToggleSelect, onAdded, matchTags }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const [adding, setAdding] = useState(false);
   const [qty, setQty] = useState(0);
@@ -161,15 +170,38 @@ export default function ProductCard({ product, index, selected = false, onToggle
 
       {/* Details row */}
       <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--color-text-muted)]">
-        {product.rating > 0 && <span>★ {product.rating.toFixed(1)}</span>}
-        {product.delivery_days && <span>Ships {product.delivery_days}d</span>}
-        {product.size && <span>Size {product.size}</span>}
-        {product.rank_score > 0 && (
-          <span className="ml-auto text-[10px] bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text-muted)] px-1.5 py-0.5 rounded font-mono">
-            {product.rank_score.toFixed(0)}pts
+        {product.rating > 0 && (
+          <span className="flex items-center gap-0.5">
+            <span className="text-amber-400">★</span> {product.rating.toFixed(1)}
+            {product.review_count > 0 && <span className="text-[var(--color-text-muted)]/60">({product.review_count})</span>}
           </span>
         )}
+        {product.size && <span className="px-1.5 py-0.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)]">Size {product.size}</span>}
+        {product.color && <span className="px-1.5 py-0.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] capitalize">{product.color}</span>}
       </div>
+
+      {/* Match tags — what the AI matched for this result */}
+      {matchTags && matchTags.length > 0 && (
+        <div className="flex gap-1 flex-wrap">
+          {matchTags.map((tag) => (
+            <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--color-success)] bg-[var(--color-success)]/10 border border-[var(--color-success)]/20 px-1.5 py-0.5 rounded-full">
+              ✓ {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Delivery urgency */}
+      {product.delivery_days != null && (
+        <p className="text-[11px] text-[var(--color-text-muted)] flex items-center gap-1">
+          <span className={product.delivery_days <= 2 ? "text-[var(--color-success)]" : ""}>
+            {product.delivery_days <= 2 ? "⚡" : "📦"}
+          </span>
+          <span className={product.delivery_days <= 2 ? "text-[var(--color-success)] font-medium" : ""}>
+            {getDeliveryLabel(product.delivery_days)}
+          </span>
+        </p>
+      )}
 
       {/* Price + CTA */}
       <div className="flex items-center justify-between mt-auto">

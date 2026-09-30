@@ -1,14 +1,78 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight } from "lucide-react";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
 import { getCart, addToCart } from "../api/cart";
 import ProductCard from "../components/ProductCard";
+import SkeletonProductCard from "../components/SkeletonProductCard";
 import ChatSidebar from "../components/ChatSidebar";
 import AgentTrailPanel from "../components/AgentTrailPanel";
 import ThemeToggle from "../components/ThemeToggle";
 import { useAuth } from "../auth/AuthContext";
+
+// ── Intent parsing ──────────────────────────────────────────────────────────
+
+interface SimpleIntent {
+  color?: string;
+  size?: string;
+  maxPrice?: number;
+  brand?: string;
+}
+
+const KNOWN_COLORS = ["black","white","blue","red","green","grey","gray","navy","pink","orange","yellow","purple","brown","beige","floral"];
+const KNOWN_BRANDS = ["nike","adidas","new balance","brooks","asics","saucony","hoka","puma","reebok","on running","mizuno","sony","apple","samsung","bose","jabra","garmin","bcbg","zara","h&m","converse","vans","jordan"];
+
+function parseSimpleIntent(message: string): SimpleIntent {
+  const m = message.toLowerCase();
+  const intent: SimpleIntent = {};
+  for (const c of KNOWN_COLORS) { if (m.includes(c)) { intent.color = c; break; } }
+  const sizeMatch = m.match(/\bsize\s+(\w+)\b/i) ?? m.match(/\bin\s+(xs|s|m|l|xl|xxl)\b/i);
+  if (sizeMatch) intent.size = sizeMatch[1].toUpperCase();
+  const priceMatch = m.match(/under\s+\$?(\d+)/i) ?? m.match(/\$?(\d+)\s+or\s+less/i) ?? m.match(/below\s+\$?(\d+)/i);
+  if (priceMatch) intent.maxPrice = parseInt(priceMatch[1]);
+  for (const b of KNOWN_BRANDS) { if (m.includes(b)) { intent.brand = b.split(" ").map(w => w[0].toUpperCase() + w.slice(1)).join(" "); break; } }
+  return intent;
+}
+
+function computeMatchTags(intent: SimpleIntent, product: ProductData): string[] {
+  const tags: string[] = [];
+  if (intent.color && product.color?.toLowerCase().includes(intent.color)) tags.push(intent.color);
+  if (intent.size && product.size?.toLowerCase() === intent.size.toLowerCase()) tags.push(`size ${intent.size}`);
+  if (intent.maxPrice && product.price <= intent.maxPrice) tags.push(`under $${intent.maxPrice}`);
+  if (intent.brand && product.brand?.toLowerCase().includes(intent.brand.toLowerCase())) tags.push(intent.brand);
+  return tags;
+}
+
+function generateFollowUpChips(products: ProductData[], intent: SimpleIntent): string[] {
+  const chips: string[] = [];
+  const brands = [...new Set(products.map(p => p.brand).filter(Boolean))] as string[];
+  if (brands.length > 1) {
+    chips.push(`Only ${brands[0]}`);
+    if (brands[1] && chips.length < 3) chips.push(`Only ${brands[1]}`);
+  }
+  const prices = products.map(p => p.price).sort((a, b) => a - b);
+  const spread = prices[prices.length - 1] - prices[0];
+  if (spread > prices[0] * 0.4 && !intent.maxPrice) {
+    chips.push(`Under $${Math.round(prices[0] + spread * 0.5)}`);
+  }
+  const fastCount = products.filter(p => p.delivery_days <= 2).length;
+  if (fastCount > 0 && fastCount < products.length) chips.push("Fastest delivery only");
+  if (chips.length < 4) chips.push("Which one should I buy?");
+  return chips.slice(0, 4);
+}
+
+type SortMode = "match" | "price" | "rating" | "delivery";
+
+function sortProducts(products: ProductData[], mode: SortMode): ProductData[] {
+  const arr = [...products];
+  if (mode === "price") return arr.sort((a, b) => a.price - b.price);
+  if (mode === "rating") return arr.sort((a, b) => b.rating - a.rating);
+  if (mode === "delivery") return arr.sort((a, b) => a.delivery_days - b.delivery_days);
+  return arr.sort((a, b) => b.rank_score - a.rank_score);
+}
+
+// ── Turn types ───────────────────────────────────────────────────────────────
 
 interface Step {
   id: string;
@@ -24,6 +88,7 @@ interface Turn {
   products: ProductData[];
   recommendation: string;
   blocked: string | null;
+  intent: SimpleIntent;
 }
 
 // Pasted screenshots can be huge — downscale before it ever leaves the
@@ -98,6 +163,7 @@ function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
       products: assistantMsg?.products ?? [],
       recommendation: assistantMsg?.content ?? "",
       blocked: assistantMsg?.blocked_reason ?? null,
+      intent: parseSimpleIntent(userMsg.content),
     });
   }
   return turns;
@@ -112,6 +178,8 @@ export default function Chat() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+  const [sessionCartCount, setSessionCartCount] = useState(0);
+  const [turnSortModes, setTurnSortModes] = useState<Map<string, SortMode>>(new Map());
   const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
   const [addingToCheckout, setAddingToCheckout] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -234,6 +302,7 @@ export default function Chat() {
     activeTurnId.current = null;
     switchToSession(crypto.randomUUID());
     setTurns([]);
+    setSessionCartCount(0);
   }, [switchToSession]);
 
   // Shared by "click a session in the sidebar" and "restore on page load" —
@@ -255,6 +324,7 @@ export default function Chat() {
     closeStream.current?.();
     setLoading(false);
     activeTurnId.current = null;
+    setSessionCartCount(0);
     await loadSession(clickedId);
   }, [loadSession]);
 
@@ -310,6 +380,7 @@ export default function Chat() {
 
     const turnId = crypto.randomUUID();
     const imageForTurn = pastedImage;
+    const parsedIntent = parseSimpleIntent(msg);
     activeTurnId.current = turnId;
     setTurns((prev) => [...prev, {
       id: turnId,
@@ -319,6 +390,7 @@ export default function Chat() {
       products: [],
       recommendation: "",
       blocked: null,
+      intent: parsedIntent,
     }]);
     setLoading(true);
     setInput("");
@@ -687,21 +759,87 @@ export default function Chat() {
                       </motion.div>
                     )}
 
-                    {/* Product cards grid */}
-                    {turn.products.length > 0 && (
+                    {/* Skeleton cards — shown while the active turn is loading */}
+                    {isActiveTurn && turn.products.length === 0 && turn.steps.length > 0 && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {turn.products.map((p, i) => (
-                          <ProductCard
-                            key={p.product_id}
-                            product={p}
-                            index={i}
-                            selected={selectedProducts.has(p.product_id)}
-                            onToggleSelect={handleToggleSelect}
-                            onAdded={(cartItem) => {
-                              getCart().then((items) => setCartCount(items.length)).catch(() => {});
-                              triggerCheckoutCountdown(cartItem);
-                            }}
-                          />
+                        {[0, 1, 2].map((i) => <SkeletonProductCard key={i} />)}
+                      </div>
+                    )}
+
+                    {/* Intent badge — what the AI understood */}
+                    {turn.products.length > 0 && Object.keys(turn.intent).length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">AI matched:</span>
+                        {turn.intent.color && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium capitalize">{turn.intent.color}</span>}
+                        {turn.intent.size && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium">size {turn.intent.size}</span>}
+                        {turn.intent.maxPrice && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium">under ${turn.intent.maxPrice}</span>}
+                        {turn.intent.brand && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium">{turn.intent.brand}</span>}
+                      </div>
+                    )}
+
+                    {/* Sort bar + product grid */}
+                    {turn.products.length > 0 && (() => {
+                      const sortMode = turnSortModes.get(turn.id) ?? "match";
+                      const sorted = sortProducts(turn.products, sortMode);
+                      const setSortMode = (m: SortMode) => setTurnSortModes(prev => new Map(prev).set(turn.id, m));
+                      return (
+                        <div className="flex flex-col gap-2">
+                          {/* Sort bar */}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="text-[10px] text-[var(--color-text-muted)] mr-1">Sort:</span>
+                            {([
+                              { key: "match", label: "Best Match", icon: <ArrowUpDown size={10} /> },
+                              { key: "price", label: "↓ Price", icon: <TrendingDown size={10} /> },
+                              { key: "rating", label: "Top Rated", icon: <Star size={10} /> },
+                              { key: "delivery", label: "Fastest", icon: <Zap size={10} /> },
+                            ] as { key: SortMode; label: string; icon: React.ReactNode }[]).map(({ key, label, icon }) => (
+                              <button
+                                key={key}
+                                onClick={() => setSortMode(key)}
+                                className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                                  sortMode === key
+                                    ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]"
+                                    : "bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+                                }`}
+                              >
+                                {icon} {label}
+                              </button>
+                            ))}
+                          </div>
+                          {/* Cards */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {sorted.map((p, i) => (
+                              <ProductCard
+                                key={p.product_id}
+                                product={p}
+                                index={i}
+                                selected={selectedProducts.has(p.product_id)}
+                                onToggleSelect={handleToggleSelect}
+                                matchTags={computeMatchTags(turn.intent, p)}
+                                onAdded={(cartItem) => {
+                                  getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                                  if (cartItem) setSessionCartCount((n) => n + 1);
+                                  triggerCheckoutCountdown(cartItem);
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Follow-up chips */}
+                    {turn.products.length > 0 && !isActiveTurn && (
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[10px] text-[var(--color-text-muted)]">Ask:</span>
+                        {generateFollowUpChips(turn.products, turn.intent).map((chip) => (
+                          <button
+                            key={chip}
+                            onClick={() => { setInput(chip); textareaRef.current?.focus(); }}
+                            className="text-[11px] px-2.5 py-1 rounded-full border border-[var(--color-primary)]/40 text-[var(--color-primary)] bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/15 hover:border-[var(--color-primary)] transition-all font-medium"
+                          >
+                            {chip}
+                          </button>
                         ))}
                       </div>
                     )}
@@ -721,11 +859,11 @@ export default function Chat() {
               <div className="flex flex-wrap gap-2 justify-center max-w-lg">
                 {[
                   "Running shoes size 10 under $100",
-                  "Green shirt in size L",
-                  "Laptop under $800",
-                  "Wireless headphones with good reviews",
-                  "Blue sneakers arriving within 3 days",
+                  "Blue running shoes arriving in 2 days",
+                  "Wireless headphones with great reviews",
                   "Dress for a formal occasion",
+                  "Blue polo shirt in size M",
+                  "Sony noise cancelling earbuds",
                 ].map((suggestion) => (
                   <button
                     key={suggestion}
@@ -739,6 +877,27 @@ export default function Chat() {
             </div>
           )}
         </div>
+
+        {/* Persistent cart reminder — shown when items were added this session */}
+        {sessionCartCount > 0 && autoCheckoutIn === null && (
+          <div className="mx-6 mb-1">
+            <button
+              onClick={() => navigate("/cart")}
+              className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-surface)] hover:bg-[var(--color-bg)] transition-colors group"
+            >
+              <div className="flex items-center gap-2 text-sm text-[var(--color-primary)] font-medium">
+                <ShoppingCart size={15} />
+                <span>{sessionCartCount} item{sessionCartCount !== 1 ? "s" : ""} added this chat</span>
+                {cartCount > sessionCartCount && (
+                  <span className="text-xs text-[var(--color-text-muted)] font-normal">· {cartCount} in cart total</span>
+                )}
+              </div>
+              <span className="flex items-center gap-1 text-xs text-[var(--color-primary)] font-semibold group-hover:gap-2 transition-all">
+                View Cart <ArrowRight size={13} />
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Auto-checkout countdown toast — appears after "Add to Cart" */}
         <AnimatePresence>
