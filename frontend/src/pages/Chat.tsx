@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, Store, LogOut, ShoppingCart, Sparkles, ArrowRight } from "lucide-react";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
 import { getCart, addToCart } from "../api/cart";
 import ProductCard from "../components/ProductCard";
@@ -575,10 +575,6 @@ export default function Chat() {
         {/* Header */}
         <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--color-border)] shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] text-white grid place-items-center">
-              <Store size={14} />
-            </div>
-            <span className="font-semibold text-[var(--color-primary)]">Talkshop</span>
           </div>
           <div className="flex items-center gap-3">
             <a href="/dashboard" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">

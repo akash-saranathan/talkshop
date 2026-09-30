@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2, Store } from "lucide-react";
 import { listChatSessions, deleteChatSession, type ChatSessionSummary } from "../api/chat";
 
 interface Props {
@@ -48,14 +48,9 @@ export default function ChatSidebar({
   if (collapsed) {
     return (
       <aside className="w-12 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col items-center py-4 gap-4 shrink-0">
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          title="Expand chats"
-          className="text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
-        >
-          <ChevronRight size={18} />
-        </button>
+        <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] text-white grid place-items-center cursor-pointer" onClick={onToggleCollapse} title="Expand">
+          <Store size={14} />
+        </div>
         <button
           type="button"
           onClick={onNewChat}
@@ -73,23 +68,31 @@ export default function ChatSidebar({
       style={{ width }}
       className="border-r border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex flex-col gap-2 overflow-y-auto shrink-0"
     >
-      <div className="flex items-center gap-2 mb-2">
-        <button
-          type="button"
-          onClick={onNewChat}
-          className="flex-1 flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-bg)] font-medium transition-colors"
-        >
-          <Plus size={15} /> New Chat
-        </button>
+      {/* Brand header — mirrors the ChatGPT top-left pattern */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] text-white grid place-items-center shrink-0">
+            <Store size={14} />
+          </div>
+          <span className="font-bold text-base text-[var(--color-primary)] tracking-tight">Talkshop</span>
+        </div>
         <button
           type="button"
           onClick={onToggleCollapse}
           title="Collapse"
-          className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg)] transition-colors"
+          className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg)] transition-colors"
         >
           <ChevronLeft size={16} />
         </button>
       </div>
+
+      <button
+        type="button"
+        onClick={onNewChat}
+        className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-bg)] font-medium transition-colors mb-1"
+      >
+        <Plus size={15} /> New Chat
+      </button>
 
       <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1 px-1">
         Chats

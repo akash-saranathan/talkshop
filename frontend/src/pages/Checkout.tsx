@@ -110,6 +110,7 @@ export default function Checkout() {
   const [processing, setProcessing] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [selectedCard, setSelectedCard] = useState(MOCK_CARDS[0].id);
+  const [redirectIn, setRedirectIn] = useState<number | null>(null);
 
   // Fall back to loading cart from API when no items passed via navigate state
   // (e.g. when auto-checkout countdown fires directly to /checkout).
@@ -238,19 +239,18 @@ export default function Checkout() {
 
   const succeeded = queue.filter((e) => e.status === "success").length;
   const finished = started && !processing;
-  const [redirectIn, setRedirectIn] = useState<number | null>(null);
 
-  // Auto-redirect to chat 3s after all items are done processing, if at least one succeeded.
+  // Auto-redirect to dashboard 10s after all items are done processing, if at least one succeeded.
   useEffect(() => {
     if (!finished || succeeded === 0) return;
-    setRedirectIn(3);
+    setRedirectIn(10);
     const interval = setInterval(() => {
       setRedirectIn((c) => {
         if (c === null || c <= 1) { clearInterval(interval); return null; }
         return c - 1;
       });
     }, 1000);
-    const timeout = setTimeout(() => navigate("/dashboard"), 3000);
+    const timeout = setTimeout(() => navigate("/dashboard"), 10000);
     return () => { clearInterval(interval); clearTimeout(timeout); };
   }, [finished, succeeded, navigate]);
 
