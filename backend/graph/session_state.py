@@ -17,6 +17,20 @@ class SessionState(TypedDict):
 
 _sessions: dict[str, SessionState] = {}
 
+# Pasted images live in a separate map, keyed by session_id: they're attached
+# via their own endpoint just before the SSE stream starts (EventSource can
+# only do GET, so the image can't ride along in that request), then popped
+# — used once, for the very next message, not kept around indefinitely.
+_pending_images: dict[str, str] = {}
+
+
+def save_pending_image(session_id: str, image_base64: str) -> None:
+    _pending_images[session_id] = image_base64
+
+
+def pop_pending_image(session_id: str) -> Optional[str]:
+    return _pending_images.pop(session_id, None)
+
 
 def get_partial_intent(session_id: str) -> Optional[dict]:
     state = _sessions.get(session_id)

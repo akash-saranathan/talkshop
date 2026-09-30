@@ -60,12 +60,17 @@ Rules:
   — leave every other field null in that case
 - If you are uncertain about a field, use null
 - Never invent product facts, prices, or inventory — that is done by other agents
+- The user may attach a photo of the kind of product they want. Use it only
+  to infer visual attributes already in the schema (category, color) —
+  never invent a brand, price, or model name just because it looks similar
+  to one you recognize
 """
 
 
 async def extract_intent(
     user_message: str,
     prior_intent: Optional[dict] = None,
+    image_base64: Optional[str] = None,
 ) -> tuple[Optional[ShoppingIntent], Optional[str]]:
     """
     Run NeMo input guard → LLM extraction → Guardrails AI validation.
@@ -74,6 +79,10 @@ async def extract_intent(
     prior_intent, when given, is merged with — not replaced by — the new
     message, so a follow-up answer ("size 10, under $100") completes the
     same intent instead of starting a fresh, under-specified one.
+
+    image_base64, when given, is a photo the user pasted of the kind of
+    product they want — passed to the LLM as a second content part
+    (Gemini is multimodal) purely to help infer visual attributes.
     """
     from backend.guardrails.nemo import check_input
     allowed, block_msg = await check_input(user_message)
@@ -89,9 +98,17 @@ async def extract_intent(
             f"Merge the new message into the previous info — keep fields "
             f"already known unless the new message changes them."
         )
+
+    human_content: Any = user_content
+    if image_base64:
+        human_content = [
+            {"type": "text", "text": user_content},
+            {"type": "image_url", "image_url": f"data:image/jpeg;base64,{image_base64}"},
+        ]
+
     messages = [
         SystemMessage(content=_SYSTEM_PROMPT),
-        HumanMessage(content=user_content),
+        HumanMessage(content=human_content),
     ]
 
     try:

@@ -258,6 +258,7 @@ def _delivery_fields(order: Order, product: Optional[Product]) -> dict:
     return {
         "product_title": product.name if product else None,
         "product_category": product.category if product else None,
+        "product_image_url": product.image_url if product else None,
         "tracking_number": order.tracking_number,
         "delivery_status": delivery["status"] if order.status == "confirmed" else None,
         "estimated_delivery": delivery["estimated_delivery"] if order.status == "confirmed" else None,

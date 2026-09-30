@@ -74,7 +74,8 @@ async def extract_intent(state: CommerceState) -> CommerceState:
     await _emit(state, "step_start", "Understanding your request...")
     session_id = state["session_id"]
     prior = session_state.get_partial_intent(session_id)
-    intent, error = await vibecheck.extract_intent(state["user_message"], prior_intent=prior)
+    image = session_state.pop_pending_image(session_id)
+    intent, error = await vibecheck.extract_intent(state["user_message"], prior_intent=prior, image_base64=image)
     if error or not intent:
         await _emit(state, "error", f"Could not understand request: {error}")
         return {**state, "error": error or "intent_extraction_failed", "blocked": True}

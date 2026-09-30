@@ -31,6 +31,9 @@ export interface ProductData {
   shipping_cost: number;
   rank_score: number;
   source: string;
+  image_url: string | null;
+  weight_grams: number | null;
+  cushioning: string | null;
 }
 
 export interface ChatSessionSummary {
@@ -57,6 +60,17 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
   const res = await authFetch(`/api/chat/sessions/${sessionId}/messages`);
   if (!res.ok) throw new Error("Failed to load chat session");
   return res.json();
+}
+
+// Stashes a pasted image server-side for the next message in this session —
+// EventSource (used by streamChat) can only issue GET, so the image can't
+// ride along in that request.
+export async function attachImage(sessionId: string, imageBase64: string): Promise<void> {
+  const res = await authFetch("/api/chat/attach-image", {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId, image_base64: imageBase64 }),
+  });
+  if (!res.ok) throw new Error("Failed to attach image");
 }
 
 export interface ChatCallbacks {

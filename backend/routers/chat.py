@@ -12,10 +12,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.db.schema import ChatMessage, ChatSession
 from backend.db.session_utils import get_session, now_utc
+from backend.graph import session_state
 from backend.graph.workflow import run_discovery
 
 router = APIRouter()
@@ -76,6 +78,22 @@ async def _event_stream(user_message: str, session_id: str, user_id: str):
             task.cancel()
         else:
             _save_turn(session_id, user_id, user_message, task.result())
+
+
+class AttachImageRequest(BaseModel):
+    session_id: str
+    image_base64: str  # raw base64, no "data:image/...;base64," prefix
+
+
+@router.post("/api/chat/attach-image")
+async def attach_image(req: AttachImageRequest, current_user: CurrentUser = Depends(get_current_user)):
+    """
+    Stashes a pasted image for the next message in this session. Separate
+    from /api/chat/stream because that's read via EventSource, which can
+    only issue GET requests — too small a channel for image bytes.
+    """
+    session_state.save_pending_image(req.session_id, req.image_base64)
+    return {"ok": True}
 
 
 @router.get("/api/chat/stream")

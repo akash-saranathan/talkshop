@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Download, Loader, Wallet as WalletIcon, Package, Truck, PackageCheck, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Download, Loader, Wallet as WalletIcon, Package, Truck, PackageCheck, type LucideIcon } from "lucide-react";
 import { authFetch } from "../api/client";
 import { getProductVisual } from "../utils/productVisual";
 
@@ -15,6 +15,7 @@ interface Order {
   created_at: string | null;
   product_title: string | null;
   product_category: string | null;
+  product_image_url: string | null;
   tracking_number: string | null;
   delivery_status: DeliveryStatus | null;
   estimated_delivery: string | null;
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const [wallet, setWallet] = useState<WalletBalance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Promise.all([
@@ -60,7 +62,7 @@ export default function Dashboard() {
         setOrders(ordersData);
         setWallet(walletData);
       })
-      .catch(() => setError("Couldn't load your dashboard. Is the backend running?"))
+      .catch(() => setError("Couldn't load your dashboard. Please try again in a moment."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -72,7 +74,15 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-[var(--color-bg)] p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-[var(--color-primary)]">Commerce Intelligence</h1>
+        <div className="flex items-center gap-4">
+          <a
+            href="/"
+            className="flex items-center gap-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
+          >
+            <ArrowLeft size={15} /> Back to Chat
+          </a>
+          <h1 className="text-xl font-semibold text-[var(--color-primary)]">Commerce Intelligence</h1>
+        </div>
         <button
           disabled
           aria-disabled="true"
@@ -138,10 +148,19 @@ export default function Dashboard() {
                 key={order.order_id}
                 className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex items-center gap-4"
               >
-                {/* Product icon tile */}
-                <div className={`w-14 h-14 rounded-xl grid place-items-center shrink-0 ${visual.bg}`}>
-                  <VisualIcon size={26} className={visual.fg} strokeWidth={1.5} />
-                </div>
+                {/* Product visual — real photo when available, icon tile otherwise */}
+                {order.product_image_url && !imageErrors.has(order.order_id) ? (
+                  <img
+                    src={order.product_image_url}
+                    alt={order.product_title ?? ""}
+                    onError={() => setImageErrors((prev) => new Set(prev).add(order.order_id))}
+                    className="w-14 h-14 rounded-xl object-cover shrink-0"
+                  />
+                ) : (
+                  <div className={`w-14 h-14 rounded-xl grid place-items-center shrink-0 ${visual.bg}`}>
+                    <VisualIcon size={26} className={visual.fg} strokeWidth={1.5} />
+                  </div>
+                )}
 
                 {/* Main info */}
                 <div className="flex-1 min-w-0">

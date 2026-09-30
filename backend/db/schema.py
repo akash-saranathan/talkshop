@@ -64,6 +64,7 @@ class Product(Base):
     cushioning = Column(String(20))
     rating = Column(Float, default=0.0)
     review_count = Column(Integer, default=0)
+    image_url = Column(String(500))
 
     merchant = relationship("Merchant", back_populates="products")
 
@@ -153,6 +154,32 @@ class ChatMessage(Base):
     products_json = Column(Text)
     blocked_reason = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class CartItem(Base):
+    """A snapshot of the product at add-time (price/rating/image), not a
+    live join — same reasoning as ChatMessage.products_json: a cart entry
+    shouldn't break or silently change if the catalog is edited later."""
+    __tablename__ = "cart_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cart_item_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False)
+    product_id = Column(String(50), nullable=False)
+    merchant_id = Column(String(50), nullable=False)
+    merchant_name = Column(String(100), nullable=False)
+    title = Column(String(200), nullable=False)
+    brand = Column(String(100))
+    category = Column(String(100), nullable=False)
+    price = Column(Float, nullable=False)
+    currency = Column(String(10), default="USD")
+    size = Column(String(20))
+    color = Column(String(50))
+    image_url = Column(String(500))
+    rating = Column(Float, default=0.0)
+    delivery_days = Column(Integer, default=5)
+    quantity = Column(Integer, default=1, nullable=False)
+    added_at = Column(DateTime, server_default=func.now())
 
 
 class AuditEvent(Base):

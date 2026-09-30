@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, MicOff, Store, LogOut } from "lucide-react";
-import { streamChat, getSessionMessages, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
+import { Send, Mic, Square, X, Store, LogOut, ShoppingCart } from "lucide-react";
+import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
+import { getCart } from "../api/cart";
 import ProductCard from "../components/ProductCard";
 import ChatSidebar from "../components/ChatSidebar";
 import OrdersPanel from "../components/OrdersPanel";
@@ -17,11 +18,31 @@ interface Step {
 interface Turn {
   id: string;
   userMessage: string;
+  image?: string;
   steps: Step[];
   products: ProductData[];
   recommendation: string;
   blocked: string | null;
 }
+
+// Pasted screenshots can be huge — downscale before it ever leaves the
+// browser, both for a snappy paste and a small request body.
+async function resizeImageForUpload(file: Blob, maxDim = 768, quality = 0.7): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas unsupported");
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+// Which session was last open, so navigating back from Dashboard (a full
+// page reload of this component) resumes it instead of starting a blank
+// new chat every time.
+const LAST_SESSION_KEY = "talkshop_last_session";
 
 function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
   const turns: Turn[] = [];
@@ -45,11 +66,28 @@ export default function Chat() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [input, setInput] = useState("");
+  const [pastedImage, setPastedImage] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(256);
+  const [rightWidth, setRightWidth] = useState(288);
+  const resizingRef = useRef<"left" | "right" | null>(null);
   const [recording, setRecording] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(4));
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
-  const mediaRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
+  // Distinguishes "the browser ended the session on its own" (e.g. after a
+  // pause — should silently resume so it feels continuous) from "the user
+  // clicked Stop/Cancel" (should actually end).
+  const stoppingRef = useRef(false);
   // sessionIdRef is the source of truth read inside async streaming
   // callbacks (avoids stale-closure bugs); currentSessionId mirrors it so
   // the sidebar can reactively highlight the active thread.
@@ -58,9 +96,71 @@ export default function Chat() {
   const closeStream = useRef<(() => void) | null>(null);
   const activeTurnId = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Cleanup SSE on unmount
-  useEffect(() => () => { closeStream.current?.(); }, []);
+  // Grow the textarea with its content instead of scrolling a single line.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
+
+  // Refresh the cart badge on mount and whenever the tab regains focus —
+  // covers coming back from Cart/Checkout after adding, removing, or buying.
+  useEffect(() => {
+    const refreshCartCount = () => {
+      getCart().then((items) => setCartCount(items.length)).catch(() => {});
+    };
+    refreshCartCount();
+    window.addEventListener("focus", refreshCartCount);
+    return () => window.removeEventListener("focus", refreshCartCount);
+  }, []);
+
+  // Drag-to-resize for the left/right panels — separate from collapse,
+  // for when the user wants the panel narrower but still visible.
+  const startResize = (side: "left" | "right") => (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = side;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  useEffect(() => {
+    const MIN_WIDTH = 200;
+    const MAX_WIDTH = 420;
+    const clamp = (v: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, v));
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (resizingRef.current === "left") {
+        setLeftWidth(clamp(e.clientX));
+      } else if (resizingRef.current === "right") {
+        setRightWidth(clamp(window.innerWidth - e.clientX));
+      }
+    };
+    const onMouseUp = () => {
+      resizingRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
+
+  // Cleanup SSE + mic on unmount
+  useEffect(() => () => {
+    closeStream.current?.();
+    stoppingRef.current = true;
+    recognitionRef.current?.abort();
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    audioCtxRef.current?.close().catch(() => {});
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+  }, []);
 
   // Auto-scroll to the newest turn, matching standard chat UX.
   useEffect(() => {
@@ -76,6 +176,7 @@ export default function Chat() {
   const switchToSession = useCallback((id: string) => {
     sessionIdRef.current = id;
     setCurrentSessionId(id);
+    localStorage.setItem(LAST_SESSION_KEY, id);
   }, []);
 
   const handleNewChat = useCallback(() => {
@@ -86,29 +187,54 @@ export default function Chat() {
     setTurns([]);
   }, [switchToSession]);
 
+  // Shared by "click a session in the sidebar" and "restore on page load" —
+  // loads a session's messages, falling back to a fresh chat if it no
+  // longer exists (deleted, or belonged to a session that never got saved).
+  const loadSession = useCallback(async (id: string) => {
+    switchToSession(id);
+    try {
+      const messages = await getSessionMessages(id);
+      setTurns(messagesToTurns(messages));
+    } catch {
+      switchToSession(crypto.randomUUID());
+      setTurns([]);
+    }
+  }, [switchToSession]);
+
   const handleSelectSession = useCallback(async (clickedId: string) => {
     if (clickedId === sessionIdRef.current) return;
     closeStream.current?.();
     setLoading(false);
     activeTurnId.current = null;
-    switchToSession(clickedId);
-    try {
-      const messages = await getSessionMessages(clickedId);
-      setTurns(messagesToTurns(messages));
-    } catch {
-      setTurns([]);
-    }
-  }, [switchToSession]);
+    await loadSession(clickedId);
+  }, [loadSession]);
 
-  const handleSend = useCallback(() => {
+  // Resume whatever chat was last open instead of always starting blank —
+  // e.g. coming back from the Dashboard's "Back to Chat" link.
+  useEffect(() => {
+    const lastSessionId = localStorage.getItem(LAST_SESSION_KEY);
+    if (lastSessionId) {
+      loadSession(lastSessionId);
+    }
+    // Mount-only: this restores whatever was open when the page loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSend = useCallback(async () => {
     const msg = input.trim();
     if (!msg || loading) return;
 
+    // Covers the very first default session, which is never routed through
+    // switchToSession() until a message actually makes it real server-side.
+    localStorage.setItem(LAST_SESSION_KEY, sessionIdRef.current);
+
     const turnId = crypto.randomUUID();
+    const imageForTurn = pastedImage;
     activeTurnId.current = turnId;
     setTurns((prev) => [...prev, {
       id: turnId,
       userMessage: msg,
+      image: imageForTurn ?? undefined,
       steps: [],
       products: [],
       recommendation: "",
@@ -116,9 +242,25 @@ export default function Chat() {
     }]);
     setLoading(true);
     setInput("");
+    setPastedImage(null);
 
     // Close any existing stream
     closeStream.current?.();
+
+    if (imageForTurn) {
+      try {
+        await attachImage(sessionIdRef.current, imageForTurn.split(",")[1] ?? "");
+      } catch {
+        updateActiveTurn((turn) => ({
+          ...turn,
+          steps: [...turn.steps, {
+            id: Date.now().toString(),
+            message: "Couldn't attach the image — continuing with text only.",
+            status: "error",
+          }],
+        }));
+      }
+    }
 
     const close = streamChat(msg, sessionIdRef.current, {
       onStep: (event: AgentEvent) => {
@@ -164,42 +306,139 @@ export default function Chat() {
     });
 
     closeStream.current = close;
-  }, [input, loading, updateActiveTurn]);
+  }, [input, loading, pastedImage, updateActiveTurn]);
+
+  const BAR_COUNT = 32;
+
+  // Real mic amplitude drives the waveform bars — separate from
+  // SpeechRecognition (which only returns text, not audio levels) so the
+  // user gets visible proof the mic is actually picking up their voice.
+  const startLevelMeter = (stream: MediaStream) => {
+    const audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 64;
+    source.connect(analyser);
+    audioCtxRef.current = audioCtx;
+
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const groupSize = Math.ceil(data.length / BAR_COUNT);
+    let lastUpdate = 0;
+
+    const tick = (time: number) => {
+      analyser.getByteFrequencyData(data);
+      if (time - lastUpdate > 60) {
+        lastUpdate = time;
+        setAudioLevels(
+          Array.from({ length: BAR_COUNT }, (_, i) => {
+            const group = data.slice(i * groupSize, (i + 1) * groupSize);
+            const avg = group.reduce((s, v) => s + v, 0) / (group.length || 1);
+            return Math.max(4, Math.round((avg / 255) * 100));
+          })
+        );
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  const stopLevelMeter = () => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current = null;
+    setAudioLevels(Array(BAR_COUNT).fill(4));
+  };
 
   const handleMic = async () => {
-    if (recording) {
-      mediaRef.current?.stop();
-      setRecording(false);
+    setMicError(null);
+
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) {
+      setMicError("Voice input needs Chrome or Edge — not supported in this browser.");
       return;
     }
+
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const chunks: BlobPart[] = [];
-      recorder.ondataavailable = (e) => chunks.push(e.data);
-      recorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: "audio/webm" });
-        const form = new FormData();
-        form.append("audio", blob, "recording.webm");
-        try {
-          const res = await fetch("/api/transcribe", { method: "POST", body: form });
-          const { text } = await res.json();
-          setInput(text);
-        } catch {
-          // transcription failed — leave input as-is
-        }
-        stream.getTracks().forEach((t) => t.stop());
-      };
-      recorder.start();
-      mediaRef.current = recorder;
-      setRecording(true);
-      setTimeout(() => {
-        if (recorder.state === "recording") recorder.stop();
-        setRecording(false);
-      }, 8000);
-    } catch {
-      // Mic permission denied
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      setMicError(
+        (e as Error).name === "NotAllowedError"
+          ? "Microphone access was denied. Allow it in your browser's site settings and try again."
+          : "Couldn't access the microphone."
+      );
+      return;
     }
+    micStreamRef.current = stream;
+    startLevelMeter(stream);
+
+    stoppingRef.current = false;
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    // Keep listening across natural pauses — only the Stop/Cancel buttons
+    // should end the session, not a moment of silence mid-sentence.
+    recognition.continuous = true;
+
+    recognition.onresult = (event) => {
+      let newText = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript.trim();
+        if (transcript) newText += (newText ? " " : "") + transcript;
+      }
+      if (newText) {
+        setInput((prev) => (prev ? `${prev} ${newText}` : newText));
+      }
+    };
+
+    recognition.onerror = (event) => {
+      // "aborted" = user cancelled; "no-speech" = a pause, not a failure —
+      // onend will auto-resume for both. Anything else is a real failure.
+      if (event.error === "aborted" || event.error === "no-speech") return;
+      stoppingRef.current = true;
+      setMicError(
+        event.error === "not-allowed"
+          ? "Microphone access was denied. Allow it in your browser's site settings and try again."
+          : "Couldn't access the microphone."
+      );
+    };
+
+    recognition.onend = () => {
+      if (stoppingRef.current) {
+        stopLevelMeter();
+        setRecording(false);
+        return;
+      }
+      // Chrome ended the session on its own (e.g. after a pause) even
+      // though continuous=true — resume transparently so it never feels
+      // like it stopped listening.
+      try {
+        recognition.start();
+      } catch {
+        // A start() already in flight — safe to ignore.
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setRecording(true);
+  };
+
+  // Stop = finalize whatever was heard so far (onresult still fires, then onend).
+  const handleStopRecording = () => {
+    stoppingRef.current = true;
+    recognitionRef.current?.stop();
+  };
+
+  // Cancel = discard the recording entirely, no transcript inserted.
+  const handleCancelRecording = () => {
+    stoppingRef.current = true;
+    setMicError(null);
+    recognitionRef.current?.abort();
   };
 
   const handleLogout = () => {
@@ -214,7 +453,17 @@ export default function Chat() {
         onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
         refreshKey={sidebarRefreshKey}
+        collapsed={leftCollapsed}
+        onToggleCollapse={() => setLeftCollapsed((c) => !c)}
+        width={leftWidth}
       />
+      {!leftCollapsed && (
+        <div
+          onMouseDown={startResize("left")}
+          title="Drag to resize"
+          className="w-1 shrink-0 cursor-col-resize hover:bg-[var(--color-primary)] transition-colors"
+        />
+      )}
 
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -229,6 +478,14 @@ export default function Chat() {
           <div className="flex items-center gap-4">
             <a href="/dashboard" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">
               Dashboard ↗
+            </a>
+            <a href="/cart" className="relative text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors" title="Cart">
+              <ShoppingCart size={18} />
+              {cartCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-semibold grid place-items-center">
+                  {cartCount}
+                </span>
+              )}
             </a>
             <div className="flex items-center gap-2 text-sm border-l border-[var(--color-border)] pl-4">
               <span className="text-[var(--color-text-muted)]">{user?.name}</span>
@@ -252,6 +509,9 @@ export default function Chat() {
                 {/* User message bubble */}
                 <div className="flex justify-end">
                   <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-[var(--color-primary)] text-white px-4 py-2.5 text-sm">
+                    {turn.image && (
+                      <img src={turn.image} alt="Attached" className="w-40 h-40 object-cover rounded-lg mb-2" />
+                    )}
                     {turn.userMessage}
                   </div>
                 </div>
@@ -347,39 +607,118 @@ export default function Chat() {
 
         {/* Input bar */}
         <div className="px-6 py-4 border-t border-[var(--color-border)] shrink-0">
-          <div className="flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder={loading ? "Searching..." : "Ask something..."}
-              disabled={loading}
-              className="flex-1 bg-transparent text-sm outline-none text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] disabled:opacity-50"
-            />
-            <button
-              onClick={handleMic}
-              disabled={loading}
-              className={`p-1.5 rounded-lg transition-colors ${
-                recording
-                  ? "bg-rose-500 text-white animate-pulse"
-                  : "text-[var(--color-text-muted)] hover:text-[var(--color-primary)]"
-              } disabled:opacity-40`}
-              title={recording ? "Stop recording" : "Voice input"}
-            >
-              {recording ? <MicOff size={18} /> : <Mic size={18} />}
-            </button>
-            <button
-              onClick={handleSend}
-              disabled={loading || !input.trim()}
-              className="p-1.5 rounded-lg bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-light)] transition-colors disabled:opacity-40"
-            >
-              <Send size={18} />
-            </button>
-          </div>
+          {micError && (
+            <p className="text-xs text-rose-500 mb-2">{micError}</p>
+          )}
+          {imageError && (
+            <p className="text-xs text-rose-500 mb-2">{imageError}</p>
+          )}
+          {pastedImage && !recording && (
+            <div className="relative inline-block mb-2">
+              <img src={pastedImage} alt="Pasted" className="h-16 w-16 object-cover rounded-lg border border-[var(--color-border)]" />
+              <button
+                type="button"
+                onClick={() => setPastedImage(null)}
+                title="Remove image"
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[var(--color-text)] text-[var(--color-surface)] grid place-items-center"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+          {recording ? (
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+              <button
+                type="button"
+                onClick={handleCancelRecording}
+                title="Cancel"
+                className="text-[var(--color-text-muted)] hover:text-rose-500 transition-colors shrink-0"
+              >
+                <X size={18} />
+              </button>
+              <div className="flex-1 flex items-center gap-[2px] h-6 min-w-0">
+                {audioLevels.map((level, i) => (
+                  <span
+                    key={i}
+                    className="flex-1 rounded-full bg-[var(--color-primary)] transition-[height] duration-75"
+                    style={{ height: `${level}%` }}
+                  />
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleStopRecording}
+                title="Stop recording"
+                className="w-8 h-8 rounded-full bg-[var(--color-primary)] text-white grid place-items-center hover:bg-[var(--color-primary-light)] transition-colors shrink-0"
+              >
+                <Square size={13} fill="currentColor" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                onPaste={async (e) => {
+                  if (!e.clipboardData) return; // let normal text paste proceed
+                  const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith("image/"));
+                  if (!item) return; // no image on the clipboard — let normal text paste proceed
+                  e.preventDefault();
+                  const file = item.getAsFile();
+                  if (!file) return;
+                  setImageError(null);
+                  try {
+                    setPastedImage(await resizeImageForUpload(file));
+                  } catch {
+                    setImageError("Couldn't read that image — try a different one.");
+                  }
+                }}
+                placeholder={loading ? "Searching..." : "Ask something..."}
+                disabled={loading}
+                rows={1}
+                className="flex-1 bg-transparent text-sm outline-none resize-none text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] disabled:opacity-50 max-h-40 overflow-y-auto leading-relaxed"
+              />
+              <button
+                type="button"
+                onClick={handleMic}
+                disabled={loading}
+                className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors disabled:opacity-40"
+                title="Voice input"
+              >
+                <Mic size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={loading || !input.trim()}
+                className="p-1.5 rounded-lg bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-light)] transition-colors disabled:opacity-40"
+              >
+                <Send size={18} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      <OrdersPanel />
+      {!rightCollapsed && (
+        <div
+          onMouseDown={startResize("right")}
+          title="Drag to resize"
+          className="w-1 shrink-0 cursor-col-resize hover:bg-[var(--color-primary)] transition-colors"
+        />
+      )}
+      <OrdersPanel
+        collapsed={rightCollapsed}
+        onToggleCollapse={() => setRightCollapsed((c) => !c)}
+        width={rightWidth}
+      />
     </div>
   );
 }

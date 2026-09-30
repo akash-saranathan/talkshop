@@ -43,6 +43,7 @@ def init_db(db_path: Path = DB_PATH):
     Base.metadata.create_all(engine)
     _ensure_column(engine, "users", "password_hash", "password_hash VARCHAR(255) NOT NULL DEFAULT ''")
     _ensure_column(engine, "orders", "tracking_number", "tracking_number VARCHAR(50)")
+    _ensure_column(engine, "products", "image_url", "image_url VARCHAR(500)")
     return engine
 
 
@@ -102,9 +103,14 @@ def seed_products(session: Session):
     with open(products_file) as f:
         products = json.load(f)
     for p in products:
-        exists = session.query(Product).filter_by(product_id=p["product_id"]).first()
-        if not exists:
+        existing_row = session.query(Product).filter_by(product_id=p["product_id"]).first()
+        if not existing_row:
             session.add(Product(**p))
+        elif existing_row.image_url != p.get("image_url"):
+            # Backfill image_url on rows seeded before this field existed —
+            # cosmetic metadata only, safe to patch without touching
+            # price/inventory that a real merchant feed would own.
+            existing_row.image_url = p.get("image_url")
     session.commit()
 
 

@@ -32,6 +32,7 @@ def _product_to_dict(p: Product) -> dict:
         "cushioning": p.cushioning,
         "rating": p.rating,
         "review_count": p.review_count,
+        "image_url": p.image_url,
     }
 
 
