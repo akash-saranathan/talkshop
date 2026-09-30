@@ -94,9 +94,10 @@ export default function Cart() {
 
   const selectedItems = items.filter((i) => selected.has(i.cart_item_id));
   const subtotal = selectedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const walletInsufficient = paymentMethod === "wallet" && wallet !== null && wallet.balance < subtotal;
 
   const handleCheckout = () => {
-    if (selectedItems.length === 0) return;
+    if (selectedItems.length === 0 || walletInsufficient) return;
     navigate("/checkout", { state: { items: selectedItems, paymentMethod, selectedCard } });
   };
 
@@ -372,11 +373,16 @@ export default function Cart() {
                 )}
               </div>
 
+              {walletInsufficient && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+                  Wallet balance (${wallet!.balance.toFixed(2)}) is less than your subtotal — switch to Card or remove items.
+                </p>
+              )}
               <button
                 type="button"
                 onClick={handleCheckout}
-                disabled={selectedItems.length === 0}
-                className="w-full px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-light)] disabled:opacity-40 transition-colors"
+                disabled={selectedItems.length === 0 || walletInsufficient}
+                className="w-full px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-light)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 Proceed to Checkout
               </button>

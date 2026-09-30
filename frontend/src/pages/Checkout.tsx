@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, CheckCircle, Loader, AlertTriangle, RotateCcw, CreditCard, Lock, Sparkles } from "lucide-react";
+import { Shield, CheckCircle, Loader, AlertTriangle, RotateCcw, CreditCard, Lock, Sparkles, Wallet } from "lucide-react";
 import type { CartItemData } from "../api/cart";
 import { removeFromCart } from "../api/cart";
 import { authFetch } from "../api/client";
@@ -100,6 +100,8 @@ export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
   const locationItems = (location.state?.items as CartItemData[] | undefined) ?? null;
+  const locationPaymentMethod = (location.state?.paymentMethod as "wallet" | "card" | undefined) ?? "card";
+  const locationSelectedCard = (location.state?.selectedCard as string | undefined);
 
   const [initialItems, setInitialItems] = useState<CartItemData[]>(locationItems ?? []);
   const [cartLoading, setCartLoading] = useState(!locationItems);
@@ -109,8 +111,15 @@ export default function Checkout() {
   const [started, setStarted] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [selectedCard, setSelectedCard] = useState(MOCK_CARDS[0].id);
+  const [paymentMethod, setPaymentMethod] = useState<"wallet" | "card">(locationPaymentMethod);
+  const [selectedCard, setSelectedCard] = useState(locationSelectedCard ?? MOCK_CARDS[0].id);
+  const [wallet, setWallet] = useState<{ balance: number; currency: string } | null>(null);
   const [redirectIn, setRedirectIn] = useState<number | null>(null);
+
+  // Fetch wallet balance for the payment method picker
+  useEffect(() => {
+    authFetch("/api/wallet").then((r) => r.ok ? r.json() : null).then((w) => { if (w) setWallet(w); }).catch(() => {});
+  }, []);
 
   // Fall back to loading cart from API when no items passed via navigate state
   // (e.g. when auto-checkout countdown fires directly to /checkout).
@@ -239,6 +248,8 @@ export default function Checkout() {
 
   const succeeded = queue.filter((e) => e.status === "success").length;
   const finished = started && !processing;
+  const checkoutTotal = queue.reduce((s, e) => s + (e.checkoutData?.total ?? e.item.price * e.item.quantity), 0);
+  const walletInsufficient = paymentMethod === "wallet" && wallet !== null && wallet.balance < checkoutTotal;
 
   // Auto-redirect to dashboard 10s after all items are done processing, if at least one succeeded.
   useEffect(() => {
@@ -315,48 +326,90 @@ export default function Checkout() {
             </div>
           )}
 
-          {/* Card selector */}
+          {/* Payment method */}
           <div className="mt-4">
             <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <CreditCard size={12} /> Payment Method
             </p>
-            <div className="flex flex-col gap-1.5">
-              {MOCK_CARDS.map((card) => (
+
+            {/* Wallet / Card toggle */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {(["wallet", "card"] as const).map((m) => (
                 <button
-                  key={card.id}
+                  key={m}
                   type="button"
                   disabled={started}
-                  onClick={() => setSelectedCard(card.id)}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm text-left transition-colors disabled:cursor-default ${
-                    selectedCard === card.id
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-text)]"
+                  onClick={() => setPaymentMethod(m)}
+                  className={`flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-colors disabled:cursor-default ${
+                    paymentMethod === m
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
                       : "border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/40"
                   }`}
                 >
-                  <span className={`w-3 h-3 rounded-full border-2 shrink-0 ${
-                    selectedCard === card.id
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary)]"
-                      : "border-[var(--color-border)]"
-                  }`} />
-                  <span className="font-medium text-xs">{card.network}</span>
-                  <span className="text-xs">●●●● {card.last4}</span>
-                  <span className="text-[10px] text-[var(--color-text-muted)] ml-auto">{card.expiry}</span>
-                  {card.isDefault && (
-                    <span className="text-[10px] text-[var(--color-success)] font-semibold">Default</span>
-                  )}
+                  {m === "wallet" ? <Wallet size={13} /> : <CreditCard size={13} />}
+                  {m === "wallet" ? "Wallet" : "Card"}
                 </button>
               ))}
             </div>
+
+            {/* Wallet balance */}
+            {paymentMethod === "wallet" && (
+              <div className="rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] px-3 py-2.5 flex items-center justify-between">
+                <span className="text-sm text-[var(--color-text-muted)]">Balance</span>
+                <span className="font-semibold text-[var(--color-primary)]">
+                  {wallet ? `$${wallet.balance.toFixed(2)}` : "—"}
+                </span>
+              </div>
+            )}
+
+            {/* Card list */}
+            {paymentMethod === "card" && (
+              <div className="flex flex-col gap-1.5">
+                {MOCK_CARDS.map((card) => (
+                  <button
+                    key={card.id}
+                    type="button"
+                    disabled={started}
+                    onClick={() => setSelectedCard(card.id)}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm text-left transition-colors disabled:cursor-default ${
+                      selectedCard === card.id
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-text)]"
+                        : "border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/40"
+                    }`}
+                  >
+                    <span className={`w-3 h-3 rounded-full border-2 shrink-0 ${
+                      selectedCard === card.id
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]"
+                        : "border-[var(--color-border)]"
+                    }`} />
+                    <span className="font-medium text-xs">{card.network}</span>
+                    <span className="text-xs">●●●● {card.last4}</span>
+                    <span className="text-[10px] text-[var(--color-text-muted)] ml-auto">{card.expiry}</span>
+                    {card.isDefault && (
+                      <span className="text-[10px] text-[var(--color-success)] font-semibold">Default</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-4 flex flex-col gap-2">
             {!started ? (
-              <button
-                onClick={handleApproveAll}
-                className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] transition-colors flex items-center justify-center gap-2"
-              >
-                Approve Purchase{queue.length > 1 ? ` (${queue.length} items)` : ""}
-              </button>
+              <>
+                {walletInsufficient && (
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+                    Wallet balance (${wallet!.balance.toFixed(2)}) is less than the order total — switch to Card.
+                  </p>
+                )}
+                <button
+                  onClick={handleApproveAll}
+                  disabled={walletInsufficient}
+                  className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  Approve Purchase{queue.length > 1 ? ` (${queue.length} items)` : ""}
+                </button>
+              </>
             ) : processing ? (
               <button
                 disabled
