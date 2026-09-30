@@ -55,11 +55,13 @@ The JSON must match this schema exactly:
 Rules:
 - max_price must be a number, not a string ("under $100" → 100.0)
 - category must be one of:
-    running_shoes, sneakers, boots, clothing, laptops, phones, watches,
+    running_shoes, sneakers, boots, shoes, clothing, laptops, phones, watches,
     bags, sunglasses, electronics, accessories, general, chitchat
   Map user words precisely:
     "shirt", "t-shirt", "tee", "polo", "dress", "pants", "jeans" → "clothing"
+    "shoe", "shoes" (generic, no qualifier) → "shoes"
     "sneaker", "casual shoe", "trainer" → "sneakers"
+    "running shoe", "running sneaker" → "running_shoes"
     "boot", "chelsea boot" → "boots"
     "laptop", "notebook", "computer" → "laptops"
     "phone", "smartphone", "iphone", "android" → "phones"
