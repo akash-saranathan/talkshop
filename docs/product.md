@@ -109,3 +109,31 @@ Checkbox each card you want; a floating bar shows the total and a single "Buy Se
 **14. Proactive recommendations** — based on past order history ("you bought running shoes 6 months ago — time for a new pair?"), the AI surfaces relevant suggestions without being asked.
 
 **15. External merchant integrations** — currently local catalog + DummyJSON. Adding real Shopify/BestBuy connectors would let users shop actual live inventory.
+
+---
+
+## Notification & real-time order tracking (next major feature area)
+
+This is a distinct capability layer — turning Talkshop from a one-shot purchase tool into an ongoing relationship with the user across channels.
+
+### How it works end-to-end
+
+1. **User places an order** → `PayIt` agent completes → backend triggers an immediate order confirmation email using the email already stored in the `users` table.
+2. **A scheduled agent** runs every hour, checks all `paid` orders, and advances their status through a defined progression: `paid → processing → shipped → out_for_delivery → delivered`.
+3. **Each status transition** fires a notification (email and/or WhatsApp) with the relevant update: *"Your Brooks Ghost 15 has shipped — arrives Thursday, Oct 3."*
+4. **With a real carrier integration** (EasyPost, ShipStation), the mock progression is replaced by actual webhook events pushed from the carrier whenever the package moves. The agent reacts to those instead of simulating them.
+
+### Buildable now vs later
+
+| Item | Effort | Needs |
+|---|---|---|
+| **16. Order confirmation email** | Low — a few hours | Free Resend or SendGrid API key; email already in DB |
+| **17. Order status update emails** (simulated) | Low — half a day | Scheduled cron/agent job; no external account |
+| **18. Real shipping tracking** | Medium — 1 day | EasyPost free sandbox account; real tracking numbers |
+| **19. WhatsApp notifications** | Medium — 1–2 days | Twilio account; add phone number field to user profile |
+| **20. Price drop alert emails** | Medium | Extends item 11 above; needs a watcher job per intent |
+
+### Notes
+- Items 16 and 17 use only infrastructure already in the project (SQLite DB, user email, Python backend). No new accounts needed beyond a free email API key.
+- WhatsApp (item 19) requires users to opt in with a phone number — a new field on the profile page — and a Twilio WhatsApp Business number.
+- The AI agent doesn't inherently "know" a package shipped — the carrier tells it via webhooks (item 18). Items 16–17 simulate this loop so the full notification experience works in demo before real carriers are connected.
