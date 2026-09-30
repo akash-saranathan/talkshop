@@ -6,6 +6,7 @@ import type { CartItemData } from "../api/cart";
 import { removeFromCart } from "../api/cart";
 import { authFetch } from "../api/client";
 import { getProductVisual } from "../utils/productVisual";
+import AppHeader from "../components/AppHeader";
 
 interface CheckoutData {
   checkout_id: string;
@@ -197,23 +198,40 @@ export default function Checkout() {
 
   if (initialItems.length === 0) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg)] flex flex-col items-center justify-center gap-4">
-        <p className="text-rose-500 text-sm">No items selected. Go back to your cart and pick something to buy.</p>
-        <button onClick={() => navigate("/cart")} className="text-sm text-[var(--color-primary)] underline">
-          Back to cart
-        </button>
+      <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
+        <AppHeader title="Checkout" backHref="/cart" backLabel="Cart" />
+        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <p className="text-rose-500 text-sm">No items selected. Go back to your cart and pick something to buy.</p>
+          <button onClick={() => navigate("/cart")} className="text-sm text-[var(--color-primary)] underline">
+            Back to cart
+          </button>
+        </div>
       </div>
     );
   }
 
   const succeeded = queue.filter((e) => e.status === "success").length;
   const finished = started && !processing;
+  const [redirectIn, setRedirectIn] = useState<number | null>(null);
+
+  // Auto-redirect to chat 3s after all items are done processing, if at least one succeeded.
+  useEffect(() => {
+    if (!finished || succeeded === 0) return;
+    setRedirectIn(3);
+    const interval = setInterval(() => {
+      setRedirectIn((c) => {
+        if (c === null || c <= 1) { clearInterval(interval); return null; }
+        return c - 1;
+      });
+    }, 1000);
+    const timeout = setTimeout(() => navigate("/"), 3000);
+    return () => { clearInterval(interval); clearTimeout(timeout); };
+  }, [finished, succeeded, navigate]);
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] p-6">
-      <h1 className="text-xl font-semibold text-[var(--color-primary)] mb-6">
-        Checkout &amp; Authorization
-      </h1>
+    <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
+      <AppHeader title="Checkout & Authorization" backHref="/cart" backLabel="Cart" />
+      <div className="flex-1 p-6">
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl">
 
@@ -321,8 +339,15 @@ export default function Checkout() {
                 <Loader size={14} className="animate-spin" /> Processing...
               </button>
             ) : (
-              <div className="text-center text-sm font-medium text-[var(--color-text)] py-2">
-                {succeeded} of {queue.length} purchased
+              <div className="text-center py-2">
+                <p className="text-sm font-semibold text-[var(--color-success)]">
+                  {succeeded > 0 ? `${succeeded} of ${queue.length} purchased ✓` : "Purchase complete"}
+                </p>
+                {redirectIn !== null && (
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                    Returning to chat in {redirectIn}s...
+                  </p>
+                )}
               </div>
             )}
             <button
@@ -402,6 +427,7 @@ export default function Checkout() {
             </motion.div>
           )}
         </motion.div>
+      </div>
       </div>
     </div>
   );

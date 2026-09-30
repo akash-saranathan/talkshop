@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Loader, Wallet as WalletIcon, Package, Truck, PackageCheck, ChevronDown, ChevronUp, type LucideIcon } from "lucide-react";
+import {
+  Loader, Wallet as WalletIcon, Package, Truck, PackageCheck,
+  ChevronDown, ChevronUp, ExternalLink, type LucideIcon,
+} from "lucide-react";
 import { authFetch } from "../api/client";
 import { getProductVisual } from "../utils/productVisual";
+import AppHeader from "../components/AppHeader";
 
 type DeliveryStatus = "processing" | "shipped" | "delivered";
 
@@ -21,10 +25,7 @@ interface Order {
   estimated_delivery: string | null;
 }
 
-interface WalletBalance {
-  balance: number;
-  currency: string;
-}
+interface WalletBalance { balance: number; currency: string; }
 
 interface AuditEvent {
   event_id: string;
@@ -33,17 +34,53 @@ interface AuditEvent {
   timestamp: string | null;
 }
 
-const DELIVERY_BADGE: Record<DeliveryStatus, { label: string; icon: LucideIcon; className: string }> = {
-  processing: { label: "Processing", icon: Package, className: "bg-slate-100 text-slate-600" },
-  shipped: { label: "Shipped", icon: Truck, className: "bg-blue-100 text-blue-700" },
-  delivered: { label: "Delivered", icon: PackageCheck, className: "bg-emerald-100 text-emerald-700" },
+const DELIVERY_META: Record<DeliveryStatus, { label: string; icon: LucideIcon; cls: string }> = {
+  processing: { label: "Processing", icon: Package,      cls: "bg-amber-100 text-amber-700" },
+  shipped:    { label: "Shipped",    icon: Truck,        cls: "bg-blue-100 text-blue-700" },
+  delivered:  { label: "Delivered",  icon: PackageCheck, cls: "bg-emerald-100 text-emerald-700" },
 };
 
-function formatDate(iso: string | null): string {
+// Abbreviated agent pipeline shown per order row
+const PIPELINE = ["VibeCheck", "SneakPeek", "CartUp", "GreenLight", "PayIt", "TrackIt"];
+const PIPELINE_SHORT = ["VC", "SP", "CU", "GL", "PI", "TT"];
+
+function formatDate(iso: string | null, short = false): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-  });
+  const d = new Date(iso);
+  if (short) return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function AISummary({ orders, wallet }: { orders: Order[]; wallet: WalletBalance | null }) {
+  const paid = orders.filter((o) => o.status === "paid");
+  const blocked = orders.filter((o) => o.status === "blocked");
+  const inFlight = paid.filter((o) => o.delivery_status !== "delivered");
+
+  if (orders.length === 0) return null;
+
+  let insight = "";
+  if (paid.length > 0 && inFlight.length > 0) {
+    insight = `${inFlight.length} order${inFlight.length > 1 ? "s" : ""} in transit — all authorized by GreenLight and executed by PayIt.`;
+  } else if (paid.length > 0) {
+    insight = `All ${paid.length} purchase${paid.length > 1 ? "s" : ""} cleared the 12-check guardrail and executed successfully.`;
+  } else if (blocked.length > 0) {
+    insight = `${blocked.length} transaction${blocked.length > 1 ? "s were" : " was"} blocked by the guardrail engine before any payment was attempted.`;
+  }
+
+  return (
+    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4 mb-5">
+      <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
+        AI Summary
+      </p>
+      <p className="text-sm text-[var(--color-text)]">
+        {wallet && (
+          <span className="font-semibold text-[var(--color-primary)]">${(wallet.balance).toFixed(2)} remaining</span>
+        )}
+        {wallet && insight && " · "}
+        {insight}
+      </p>
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -53,238 +90,248 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
-  const [expandedAudit, setExpandedAudit] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [auditData, setAuditData] = useState<Record<string, AuditEvent[]>>({});
   const [auditLoading, setAuditLoading] = useState<Set<string>>(new Set());
 
-  const toggleAudit = async (orderId: string) => {
-    if (expandedAudit === orderId) { setExpandedAudit(null); return; }
-    setExpandedAudit(orderId);
-    if (auditData[orderId]) return;
-    setAuditLoading((prev) => new Set(prev).add(orderId));
-    try {
-      const res = await authFetch(`/api/audit/${orderId}`);
-      const events: AuditEvent[] = res.ok ? await res.json() : [];
-      setAuditData((prev) => ({ ...prev, [orderId]: events }));
-    } catch {
-      setAuditData((prev) => ({ ...prev, [orderId]: [] }));
-    } finally {
-      setAuditLoading((prev) => { const s = new Set(prev); s.delete(orderId); return s; });
-    }
-  };
-
   useEffect(() => {
     Promise.all([
-      authFetch("/api/orders").then((res) => {
-        if (!res.ok) throw new Error("Failed to load orders");
-        return res.json();
-      }),
-      authFetch("/api/wallet").then((res) => {
-        if (!res.ok) throw new Error("Failed to load wallet");
-        return res.json();
-      }),
+      authFetch("/api/orders").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
+      authFetch("/api/wallet").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
     ])
-      .then(([ordersData, walletData]: [Order[], WalletBalance]) => {
-        setOrders(ordersData);
-        setWallet(walletData);
-      })
-      .catch(() => setError("Couldn't load your dashboard. Please try again in a moment."))
+      .then(([o, w]: [Order[], WalletBalance]) => { setOrders(o); setWallet(w); })
+      .catch(() => setError("Couldn't load your dashboard — please try again."))
       .finally(() => setLoading(false));
   }, []);
 
-  const approved = orders.filter((o) => o.status === "paid").length;
-  const blocked = orders.filter((o) => o.status === "blocked").length;
-  const totalSpend = orders.filter((o) => o.status === "paid")
-    .reduce((sum, o) => sum + o.amount, 0);
+  const toggleAudit = async (id: string) => {
+    if (expandedId === id) { setExpandedId(null); return; }
+    setExpandedId(id);
+    if (auditData[id]) return;
+    setAuditLoading((s) => new Set(s).add(id));
+    try {
+      const r = await authFetch(`/api/audit/${id}`);
+      const events: AuditEvent[] = r.ok ? await r.json() : [];
+      setAuditData((d) => ({ ...d, [id]: events }));
+    } catch {
+      setAuditData((d) => ({ ...d, [id]: [] }));
+    } finally {
+      setAuditLoading((s) => { const n = new Set(s); n.delete(id); return n; });
+    }
+  };
+
+  const paid    = orders.filter((o) => o.status === "paid");
+  const blocked = orders.filter((o) => o.status === "blocked");
+  const spend   = paid.reduce((s, o) => s + o.amount, 0);
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <a
-            href="/"
-            className="flex items-center gap-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
-          >
-            <ArrowLeft size={15} /> Back to Chat
-          </a>
-          <h1 className="text-xl font-semibold text-[var(--color-primary)]">Commerce Intelligence</h1>
-        </div>
-        <button
-          disabled
-          aria-disabled="true"
-          title="Coming soon"
-          className="flex items-center gap-1.5 text-sm text-[var(--color-text-muted)] opacity-40 cursor-not-allowed border border-[var(--color-border)] rounded-lg px-3 py-1.5"
-        >
-          <Download size={14} /> Export
-        </button>
-      </div>
+    <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
+      <AppHeader title="Commerce Intelligence" backHref="/" backLabel="Chat" />
 
-      {/* Wallet hero card */}
-      <div className="rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] text-white p-6 mb-6 flex items-center justify-between">
-        <div>
-          <p className="text-sm text-white/80 flex items-center gap-1.5 mb-1">
-            <WalletIcon size={14} /> Wallet Balance
-          </p>
-          <p className="text-3xl font-bold">
-            {loading ? "—" : wallet ? `$${wallet.balance.toFixed(2)}` : "$0.00"}
-          </p>
-        </div>
-        <p className="text-xs text-white/70 max-w-[220px] text-right">
-          Backs every DPAT token this agent is authorized to spend from — never a real card.
-        </p>
-      </div>
-
-      {/* KPI tiles */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        {[
-          { label: "Approved", value: approved, color: "text-[var(--color-success)]" },
-          { label: "Blocked", value: blocked, color: "text-[var(--color-blocked)]" },
-          { label: "Total Spend", value: `$${totalSpend.toFixed(2)}` },
-        ].map((kpi) => (
-          <div key={kpi.label} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-center">
-            <p className={`text-2xl font-bold ${kpi.color ?? "text-[var(--color-text)]"}`}>{kpi.value}</p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">{kpi.label}</p>
+      <div className="flex-1 p-6 max-w-6xl mx-auto w-full">
+        {/* KPI row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+          <div className="rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] text-white p-4">
+            <p className="text-xs text-white/70 flex items-center gap-1 mb-1"><WalletIcon size={12} /> Wallet</p>
+            <p className="text-2xl font-bold">{loading ? "—" : wallet ? `$${wallet.balance.toFixed(2)}` : "$0.00"}</p>
           </div>
-        ))}
-      </div>
-
-      {/* Order history */}
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-10 text-sm text-[var(--color-text-muted)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <Loader size={16} className="animate-spin" /> Loading orders...
+          {[
+            { label: "Authorized", value: paid.length, cls: "text-[var(--color-success)]" },
+            { label: "Blocked",    value: blocked.length, cls: "text-[var(--color-blocked)]" },
+            { label: "Total Spent", value: `$${spend.toFixed(2)}`, cls: "text-[var(--color-text)]" },
+          ].map((k) => (
+            <div key={k.label} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+              <p className="text-xs text-[var(--color-text-muted)] mb-1">{k.label}</p>
+              <p className={`text-2xl font-bold ${k.cls}`}>{k.value}</p>
+            </div>
+          ))}
         </div>
-      ) : error ? (
-        <div className="py-10 text-center text-sm text-rose-500 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-          {error}
-        </div>
-      ) : orders.length === 0 ? (
-        <div className="py-10 text-center text-sm text-[var(--color-text-muted)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-          No orders yet — complete a purchase to see it here.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {orders.map((order) => {
-            const visual = getProductVisual(order.product_title ?? "", order.product_category ?? "");
-            const VisualIcon = visual.icon;
-            const delivery = order.delivery_status ? DELIVERY_BADGE[order.delivery_status] : null;
-            const DeliveryIcon = delivery?.icon;
 
-            return (
-              <div
-                key={order.order_id}
-                className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex flex-col gap-0"
-              >
-              <div className="flex items-center gap-4">
-                {/* Product visual — real photo when available, icon tile otherwise */}
-                {order.product_image_url && !imageErrors.has(order.order_id) ? (
-                  <img
-                    src={order.product_image_url}
-                    alt={order.product_title ?? ""}
-                    onError={() => setImageErrors((prev) => new Set(prev).add(order.order_id))}
-                    className="w-14 h-14 rounded-xl object-cover shrink-0"
-                  />
-                ) : (
-                  <div className={`w-14 h-14 rounded-xl grid place-items-center shrink-0 ${visual.bg}`}>
-                    <VisualIcon size={26} className={visual.fg} strokeWidth={1.5} />
-                  </div>
-                )}
+        {/* AI Summary */}
+        <AISummary orders={orders} wallet={wallet} />
 
-                {/* Main info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-[var(--color-text)] truncate">
-                      {order.product_title ?? order.order_id}
-                    </p>
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold shrink-0 ${
-                      order.status === "paid"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-rose-100 text-rose-700"
-                    }`}>
-                      {order.status === "paid" ? "✓ PAID" : "⛔ BLOCKED"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                    {order.merchant} · {order.order_id} · {formatDate(order.created_at)}
-                  </p>
+        {/* Orders table */}
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-[var(--color-text-muted)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <Loader size={16} className="animate-spin" /> Loading orders...
+          </div>
+        ) : error ? (
+          <div className="py-16 text-center text-sm text-rose-500 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+            {error}
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="py-16 text-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <Package size={32} className="mx-auto text-[var(--color-text-muted)] mb-3 opacity-40" />
+            <p className="text-sm text-[var(--color-text-muted)]">No orders yet — start a conversation to find and buy products.</p>
+            <a href="/" className="inline-block mt-4 text-sm text-[var(--color-primary)] hover:underline">Start shopping →</a>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
+            {/* Table header */}
+            <div className="grid grid-cols-[2rem_1fr_7rem_8rem_8rem_6rem_2.5rem] items-center gap-3 px-5 py-3 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
+              <span />
+              <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Product</span>
+              <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Amount</span>
+              <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Agent Pipeline</span>
+              <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Status</span>
+              <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Date</span>
+              <span />
+            </div>
 
-                  {order.status === "blocked" && order.reason && (
-                    <p className="text-xs text-rose-500 font-mono mt-1">{order.reason}</p>
-                  )}
+            {/* Rows */}
+            {orders.map((order, rowIdx) => {
+              const visual = getProductVisual(order.product_title ?? "", order.product_category ?? "");
+              const VisualIcon = visual.icon;
+              const delivery = order.delivery_status ? DELIVERY_META[order.delivery_status] : null;
+              const DelivIcon = delivery?.icon;
+              const expanded = expandedId === order.order_id;
+              const events: AuditEvent[] = auditData[order.order_id] ?? [];
+              // Which agents appear in the audit trail for this order
+              const seenAgents = new Set(events.map((e) => e.agent_id).filter(Boolean));
 
-                  {delivery && DeliveryIcon && (
-                    <div className="flex items-center gap-3 mt-2 flex-wrap">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${delivery.className}`}>
-                        <DeliveryIcon size={12} /> {delivery.label}
+              return (
+                <div key={order.order_id} className={`border-b border-[var(--color-border)] last:border-b-0 ${rowIdx % 2 === 1 ? "bg-[var(--color-bg)]/40" : ""}`}>
+                  {/* Main row */}
+                  <div className="grid grid-cols-[2rem_1fr_7rem_8rem_8rem_6rem_2.5rem] items-center gap-3 px-5 py-3.5">
+                    {/* Product thumb */}
+                    {order.product_image_url && !imageErrors.has(order.order_id) ? (
+                      <img
+                        src={order.product_image_url}
+                        alt=""
+                        onError={() => setImageErrors((p) => new Set(p).add(order.order_id))}
+                        className="w-8 h-8 rounded-lg object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${visual.bg}`}>
+                        <VisualIcon size={14} className={visual.fg} strokeWidth={1.5} />
+                      </div>
+                    )}
+
+                    {/* Product + merchant */}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-[var(--color-text)] truncate">
+                        {order.product_title ?? "—"}
+                      </p>
+                      <p className="text-[11px] text-[var(--color-text-muted)] truncate">{order.merchant}</p>
+                    </div>
+
+                    {/* Amount */}
+                    <span className="text-sm font-semibold text-[var(--color-text)]">${order.amount.toFixed(2)}</span>
+
+                    {/* Agent pipeline pills */}
+                    <div className="flex items-center gap-0.5">
+                      {PIPELINE_SHORT.map((short, pi) => {
+                        const full = PIPELINE[pi];
+                        const active = order.status === "paid"
+                          ? pi <= 5  // all agents ran for a paid order
+                          : pi <= 2; // blocked orders only reach VibeCheck→SneakPeek→CartUp
+                        return (
+                          <span
+                            key={short}
+                            title={full}
+                            className={`text-[9px] font-bold px-1 py-0.5 rounded transition-colors ${
+                              active
+                                ? "bg-[var(--color-primary)] text-white"
+                                : "bg-[var(--color-border)] text-[var(--color-text-muted)]"
+                            }`}
+                          >
+                            {short}
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    {/* Status */}
+                    <div className="flex flex-col gap-1">
+                      <span className={`inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                        order.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                      }`}>
+                        {order.status === "paid" ? "✓ Authorized" : "⛔ Blocked"}
                       </span>
-                      {order.tracking_number && (
-                        <span className="text-xs text-[var(--color-text-muted)] font-mono">
-                          {order.tracking_number}
-                        </span>
-                      )}
-                      {order.estimated_delivery && (
-                        <span className="text-xs text-[var(--color-text-muted)]">
-                          Est. {formatDate(order.estimated_delivery)}
+                      {delivery && DelivIcon && (
+                        <span className={`inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[11px] font-semibold ${delivery.cls}`}>
+                          <DelivIcon size={10} /> {delivery.label}
                         </span>
                       )}
                     </div>
-                  )}
-                </div>
 
-                {/* Amount + trail toggle */}
-                <div className="text-right shrink-0">
-                  <p className="font-semibold text-[var(--color-text)]">${order.amount.toFixed(2)}</p>
-                  <button
-                    onClick={() => toggleAudit(order.order_id)}
-                    className="text-xs text-[var(--color-primary)] hover:underline mt-1 flex items-center gap-0.5 ml-auto"
-                  >
-                    Audit {expandedAudit === order.order_id ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                  </button>
-                </div>
-              </div> {/* end inner flex row */}
+                    {/* Date */}
+                    <span className="text-xs text-[var(--color-text-muted)]">{formatDate(order.created_at, true)}</span>
 
-              {/* Inline audit trail */}
-              {expandedAudit === order.order_id && (
-                <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
-                  {auditLoading.has(order.order_id) ? (
-                    <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                      <Loader size={12} className="animate-spin" /> Loading audit trail...
-                    </div>
-                  ) : (auditData[order.order_id] ?? []).length === 0 ? (
-                    <p className="text-xs text-[var(--color-text-muted)]">No audit events found.</p>
-                  ) : (
-                    <div className="flex flex-col gap-2 relative">
-                      <div className="absolute left-[5px] top-1 bottom-1 w-px bg-[var(--color-border)]" />
-                      {(auditData[order.order_id] ?? []).map((ev) => (
-                        <div key={ev.event_id} className="flex items-start gap-3 pl-4 relative">
-                          <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/40 shrink-0" />
-                          <div className="min-w-0">
-                            <span className="text-xs font-mono text-[var(--color-text)]">{ev.event_type}</span>
-                            {ev.agent_id && (
-                              <span className="text-[10px] text-[var(--color-text-muted)] ml-2">via {ev.agent_id}</span>
-                            )}
-                            {ev.timestamp && (
-                              <span className="text-[10px] text-[var(--color-text-muted)] ml-2">
-                                {new Date(ev.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </span>
-                            )}
-                          </div>
+                    {/* Expand toggle */}
+                    <button
+                      onClick={() => toggleAudit(order.order_id)}
+                      className="p-1 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg)] transition-colors"
+                      title={expanded ? "Collapse audit trail" : "Expand audit trail"}
+                    >
+                      {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  </div>
+
+                  {/* Expanded audit trail */}
+                  {expanded && (
+                    <div className="px-5 pb-4 pt-1 border-t border-[var(--color-border)]/60 bg-[var(--color-bg)]/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                          Audit Trail · {order.order_id}
+                        </p>
+                        <button
+                          onClick={() => navigate(`/payment-result/${order.order_id}`)}
+                          className="text-[11px] text-[var(--color-primary)] hover:underline flex items-center gap-1"
+                        >
+                          Full result <ExternalLink size={10} />
+                        </button>
+                      </div>
+
+                      {order.status === "blocked" && order.reason && (
+                        <p className="text-xs text-rose-500 font-mono mb-3 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200">
+                          Blocked: {order.reason}
+                        </p>
+                      )}
+
+                      {auditLoading.has(order.order_id) ? (
+                        <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                          <Loader size={12} className="animate-spin" /> Loading...
                         </div>
-                      ))}
+                      ) : events.length === 0 ? (
+                        <p className="text-xs text-[var(--color-text-muted)]">No audit events.</p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {events.map((ev, ei) => (
+                            <div key={ev.event_id} className="flex items-center gap-2 text-xs">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                ev.event_type.includes("BLOCK") || ev.event_type.includes("FAIL")
+                                  ? "bg-rose-400"
+                                  : "bg-[var(--color-success)]"
+                              }`} />
+                              <span className="font-mono text-[var(--color-text)]">{ev.event_type}</span>
+                              {ev.agent_id && (
+                                <span className="text-[var(--color-text-muted)] shrink-0">· {ev.agent_id}</span>
+                              )}
+                              <span className="text-[var(--color-text-muted)] ml-auto shrink-0">
+                                {ev.timestamp
+                                  ? new Date(ev.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                                  : ""}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {order.tracking_number && (
+                        <p className="text-xs text-[var(--color-text-muted)] font-mono mt-3">
+                          Tracking: {order.tracking_number}
+                          {order.estimated_delivery && ` · Est. ${formatDate(order.estimated_delivery)}`}
+                        </p>
+                      )}
                     </div>
                   )}
-                  <button
-                    onClick={() => navigate(`/payment-result/${order.order_id}`)}
-                    className="text-xs text-[var(--color-primary)] hover:underline mt-3 block"
-                  >
-                    Full payment result →
-                  </button>
                 </div>
-              )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

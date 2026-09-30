@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
-import { Loader, Eye } from "lucide-react";
+import { Loader, Eye, Check } from "lucide-react";
 import type { ProductData } from "../api/chat";
 import { getProductVisual } from "../utils/productVisual";
 import { addToCart } from "../api/cart";
@@ -12,6 +11,7 @@ interface Props {
   index: number;
   selected?: boolean;
   onToggleSelect?: (product: ProductData) => void;
+  onAdded?: () => void;
 }
 
 const MERCHANT_COLORS: Record<string, string> = {
@@ -20,33 +20,37 @@ const MERCHANT_COLORS: Record<string, string> = {
   MERCHANT_C: "bg-emerald-100 text-emerald-700",
 };
 
-export default function ProductCard({ product, index, selected = false, onToggleSelect }: Props) {
-  const navigate = useNavigate();
+const RANK_BADGE: Record<number, { label: string; className: string }> = {
+  0: { label: "#1", className: "bg-amber-400 text-white" },
+  1: { label: "#2", className: "bg-slate-400 text-white" },
+  2: { label: "#3", className: "bg-amber-700 text-white" },
+};
+
+export default function ProductCard({ product, index, selected = false, onToggleSelect, onAdded }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [added, setAdded] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const badgeClass = MERCHANT_COLORS[product.merchant_id] ?? "bg-slate-100 text-slate-600";
   const visual = getProductVisual(product.title, product.category);
   const VisualIcon = visual.icon;
   const showImage = product.image_url && !imageFailed;
+  const rankBadge = index < 3 ? RANK_BADGE[index] : null;
 
-  const handleSelect = async () => {
-    if (adding) return;
+  const handleAddToCart = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (adding || added) return;
     setAdding(true);
     try {
       await addToCart(product);
-      navigate("/cart");
+      setAdding(false);
+      setAdded(true);
+      onAdded?.();
+      setTimeout(() => setAdded(false), 2000);
     } catch {
       setAdding(false);
     }
   };
-
-  const RANK_BADGE: Record<number, { label: string; className: string }> = {
-    0: { label: "#1", className: "bg-amber-400 text-white" },
-    1: { label: "#2", className: "bg-slate-400 text-white" },
-    2: { label: "#3", className: "bg-amber-700 text-white" },
-  };
-  const rankBadge = index < 3 ? RANK_BADGE[index] : null;
 
   return (
     <motion.div
@@ -59,7 +63,7 @@ export default function ProductCard({ product, index, selected = false, onToggle
           : "border border-[var(--color-border)]"
       }`}
     >
-      {/* Product visual — real photo when available, icon tile otherwise */}
+      {/* Product visual */}
       <div className="relative">
         {rankBadge && (
           <span className={`absolute top-1.5 left-1.5 z-10 w-7 h-7 rounded-full text-[11px] font-bold grid place-items-center shadow-sm ${rankBadge.className}`}>
@@ -75,7 +79,7 @@ export default function ProductCard({ product, index, selected = false, onToggle
                 ? "border-[var(--color-primary)] bg-[var(--color-primary)]"
                 : "border-white bg-white/80"
             }`}
-            title={selected ? "Deselect" : "Select"}
+            title={selected ? "Deselect" : "Select for bulk checkout"}
           >
             {selected && <span className="text-white text-[10px] font-bold leading-none">✓</span>}
           </button>
@@ -115,12 +119,8 @@ export default function ProductCard({ product, index, selected = false, onToggle
 
       {/* Details row */}
       <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--color-text-muted)]">
-        {product.rating > 0 && (
-          <span>★ {product.rating.toFixed(1)}</span>
-        )}
-        {product.delivery_days && (
-          <span>Ships {product.delivery_days}d</span>
-        )}
+        {product.rating > 0 && <span>★ {product.rating.toFixed(1)}</span>}
+        {product.delivery_days && <span>Ships {product.delivery_days}d</span>}
         {product.size && <span>Size {product.size}</span>}
         {product.rank_score > 0 && (
           <span className="ml-auto text-[10px] bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text-muted)] px-1.5 py-0.5 rounded font-mono">
@@ -143,12 +143,16 @@ export default function ProductCard({ product, index, selected = false, onToggle
             <Eye size={16} />
           </button>
           <button
-            onClick={handleSelect}
+            onClick={handleAddToCart}
             disabled={adding}
-            className="text-sm px-3 py-1.5 rounded-lg bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-light)] transition-colors disabled:opacity-60 flex items-center gap-1.5"
+            className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+              added
+                ? "bg-[var(--color-success)] text-white"
+                : "bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-light)] disabled:opacity-60"
+            }`}
           >
-            {adding && <Loader size={13} className="animate-spin" />}
-            {adding ? "Adding..." : "Select"}
+            {adding ? <Loader size={13} className="animate-spin" /> : added ? <Check size={13} /> : null}
+            {adding ? "Adding..." : added ? "Added ✓" : "Add to Cart"}
           </button>
         </div>
       </div>
@@ -158,7 +162,7 @@ export default function ProductCard({ product, index, selected = false, onToggle
           product={product}
           adding={adding}
           onClose={() => setShowDetail(false)}
-          onSelect={handleSelect}
+          onSelect={handleAddToCart}
         />
       )}
     </motion.div>

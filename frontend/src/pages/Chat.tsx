@@ -621,6 +621,7 @@ export default function Chat() {
                             index={i}
                             selected={selectedProducts.has(p.product_id)}
                             onToggleSelect={handleToggleSelect}
+                            onAdded={() => getCart().then((items) => setCartCount(items.length)).catch(() => {})}
                           />
                         ))}
                       </div>
