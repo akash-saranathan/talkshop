@@ -304,6 +304,10 @@ export default function Chat() {
     const msg = input.trim();
     if (!msg || loading) return;
 
+    // Always persist the active session so returning from Dashboard/Cart
+    // restores this chat, even if the user never clicked a sidebar session.
+    switchToSession(sessionIdRef.current);
+
     const turnId = crypto.randomUUID();
     const imageForTurn = pastedImage;
     activeTurnId.current = turnId;

@@ -100,11 +100,11 @@ function AISummary({ orders, wallet }: { orders: Order[]; wallet: WalletBalance 
 
   let insight = "";
   if (paid.length > 0 && inFlight.length > 0) {
-    insight = `${inFlight.length} order${inFlight.length > 1 ? "s" : ""} in transit — all authorized by GreenLight and executed by PayIt.`;
+    insight = `${inFlight.length} order${inFlight.length > 1 ? "s are" : " is"} in transit — all securely authorized.`;
   } else if (paid.length > 0) {
-    insight = `All ${paid.length} purchase${paid.length > 1 ? "s" : ""} cleared the 12-check guardrail and executed successfully.`;
+    insight = `All ${paid.length} order${paid.length > 1 ? "s have" : " has"} been delivered. Nothing in transit right now.`;
   } else if (blocked.length > 0) {
-    insight = `${blocked.length} transaction${blocked.length > 1 ? "s were" : " was"} blocked by the guardrail engine before any payment was attempted.`;
+    insight = `${blocked.length} payment${blocked.length > 1 ? "s were" : " was"} blocked before any charge was made.`;
   }
 
   return (
@@ -157,9 +157,11 @@ export default function Dashboard() {
     }
   };
 
-  const paid    = orders.filter((o) => o.status === "paid");
-  const blocked = orders.filter((o) => o.status === "blocked");
-  const spend   = paid.reduce((s, o) => s + o.amount, 0);
+  const paid      = orders.filter((o) => o.status === "paid");
+  const blocked   = orders.filter((o) => o.status === "blocked");
+  const inTransit = paid.filter((o) => o.delivery_status !== "delivered");
+  const arrived   = paid.filter((o) => o.delivery_status === "delivered");
+  const spend     = paid.reduce((s, o) => s + o.amount, 0);
   const visible = applyFilter(orders, activeFilter);
 
   return (
@@ -168,19 +170,20 @@ export default function Dashboard() {
 
       <div className="flex-1 p-6 max-w-5xl mx-auto w-full">
         {/* KPI row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
           <div className="rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] text-white p-4">
             <p className="text-xs text-white/70 flex items-center gap-1 mb-1"><WalletIcon size={12} /> Wallet</p>
-            <p className="text-2xl font-bold">{loading ? "—" : wallet ? `$${wallet.balance.toFixed(2)}` : "$0.00"}</p>
+            <p className="text-xl font-bold">{loading ? "—" : wallet ? `$${wallet.balance.toFixed(2)}` : "$0.00"}</p>
           </div>
           {[
-            { label: "Items Purchased", value: paid.length,            cls: "text-[var(--color-success)]" },
-            { label: "Blocked",         value: blocked.length,          cls: "text-[var(--color-blocked)]" },
-            { label: "Total Spent",     value: `$${spend.toFixed(2)}`, cls: "text-[var(--color-text)]" },
+            { label: "Items Ordered", value: paid.length,               cls: "text-[var(--color-primary)]" },
+            { label: "In Transit",    value: inTransit.length,           cls: "text-blue-500" },
+            { label: "Arrived",       value: arrived.length,             cls: "text-[var(--color-success)]" },
+            { label: "Total Spent",   value: `$${spend.toFixed(2)}`,    cls: "text-[var(--color-text)]" },
           ].map((k) => (
             <div key={k.label} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
               <p className="text-xs text-[var(--color-text-muted)] mb-1">{k.label}</p>
-              <p className={`text-2xl font-bold ${k.cls}`}>{k.value}</p>
+              <p className={`text-xl font-bold ${k.cls}`}>{loading ? "—" : k.value}</p>
             </div>
           ))}
         </div>

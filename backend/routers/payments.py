@@ -18,7 +18,7 @@ from sqlalchemy import update
 from backend.agents import payit, trackit
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.config.agents import PAYIT, TRACKIT
-from backend.db.schema import AuditEvent, DelegatedToken, Merchant, Order, PaymentAuthorization, Product, Wallet
+from backend.db.schema import AuditEvent, CartItem, DelegatedToken, Merchant, Order, PaymentAuthorization, Product, Wallet
 from backend.db.session_utils import get_session, now_utc, write_audit_event
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import PaymentRequest
@@ -252,13 +252,18 @@ def _block_reason(session, order_id: str) -> Optional[str]:
     return None
 
 
-def _delivery_fields(order: Order, product: Optional[Product]) -> dict:
-    """Product info + time-based delivery simulation, shared by both order endpoints."""
-    delivery = trackit.compute_delivery_status(order.created_at, product.delivery_days if product else None)
+def _delivery_fields(order: Order, product: Optional[Product], cart_fallback: Optional[CartItem] = None) -> dict:
+    """Product info + time-based delivery simulation, shared by both order endpoints.
+    cart_fallback is a CartItem snapshot used when the Product row is missing (e.g. external product IDs)."""
+    fb = cart_fallback
+    delivery = trackit.compute_delivery_status(
+        order.created_at,
+        product.delivery_days if product else (fb.delivery_days if fb else None),
+    )
     return {
-        "product_title": product.name if product else None,
-        "product_category": product.category if product else None,
-        "product_image_url": product.image_url if product else None,
+        "product_title":     (product.name      if product else None) or (fb.title     if fb else None),
+        "product_category":  (product.category  if product else None) or (fb.category  if fb else None),
+        "product_image_url": (product.image_url if product else None) or (fb.image_url if fb else None),
         "tracking_number": order.tracking_number,
         "delivery_status": delivery["status"] if order.status == "confirmed" else None,
         "estimated_delivery": delivery["estimated_delivery"] if order.status == "confirmed" else None,
@@ -280,6 +285,16 @@ async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
         results = []
         for order, merchant, product in rows:
             is_paid = order.status == "confirmed"
+            # When the product isn't in the catalog (e.g. external/DummyJSON IDs),
+            # fall back to the CartItem snapshot which was saved at add-to-cart time.
+            cart_fallback = None
+            if product is None:
+                cart_fallback = (
+                    session.query(CartItem)
+                    .filter(CartItem.product_id == order.product_id, CartItem.user_id == order.user_id)
+                    .order_by(CartItem.added_at.desc())
+                    .first()
+                )
             results.append({
                 "order_id": order.order_id,
                 "merchant": merchant.merchant_name,
@@ -287,7 +302,7 @@ async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
                 "status": "paid" if is_paid else "blocked",
                 "reason": None if is_paid else _block_reason(session, order.order_id),
                 "created_at": order.created_at.isoformat() if order.created_at else None,
-                **_delivery_fields(order, product),
+                **_delivery_fields(order, product, cart_fallback),
             })
         return results
 
