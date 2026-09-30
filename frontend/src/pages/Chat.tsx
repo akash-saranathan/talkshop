@@ -353,10 +353,7 @@ export default function Chat() {
         clearInterval(autoCheckoutTimerRef.current!);
         autoCheckoutTimerRef.current = null;
         setAutoCheckoutIn(null);
-        // Navigate with just the added item as state so Checkout doesn't need
-        // to load the whole cart — feels instant and avoids showing stale items.
-        const checkoutItems = lastAddedItemRef.current ? [lastAddedItemRef.current] : [];
-        navigate("/checkout", { state: { items: checkoutItems } });
+        navigate("/cart");
       }
     }, 1000);
   }, [navigate]);
@@ -942,8 +939,7 @@ export default function Chat() {
                 <button
                   onClick={() => {
                     cancelCheckoutCountdown();
-                    const checkoutItems = lastAddedItemRef.current ? [lastAddedItemRef.current] : [];
-                    navigate("/checkout", { state: { items: checkoutItems } });
+                    navigate("/cart");
                   }}
                   className="flex items-center gap-1.5 text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors"
                 >

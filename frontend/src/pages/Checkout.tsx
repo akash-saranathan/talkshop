@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, CheckCircle, Loader, AlertTriangle, RotateCcw, CreditCard, Lock, Sparkles, Wallet } from "lucide-react";
+import { Loader, AlertTriangle, RotateCcw, Lock } from "lucide-react";
 import type { CartItemData } from "../api/cart";
 import { removeFromCart } from "../api/cart";
 import { authFetch } from "../api/client";
@@ -265,23 +265,22 @@ export default function Checkout() {
     return () => { clearInterval(interval); clearTimeout(timeout); };
   }, [finished, succeeded, navigate]);
 
+  // Derive a readable payment label to show (read-only)
+  const payingWith = paymentMethod === "wallet"
+    ? `Wallet${wallet ? ` · $${wallet.balance.toFixed(2)} balance` : ""}`
+    : (() => { const c = MOCK_CARDS.find((c) => c.id === selectedCard); return c ? `${c.network} ••••${c.last4}` : "Card"; })();
+
   return (
     <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
-      <AppHeader title="Checkout & Authorization" backHref="/cart" backLabel="Cart" />
-      <div className="flex-1 p-6">
+      <AppHeader title="Order Summary" backHref="/cart" backLabel="Cart" />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl">
-
-        {/* Order queue */}
+      <div className="flex-1 p-6 flex flex-col items-start">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-[var(--color-border)] p-5 bg-[var(--color-surface)]"
+          className="w-full max-w-md rounded-2xl border border-[var(--color-border)] p-5 bg-[var(--color-surface)] flex flex-col gap-4"
         >
-          <h2 className="font-semibold mb-4 text-[var(--color-text)]">
-            Order Summary {queue.length > 1 && `(${queue.length} items)`}
-          </h2>
-
+          {/* Item list */}
           <div className="flex flex-col gap-3">
             {queue.map((entry, index) => {
               const visual = getProductVisual(entry.item.title, entry.item.category);
@@ -305,12 +304,8 @@ export default function Checkout() {
                     {STATUS_LABEL[entry.status]}
                   </span>
                   {entry.status === "error" && (
-                    <button
-                      type="button"
-                      onClick={() => handleRetry(index)}
-                      title="Retry"
-                      className="text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors shrink-0"
-                    >
+                    <button type="button" onClick={() => handleRetry(index)} title="Retry"
+                      className="text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors shrink-0">
                       <RotateCcw size={14} />
                     </button>
                   )}
@@ -319,102 +314,45 @@ export default function Checkout() {
             })}
           </div>
 
+          {/* Totals */}
+          <div className="border-t border-[var(--color-border)] pt-3 flex flex-col gap-1.5 text-sm">
+            <div className="flex justify-between font-semibold text-base">
+              <span className="text-[var(--color-text)]">Total</span>
+              <span className="text-[var(--color-primary)]">${checkoutTotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+              <span>Paying with</span>
+              <span className="font-medium text-[var(--color-text)]">{payingWith}</span>
+            </div>
+          </div>
+
+          {/* Blocked reason */}
           {active?.status === "blocked" && active.reason && (
-            <div className="mt-4 rounded-lg bg-rose-50 border border-rose-200 p-3 flex items-start gap-2 text-left">
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 flex items-start gap-2">
               <AlertTriangle size={14} className="text-rose-600 mt-0.5 shrink-0" />
               <p className="text-xs text-rose-700">{active.reason}</p>
             </div>
           )}
 
-          {/* Payment method */}
-          <div className="mt-4">
-            <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <CreditCard size={12} /> Payment Method
-            </p>
-
-            {/* Wallet / Card toggle */}
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              {(["wallet", "card"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  disabled={started}
-                  onClick={() => setPaymentMethod(m)}
-                  className={`flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-colors disabled:cursor-default ${
-                    paymentMethod === m
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
-                      : "border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/40"
-                  }`}
-                >
-                  {m === "wallet" ? <Wallet size={13} /> : <CreditCard size={13} />}
-                  {m === "wallet" ? "Wallet" : "Card"}
-                </button>
-              ))}
-            </div>
-
-            {/* Wallet balance */}
-            {paymentMethod === "wallet" && (
-              <div className="rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] px-3 py-2.5 flex items-center justify-between">
-                <span className="text-sm text-[var(--color-text-muted)]">Balance</span>
-                <span className="font-semibold text-[var(--color-primary)]">
-                  {wallet ? `$${wallet.balance.toFixed(2)}` : "—"}
-                </span>
-              </div>
-            )}
-
-            {/* Card list */}
-            {paymentMethod === "card" && (
-              <div className="flex flex-col gap-1.5">
-                {MOCK_CARDS.map((card) => (
-                  <button
-                    key={card.id}
-                    type="button"
-                    disabled={started}
-                    onClick={() => setSelectedCard(card.id)}
-                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm text-left transition-colors disabled:cursor-default ${
-                      selectedCard === card.id
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-text)]"
-                        : "border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/40"
-                    }`}
-                  >
-                    <span className={`w-3 h-3 rounded-full border-2 shrink-0 ${
-                      selectedCard === card.id
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]"
-                        : "border-[var(--color-border)]"
-                    }`} />
-                    <span className="font-medium text-xs">{card.network}</span>
-                    <span className="text-xs">●●●● {card.last4}</span>
-                    <span className="text-[10px] text-[var(--color-text-muted)] ml-auto">{card.expiry}</span>
-                    {card.isDefault && (
-                      <span className="text-[10px] text-[var(--color-success)] font-semibold">Default</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 flex flex-col gap-2">
+          {/* CTA */}
+          <div className="flex flex-col gap-2">
             {!started ? (
               <>
                 {walletInsufficient && (
                   <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-                    Wallet balance (${wallet!.balance.toFixed(2)}) is less than the order total — switch to Card.
+                    Wallet balance (${wallet!.balance.toFixed(2)}) is less than the order total — go back to Cart and switch to Card.
                   </p>
                 )}
                 <button
                   onClick={handleApproveAll}
                   disabled={walletInsufficient}
-                  className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Approve Purchase{queue.length > 1 ? ` (${queue.length} items)` : ""}
                 </button>
               </>
             ) : processing ? (
-              <button
-                disabled
-                className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm opacity-70 flex items-center justify-center gap-2"
-              >
+              <button disabled className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm opacity-70 flex items-center justify-center gap-2">
                 <Loader size={14} className="animate-spin" /> Processing...
               </button>
             ) : (
@@ -423,84 +361,34 @@ export default function Checkout() {
                   {succeeded > 0 ? `${succeeded} of ${queue.length} purchased ✓` : "Purchase complete"}
                 </p>
                 {redirectIn !== null && (
-                  <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                    Opening your order tracker in {redirectIn}s...
-                  </p>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1">Opening your order tracker in {redirectIn}s...</p>
                 )}
               </div>
             )}
-            <button
-              onClick={() => navigate(finished ? "/dashboard" : "/cart")}
-              disabled={processing}
-              className="w-full py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40 transition-colors"
-            >
+            <button onClick={() => navigate(finished ? "/dashboard" : "/cart")} disabled={processing}
+              className="w-full py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40 transition-colors">
               {finished ? "View Order Tracker" : "Cancel"}
             </button>
-            <button
-              onClick={() => navigate("/")}
-              disabled={processing}
-              className="w-full py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40 transition-colors"
-            >
+            <button onClick={() => navigate("/")} disabled={processing}
+              className="w-full py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40 transition-colors">
               Back to Chat
             </button>
           </div>
         </motion.div>
-
-        {/* AI Security Panel */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="rounded-2xl border border-[var(--color-border)] p-5 bg-[var(--color-surface)] flex flex-col gap-5"
-        >
-          {/* Hero */}
-          <div className="flex flex-col items-center text-center py-4 gap-3">
-            <div className="relative">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[var(--color-primary)] to-violet-600 grid place-items-center shadow-lg">
-                <Shield size={28} className="text-white" />
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[var(--color-success)] grid place-items-center border-2 border-[var(--color-surface)]">
-                <Sparkles size={12} className="text-white" />
-              </div>
-            </div>
-            <div>
-              <p className="font-semibold text-[var(--color-text)]">AI-Powered Secure Checkout</p>
-              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                Your payment is processed by our agentic pipeline with multi-layer security
-              </p>
-            </div>
-          </div>
-
-          {/* Trust badges */}
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { icon: Lock,      label: "Card details never exposed to AI" },
-              { icon: Shield,    label: "12-layer guardrail checks" },
-              { icon: CheckCircle, label: "One-time scoped authorization" },
-              { icon: Sparkles,  label: "Real-time fraud detection" },
-            ].map(({ icon: Icon, label }) => (
-              <div key={label} className="flex items-start gap-2 p-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)]">
-                <Icon size={14} className="text-[var(--color-success)] shrink-0 mt-0.5" />
-                <p className="text-[11px] text-[var(--color-text-muted)] leading-tight">{label}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Active order details when processing */}
-          {active?.checkoutData && (
-            <div className="rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] p-3 text-sm flex flex-col gap-1.5">
-              <div className="flex justify-between">
-                <span className="text-[var(--color-text-muted)]">Merchant</span>
-                <span className="font-medium text-[var(--color-text)]">{active.checkoutData.merchant_name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--color-text-muted)]">Authorized Amount</span>
-                <span className="font-semibold text-[var(--color-primary)]">${active.checkoutData.total.toFixed(2)}</span>
-              </div>
-            </div>
-          )}
-        </motion.div>
       </div>
+
+      {/* Security footer */}
+      <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-3">
+        <div className="max-w-md flex items-center gap-4 text-[11px] text-[var(--color-text-muted)]">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Lock size={12} className="text-[var(--color-success)]" />
+            <span className="text-[var(--color-success)] font-medium">AI-Secured</span>
+          </div>
+          <span>·</span>
+          <span>Card details never reach the AI pipeline</span>
+          <span>·</span>
+          <span>One-time scoped authorization per purchase</span>
+        </div>
       </div>
     </div>
   );
