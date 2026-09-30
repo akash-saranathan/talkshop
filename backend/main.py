@@ -1,4 +1,5 @@
 import os
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db.init_db import init_db, run as seed_db
-from backend.routers import merchants, products, chat, authorizations, payments
+from backend.routers import auth, merchants, products, chat, authorizations, payments, cart
 from backend.config.llm import resolve_llm
 from backend.observability.tracing import init_tracing
 
@@ -39,11 +40,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(merchants.router)
 app.include_router(products.router)
 app.include_router(chat.router)
 app.include_router(authorizations.router)
 app.include_router(payments.router)
+app.include_router(cart.router)
 
 
 @app.get("/")
@@ -68,7 +71,7 @@ async def transcribe(audio: UploadFile = File(...)):
         )
 
     audio_bytes = await audio.read()
-    tmp_path = Path("/tmp") / audio.filename
+    tmp_path = Path(tempfile.gettempdir()) / audio.filename
     tmp_path.write_bytes(audio_bytes)
 
     model = WhisperModel("base", device="cpu", compute_type="int8")

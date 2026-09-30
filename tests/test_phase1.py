@@ -87,14 +87,14 @@ def test_db_seeds_three_merchants(tmp_db):
     assert count == 3
 
 
-def test_db_seeds_45_products(tmp_db):
+def test_db_seeds_80_products(tmp_db):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
     from backend.db.schema import Product
     engine = create_engine(f"sqlite:///{tmp_db}")
     with Session(engine) as s:
         count = s.query(Product).count()
-    assert count == 45
+    assert count == 80
 
 
 def test_db_seeds_six_agents(tmp_db):
@@ -124,17 +124,17 @@ def test_merchants_returns_three(client):
     assert ids == {"MERCHANT_A", "MERCHANT_B", "MERCHANT_C"}
 
 
-def test_products_returns_45(client):
+def test_products_returns_80(client):
     r = client.get("/api/products")
     assert r.status_code == 200
-    assert len(r.json()) == 45
+    assert len(r.json()) == 80
 
 
 def test_products_filter_by_category(client):
     r = client.get("/api/products?category=running_shoes")
     assert r.status_code == 200
     products = r.json()
-    assert len(products) == 15
+    assert len(products) == 30
     assert all(p["category"] == "running_shoes" for p in products)
 
 
@@ -142,7 +142,7 @@ def test_products_filter_by_merchant(client):
     r = client.get("/api/products?merchant_id=MERCHANT_B")
     assert r.status_code == 200
     products = r.json()
-    assert len(products) == 15
+    assert len(products) == 25
     assert all(p["merchant_id"] == "MERCHANT_B" for p in products)
 
 

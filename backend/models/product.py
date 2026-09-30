@@ -27,6 +27,7 @@ class NormalizedProduct(BaseModel):
     review_count: int = Field(default=0, ge=0)
     shipping_cost: float = Field(default=0.0, ge=0)
     product_url: Optional[str] = None
+    image_url: Optional[str] = None
     source: Literal["local", "shopify_api", "playwright"] = "local"
 
     # Deterministic ranking score — set by SneakPeek, never by LLM

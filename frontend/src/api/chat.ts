@@ -3,6 +3,7 @@
  * Connects to the LangGraph streaming endpoint and invokes callbacks
  * for each event type as they arrive.
  */
+import { authFetch, getToken } from "./client";
 
 export interface AgentEvent {
   type: "step_start" | "step_done" | "blocked" | "error" | "recommendation" | "done";
@@ -30,6 +31,46 @@ export interface ProductData {
   shipping_cost: number;
   rank_score: number;
   source: string;
+  image_url: string | null;
+  weight_grams: number | null;
+  cushioning: string | null;
+}
+
+export interface ChatSessionSummary {
+  session_id: string;
+  title: string;
+  updated_at: string | null;
+}
+
+export interface ChatMessageRecord {
+  role: "user" | "assistant";
+  content: string;
+  products: ProductData[];
+  blocked_reason: string | null;
+  created_at: string | null;
+}
+
+export async function listChatSessions(): Promise<ChatSessionSummary[]> {
+  const res = await authFetch("/api/chat/sessions");
+  if (!res.ok) throw new Error("Failed to load chat sessions");
+  return res.json();
+}
+
+export async function getSessionMessages(sessionId: string): Promise<ChatMessageRecord[]> {
+  const res = await authFetch(`/api/chat/sessions/${sessionId}/messages`);
+  if (!res.ok) throw new Error("Failed to load chat session");
+  return res.json();
+}
+
+// Stashes a pasted image server-side for the next message in this session —
+// EventSource (used by streamChat) can only issue GET, so the image can't
+// ride along in that request.
+export async function attachImage(sessionId: string, imageBase64: string): Promise<void> {
+  const res = await authFetch("/api/chat/attach-image", {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId, image_base64: imageBase64 }),
+  });
+  if (!res.ok) throw new Error("Failed to attach image");
 }
 
 export interface ChatCallbacks {
@@ -41,7 +82,10 @@ export interface ChatCallbacks {
 }
 
 export function streamChat(message: string, sessionId: string, callbacks: ChatCallbacks): () => void {
-  const params = new URLSearchParams({ message, session_id: sessionId });
+  // EventSource can't set custom headers, so the token travels as a query
+  // param here — the backend's get_current_user() accepts either.
+  const token = getToken();
+  const params = new URLSearchParams({ message, session_id: sessionId, ...(token ? { token } : {}) });
   const url = `/api/chat/stream?${params}`;
   const es = new EventSource(url);
 
@@ -80,6 +124,9 @@ export function streamChat(message: string, sessionId: string, callbacks: ChatCa
   es.addEventListener("recommendation", (e) => handle(e.data));
   es.addEventListener("blocked", (e) => handle(e.data));
   es.addEventListener("error", (e) => {
+    // The native EventSource auto-reconnects after "error" unless closed —
+    // one backend hiccup would otherwise retry indefinitely and spam duplicate errors.
+    es.close();
     if ((e as MessageEvent).data) handle((e as MessageEvent).data);
     else callbacks.onError("Connection error");
   });

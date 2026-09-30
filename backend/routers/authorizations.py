@@ -14,10 +14,11 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.agents.cartup import build_checkout
+from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.agents.greenlight import request_dpat, summarize_authorization
 from backend.db.schema import AuditEvent, DelegatedToken, PaymentAuthorization, Product, Merchant
 from backend.db.session_utils import get_session as _session, now_utc as _now, write_audit_event as _audit
@@ -37,7 +38,6 @@ class CreateCheckoutRequest(BaseModel):
     product_id: str
     merchant_id: str
     quantity: int = 1
-    user_id: str = "USR001"
 
 
 class ApproveRequest(BaseModel):
@@ -46,7 +46,6 @@ class ApproveRequest(BaseModel):
     merchant_id: str
     total: float
     currency: str = "USD"
-    user_id: str = "USR001"
     product_id: str
     product_title: str
     merchant_name: str
@@ -82,7 +81,10 @@ class RevokeRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/api/checkout/create")
-async def create_checkout_endpoint(req: CreateCheckoutRequest) -> dict:
+async def create_checkout_endpoint(
+    req: CreateCheckoutRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict:
     """
     CartUp builds a CheckoutObject from a selected product.
     Returns the full checkout with SHA-256 hash.
@@ -113,7 +115,7 @@ async def create_checkout_endpoint(req: CreateCheckoutRequest) -> dict:
             rating=product.rating or 0.0,
         )
 
-    checkout, error = await build_checkout(normalized, req.quantity, req.user_id)
+    checkout, error = await build_checkout(normalized, req.quantity, current_user.user_id)
     if error:
         raise HTTPException(status_code=400, detail=error)
 
@@ -121,7 +123,10 @@ async def create_checkout_endpoint(req: CreateCheckoutRequest) -> dict:
 
 
 @router.post("/api/authorizations/approve", response_model=ApproveResponse)
-async def approve_authorization(req: ApproveRequest):
+async def approve_authorization(
+    req: ApproveRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Records explicit user consent and issues a DPAT token.
     No DPAT is ever issued without this consent record.
@@ -146,7 +151,7 @@ async def approve_authorization(req: ApproveRequest):
     )
 
     token_id, token_dict, error = await request_dpat(
-        checkout, req.user_id, authorization_id
+        checkout, current_user.user_id, authorization_id
     )
     if error:
         raise HTTPException(status_code=400, detail=error)
@@ -173,7 +178,7 @@ async def approve_authorization(req: ApproveRequest):
 
         auth = PaymentAuthorization(
             authorization_id=authorization_id,
-            user_id=req.user_id,
+            user_id=current_user.user_id,
             agent_id=token_dict["agent_id"],
             merchant_id=req.merchant_id,
             order_id=req.checkout_id,
@@ -198,11 +203,11 @@ async def approve_authorization(req: ApproveRequest):
         session.add(token_row)
 
         _audit(session, "USER_APPROVED_PURCHASE",
-               user_id=req.user_id, order_id=req.checkout_id,
+               user_id=current_user.user_id, order_id=req.checkout_id,
                authorization_id=authorization_id,
                metadata={"checkout_hash": req.checkout_hash, "total": req.total})
         _audit(session, "DPAT_CREATED",
-               user_id=req.user_id, order_id=req.checkout_id,
+               user_id=current_user.user_id, order_id=req.checkout_id,
                authorization_id=authorization_id,
                metadata={"token_id": token_id, "expires_at": token_dict["expires_at"]})
 

@@ -366,7 +366,296 @@ OpenTelemetry, scoped to the payment-execution path only (`payments.execute`, `p
 
 ---
 
-## Phase 5 — Demo Polish, Failure Scenarios & Hardening 🔲
+## Phase 5 — Demo Polish, Failure Scenarios & Hardening ✅
 
 **Branch:** `phase-5/demo-polish`
-**Status:** Not started
+**Status:** Complete — 6 commits
+**Commits:**
+| Hash | Description |
+|------|-------------|
+| `70a0f0d` | Fix silent 60s hang on discovery-graph LLM/node failures |
+| `dc9f103` | Atomic token consumption + richer order detail endpoint |
+| `f4abb87` | Fix Dashboard->PaymentResult navigation + demo polish |
+| `dfb3118` | 6 passing tests |
+| `(pending)` | status.md milestone log |
+
+There was no written spec for this phase beyond its title — scope was derived
+by exploring the running app end-to-end and finding concrete, verified gaps
+(not speculative hardening). Merchant adapters, MCP fan-out, and NeMo/Guardrails
+AI failure handling were already solid and needed no changes.
+
+### What was built
+
+#### Tier 1 — Correctness bugs
+- **Dashboard → PaymentResult navigation fixed.** Dashboard linked via a query
+  string (`?status=`) that PaymentResult never read, so every "View Trail"
+  click — success or blocked — showed a generic fake "ORDER CONFIRMED."
+  Route is now `/payment-result/:orderId`; PaymentResult uses the fast
+  in-memory state right after a real purchase, and falls back to
+  `GET /api/orders/{orderId}` for Dashboard links, refreshes, or direct
+  navigation. An unknown ID shows a real "not found" state instead of a
+  fabricated success.
+- **`generate_recommendation_text()` LLM call is no longer a single point of
+  failure.** It runs *after* all real product search/filter/rank work is
+  done; an uncaught Gemini failure here (rate limit, timeout) used to
+  propagate silently and hang the SSE stream for a full 60s before a generic
+  timeout message, discarding already-computed results. Now falls back to a
+  deterministic sentence built from the product data already in hand.
+- **`run_discovery()` no longer swallows exceptions.** Any unhandled node
+  failure now pushes a real `error` SSE event immediately instead of letting
+  the frontend hang until the 60s timeout with no explanation.
+
+#### Tier 2 — Failure-scenario hardening
+- **Payment execution token consumption is now atomic.** The DPAT token's
+  single-use flag is claimed with a conditional `UPDATE ... WHERE
+  consumed_at IS NULL` (checking the row count) *before* any guardrail
+  checks or charge — closing a race where two concurrent execute calls for
+  the same token could both read "not consumed" and both charge. As a
+  deliberate side effect, a token is now burned on *any* execute attempt,
+  not just a successful one — closing a tamper-probing vector where the
+  same token could otherwise be retried indefinitely with different
+  (tampered) values until one slipped through.
+- **SSE `EventSource` now closes on error** instead of relying on the
+  browser's default auto-reconnect, which could otherwise retry indefinitely
+  and spam duplicate error rows after a single backend hiccup.
+- **Non-JSON error responses no longer leak raw parse errors.** A 502/504
+  returning an HTML body used to surface as `Unexpected token <...` in the
+  UI; error bodies are now read defensively with a clean fallback message.
+
+#### Tier 3 — Demo polish
+- **Dashboard has real loading/empty/error states** instead of silently
+  swallowing fetch failures into an indistinguishable empty table.
+- **Dead "Export" control is visibly disabled** instead of looking
+  interactive with no handler.
+- **Checkout execute-phase failures keep context.** If `/api/payments/execute`
+  fails after a token was already issued, the order summary and token stay
+  visible with an inline error and a "Retry Payment" button, instead of
+  collapsing to the full-page generic error view.
+
+#### Backend support for the navigation fix
+`GET /api/orders/{order_id}` now also returns `merchant_name` and, for
+non-confirmed orders, the block/decline `reason` — extracted into a shared
+`_block_reason()` helper (`backend/routers/payments.py`) used by both
+`GET /api/orders` and `GET /api/orders/{order_id}` so the two never drift.
+
+### Milestone checks
+- [x] Dashboard "View Trail" shows the real, correct outcome for both paid and blocked orders
+- [x] Refreshing or directly visiting `/payment-result/<real-id>` renders from a live fetch, not assumed state
+- [x] An unknown order ID shows a clean not-found state, never a fake success
+- [x] A simulated LLM failure on the recommendation step falls back cleanly instead of hanging 60s
+- [x] Any other discovery-graph exception surfaces as an immediate SSE error event
+- [x] A second concurrent/replayed execute call is blocked with `TOKEN_ALREADY_CONSUMED`
+- [x] A guardrail-blocked attempt (e.g. tampered hash) also consumes the token — no infinite retry surface
+- [x] SSE connection closes on error instead of auto-reconnecting indefinitely
+- [x] Non-JSON error bodies no longer leak raw parse errors to the user
+- [x] 108 tests passing (102 prior + 6 new), zero regressions
+- [x] `tsc --noEmit` clean
+
+---
+
+## Real Authentication + Conversational Shopkeeper + "Talkshop" Rebrand ✅
+
+**Branch:** `feature/auth-and-shopkeeper-chat`
+**Status:** Complete — working tree only, not yet committed
+
+Not one of the original 5 planned phases — a manager-driven feature request
+prompted by a demo prototype. Scope: real login (not a UI mock), a chat
+agent that asks clarifying questions like a real shopkeeper instead of
+guessing from one vague word, and rebranding from "AgentCommerce" to the
+app's real name, **Talkshop**.
+
+### What was built
+
+#### Real authentication
+- `backend/auth/security.py` — bcrypt password hashing, JWT access tokens
+  (`JWT_SECRET_KEY` env var, demo fallback default — same pattern as
+  `backend/payment/signing.py`'s `SIGNING_KEY`)
+- `backend/auth/dependencies.py` — `get_current_user()`, the single source
+  of truth for request identity. Accepts the token via the `Authorization`
+  header **or** a `?token=` query param — the latter because browser
+  `EventSource` can't set custom headers, which is how the chat SSE
+  endpoint authenticates
+- `backend/routers/auth.py` — `POST /api/auth/register`, `POST
+  /api/auth/login`, `GET /api/auth/me`. Logout is client-side only
+  (discard the token) — no server-side revocation list for a demo JWT
+- `backend/db/schema.py` + `init_db.py` — `User.password_hash`, with a
+  defensive `ALTER TABLE` migration for existing dev databases (`Base.
+  metadata.create_all()` never alters an existing table) and a real seeded
+  password for the demo account
+- Every endpoint that used to trust a client-supplied `user_id` field
+  (`chat.py`'s SSE endpoint, `authorizations.py`'s checkout/approve,
+  `payments.py`'s execute/orders) now derives identity from
+  `Depends(get_current_user)` instead — the client can no longer claim to
+  be anyone it wants
+
+#### Conversational shopkeeper
+The main functional ask. VibeCheck previously did one-shot intent
+extraction with zero memory — a vague "I need running shoes" went straight
+to weak recommendations instead of asking what a real shopkeeper would ask
+first (size, color, brand, budget).
+- `backend/graph/session_state.py` — in-memory per-session conversation
+  state (partial intent + whether a follow-up was already asked), keyed by
+  the browser tab's stable `session_id`
+- `backend/agents/vibecheck.py` — `extract_intent()` now merges a
+  `prior_intent` into the LLM prompt instead of treating every message as
+  unrelated; `needs_followup()` detects "category known, nothing else
+  distinguishing given" (deliberately ignoring `use_case`, since the LLM
+  tends to restate the category there even for a genuinely vague message);
+  `generate_followup_question()` is a deterministic, category-aware
+  clarifying question — no LLM call needed for something this simple
+- `backend/graph/workflow.py` — same short-circuit pattern already used
+  for `blocked`/`chitchat`: a new `awaiting_followup` flag skips the
+  search pipeline and replies with the question instead, capped at one
+  round so it never turns into an interrogation
+- Live-verified: "I need running shoes" → "Got it, running shoes! ... do
+  you have a preferred size, color, brand, or budget in mind?" → "size 10,
+  under 100 dollars" → real, correctly filtered recommendations
+
+#### Rebrand
+"AgentCommerce" → "Talkshop" in `frontend/index.html` and the Chat header.
+
+#### Frontend
+- `frontend/src/auth/AuthContext.tsx` — session persisted via `localStorage`,
+  restored on load via `GET /api/auth/me`
+- `frontend/src/pages/Login.tsx` — one page, toggle between Login/Register
+- `frontend/src/api/client.ts` — `authFetch()` wrapper attaching the bearer
+  token; replaces raw `fetch()` in Checkout/Dashboard/PaymentResult
+- `App.tsx` — routes gated behind a `RequireAuth` redirect to `/login`
+- `Chat.tsx` — Talkshop branding, user name + logout in the header, a
+  shopkeeper avatar next to assistant messages, and a typing indicator
+  before the first step event arrives
+
+### Milestone checks
+- [x] Registering a new account and logging in both issue a working token
+- [x] Protected endpoints reject requests with no token or a garbage token (401)
+- [x] `?token=` query param auth works (proven against `/api/auth/me`, used for real by the SSE endpoint)
+- [x] A vague product message gets a clarifying question, not weak/empty results
+- [x] Answering the follow-up in the same session merges into the original intent and returns real recommendations
+- [x] A fully-specific single message skips the follow-up entirely
+- [x] "hi" still gets the plain greeting reply, unaffected by the follow-up logic
+- [x] A full authenticated purchase (checkout → approve → execute) succeeds and shows up under that user's own Dashboard
+- [x] 137 tests passing (108 prior + 29 new), zero regressions
+- [x] `tsc --noEmit` clean
+
+---
+
+## Wallet Balance, Delivery Tracking & Product Visuals ✅
+
+**Branch:** `feature/wallet-dashboard-delivery`
+**Status:** Complete — working tree only, not yet committed
+
+Another manager/user-driven ask, prompted by the Dashboard looking like a
+bare table with no sense of "money left," no delivery info, and product
+cards with zero visual to tell items apart by.
+
+### What was built
+
+#### Wallet balance
+Payment here is a DPAT token, not a real card swipe — there was no stored-
+value balance concept at all (`data/mock_wallet.json` is a payment-*method*
+vault, not a balance, and it's pinned to one hardcoded user anyway, from
+before multi-user auth existed).
+- `backend/db/schema.py` — new `Wallet` table (per-user, seeded at $1000)
+- Every new account (`register()`) and the demo user get a starting wallet
+- `backend/routers/payments.py` — the execute endpoint checks and deducts
+  the wallet balance in the success path, as a check layered *after* the
+  mock processor's own card-level checks (a new `INSUFFICIENT_BALANCE`
+  decline reason) — kept in the router, not inside `mock_processor.py`,
+  so that module and its existing tests stay untouched; identity only
+  exists at the router layer anyway
+- `GET /api/wallet` — current balance for the Dashboard's hero card;
+  `ExecutePaymentResponse` now carries `wallet_balance` so Checkout/
+  PaymentResult can show the balance immediately after a purchase with no
+  extra round trip
+
+#### Delivery tracking
+- `Order.tracking_number` — generated by TrackIt at confirmation (new
+  defensive-migration column, same `ALTER TABLE` pattern as `password_hash`,
+  generalized into one `_ensure_column()` helper instead of duplicating it)
+- `backend/agents/trackit.py::compute_delivery_status()` — delivery
+  *status* itself isn't stored; it's computed at read-time from wall-clock
+  time elapsed since the order was placed vs. the product's own
+  `delivery_days` field (`processing` → `shipped` → `delivered`). No
+  carrier integration, no background job — genuinely time-based, so an
+  order placed seconds ago in a live demo honestly shows "processing"
+
+#### Product visuals
+No real product photography exists for this seed data, and fabricating
+URLs to real branded product photos risked broken links or misattributed
+imagery. Instead: `frontend/src/utils/productVisual.ts` — a colored icon
+tile per product (Lucide icons already in use throughout the app),
+keyword-matched against the title first (headphones/watch/laptop/etc.) so
+items within one category still look distinct, falling back to a
+category-level default. Fully offline — nothing to 404 during a demo.
+Used by both `ProductCard.tsx` (Chat search results) and the redesigned
+`Dashboard.tsx` order cards.
+
+#### Dashboard redesign
+Replaced the plain order table with: a prominent wallet-balance hero card,
+and each order as a card (product icon tile, title, merchant, order ID,
+placed date/time, amount, status badge, and — for confirmed orders — a
+delivery status badge with tracking number and estimated delivery date).
+
+### Milestone checks
+- [x] A successful purchase deducts the exact charged amount from the wallet, reflected immediately on PaymentResult and the Dashboard
+- [x] A guardrail-blocked or processor-declined attempt never touches the wallet
+- [x] An purchase that would overdraw the wallet is declined cleanly (`INSUFFICIENT_BALANCE`), without double-charging
+- [x] Confirmed orders show a real tracking number and a time-based delivery status; blocked orders show neither
+- [x] Product cards in Chat show a distinct icon per product (shoes vs. headphones vs. watch), not a generic placeholder
+- [x] 148 tests passing (137 prior + 11 new), zero regressions
+- [x] `tsc --noEmit` clean
+
+---
+
+## Persistent Chat History + Orders Panel (ChatGPT-style layout) ✅
+
+**Branch:** `feature/chat-history-sidebar`
+**Status:** Complete — working tree only, not yet committed
+
+Another user-driven ask: the sidebar's "Session 1" was hardcoded — there
+was no actual chat history. Every conversation lived only in React state
+and vanished on refresh or "New Chat"; `session_id` was just a random UUID
+kept in a ref for the life of the tab, never persisted anywhere.
+
+### What was built
+
+#### Persistent sessions (backend)
+- `backend/db/schema.py` — new `ChatSession` and `ChatMessage` tables.
+  Deliberately **not** storing the granular step_start/step_done progress
+  events — those are ephemeral "thinking" UI, not chat history; reopening
+  a past session shows the final answer only, same as ChatGPT doesn't
+  replay its own "Thinking..." animation for old chats.
+- Sessions are created **lazily** — no row exists until the first message
+  is actually sent, so clicking "New Chat" repeatedly without typing
+  anything never litters the sidebar with empty entries.
+- `backend/routers/chat.py::_save_turn()` — after the discovery graph
+  finishes (the existing background `task` in `_event_stream`, whose
+  result used to just be discarded once the `None` sentinel was seen),
+  persists the user message + the assistant's final reply (recommendation
+  text, ranked products, any block reason) as one message pair. The
+  session's title is the first message, truncated — no extra LLM call for
+  something this cosmetic.
+- `GET /api/chat/sessions` / `GET /api/chat/sessions/{id}/messages` —
+  scoped to the current user; a foreign session_id 404s.
+
+#### Three-column Chat layout (frontend)
+- `frontend/src/components/ChatSidebar.tsx` (new) — "New Chat" button
+  (stops any in-flight stream first, so a late event from the old session
+  can't land in the new one) above the real session list, refetched after
+  every completed turn.
+- `frontend/src/components/OrdersPanel.tsx` (new) — a condensed live feed
+  of recent orders on the right, reusing the icon-tile product visuals
+  from the Dashboard work, with a link through to the full Dashboard.
+- `frontend/src/pages/Chat.tsx` — clicking a past session stops any
+  active stream, loads that session's real messages, and rebuilds the
+  conversation by pairing consecutive user/assistant messages (they're
+  always written together, so strict alternation holds).
+
+### Milestone checks
+- [x] Sending a message creates exactly one session, titled from that message
+- [x] A second message in the same session doesn't create a duplicate session or change the title
+- [x] Chat sessions are scoped per-user — another account can't see or load them
+- [x] Clicking "New Chat" then a past session in the sidebar correctly reloads that exact conversation
+- [x] The right panel shows real orders, matching the Dashboard
+- [x] 157 tests passing (148 prior + 9 new), zero regressions
+- [x] `tsc --noEmit` clean

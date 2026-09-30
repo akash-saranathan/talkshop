@@ -64,6 +64,7 @@ def search_products(
                 rating=product.rating or 0.0,
                 review_count=product.review_count or 0,
                 shipping_cost=0.0,
+                image_url=product.image_url,
                 source="local",
             ))
         return results
@@ -100,5 +101,6 @@ def get_product(product_id: str) -> Optional[NormalizedProduct]:
             rating=product.rating or 0.0,
             review_count=product.review_count or 0,
             shipping_cost=0.0,
+            image_url=product.image_url,
             source="local",
         )

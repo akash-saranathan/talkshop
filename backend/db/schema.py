@@ -16,6 +16,7 @@ class User(Base):
     user_id = Column(String(50), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
     email = Column(String(200), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
     status = Column(String(20), default="active")
     created_at = Column(DateTime, server_default=func.now())
 
@@ -63,6 +64,7 @@ class Product(Base):
     cushioning = Column(String(20))
     rating = Column(Float, default=0.0)
     review_count = Column(Integer, default=0)
+    image_url = Column(String(500))
 
     merchant = relationship("Merchant", back_populates="products")
 
@@ -79,7 +81,22 @@ class Order(Base):
     currency = Column(String(10), default="USD")
     status = Column(String(30), default="pending")
     transaction_id = Column(String(100))
+    tracking_number = Column(String(50))
     created_at = Column(DateTime, server_default=func.now())
+
+
+class Wallet(Base):
+    """Per-user mock stored-value balance — separate from the payment-method
+    vault (data/mock_wallet.json); this is what actually draws down on a
+    purchase, since DPAT tokens authorize against a balance here, not a
+    real card swipe."""
+    __tablename__ = "wallets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(50), unique=True, nullable=False)
+    balance = Column(Float, nullable=False, default=1000.0)
+    currency = Column(String(10), default="USD")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class PaymentAuthorization(Base):
@@ -112,6 +129,57 @@ class DelegatedToken(Base):
     consumed_at = Column(DateTime)
     revoked_at = Column(DateTime)
     status = Column(String(20), default="active")
+
+
+class ChatSession(Base):
+    """One chat thread — created lazily on the first message, matching
+    ChatGPT's 'New Chat' not existing until you actually send something."""
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False)
+    title = Column(String(200), default="New chat")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now())
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(50), ForeignKey("chat_sessions.session_id"), nullable=False)
+    role = Column(String(20), nullable=False)  # "user" | "assistant"
+    content = Column(Text, nullable=False)
+    products_json = Column(Text)
+    blocked_reason = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CartItem(Base):
+    """A snapshot of the product at add-time (price/rating/image), not a
+    live join — same reasoning as ChatMessage.products_json: a cart entry
+    shouldn't break or silently change if the catalog is edited later."""
+    __tablename__ = "cart_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cart_item_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False)
+    product_id = Column(String(50), nullable=False)
+    merchant_id = Column(String(50), nullable=False)
+    merchant_name = Column(String(100), nullable=False)
+    title = Column(String(200), nullable=False)
+    brand = Column(String(100))
+    category = Column(String(100), nullable=False)
+    price = Column(Float, nullable=False)
+    currency = Column(String(10), default="USD")
+    size = Column(String(20))
+    color = Column(String(50))
+    image_url = Column(String(500))
+    rating = Column(Float, default=0.0)
+    delivery_days = Column(Integer, default=5)
+    quantity = Column(Integer, default=1, nullable=False)
+    added_at = Column(DateTime, server_default=func.now())
 
 
 class AuditEvent(Base):

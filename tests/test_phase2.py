@@ -266,20 +266,28 @@ async def _mcp_get_price(product_id: str):
 
 # ── 7. SSE endpoint ───────────────────────────────────────────────────────────
 
-def test_chat_stream_endpoint_exists():
+def test_chat_stream_endpoint_exists(auth_headers):
     """Verify the chat router is mounted and endpoint responds."""
     from fastapi.testclient import TestClient
     from backend.main import app
     with TestClient(app) as client:
         # We don't have an API key in test env so we just verify routing
         # A GET without a message param should return 422 (validation error), not 404
-        r = client.get("/api/chat/stream")
+        r = client.get("/api/chat/stream", headers=auth_headers)
         assert r.status_code in (422, 200)  # 422 = missing required param
 
 
-def test_chat_stream_requires_message_param():
+def test_chat_stream_requires_message_param(auth_headers):
     from fastapi.testclient import TestClient
     from backend.main import app
     with TestClient(app) as client:
-        r = client.get("/api/chat/stream")
+        r = client.get("/api/chat/stream", headers=auth_headers)
         assert r.status_code == 422
+
+
+def test_chat_stream_requires_auth():
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    with TestClient(app) as client:
+        r = client.get("/api/chat/stream", params={"message": "hi"})
+        assert r.status_code == 401
