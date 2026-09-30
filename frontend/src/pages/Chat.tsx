@@ -387,6 +387,7 @@ export default function Chat() {
     recognition.onresult = (event) => {
       let newText = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (!event.results[i].isFinal) continue;
         const transcript = event.results[i][0].transcript.trim();
         if (transcript) newText += (newText ? " " : "") + transcript;
       }
@@ -565,9 +566,10 @@ export default function Chat() {
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-700"
+                        className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-700 flex items-start gap-2"
                       >
-                        ⛔ {turn.blocked}
+                        <span className="shrink-0 mt-0.5">🛡️</span>
+                        <span>{turn.blocked}</span>
                       </motion.div>
                     )}
 
@@ -598,10 +600,30 @@ export default function Chat() {
 
           {/* Empty state */}
           {turns.length === 0 && (
-            <p className="text-[var(--color-text-muted)] text-sm mt-12 text-center">
-              Ask something to start shopping — e.g.{" "}
-              <span className="italic">"Find running shoes size 10 under $100"</span>
-            </p>
+            <div className="flex flex-col items-center gap-6 mt-16">
+              <div className="text-center">
+                <p className="text-lg font-semibold text-[var(--color-text)] mb-1">What are you shopping for?</p>
+                <p className="text-sm text-[var(--color-text-muted)]">Ask me anything — I'll search across multiple stores and find the best options for you.</p>
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+                {[
+                  "Running shoes size 10 under $100",
+                  "Green shirt in size L",
+                  "Laptop under $800",
+                  "Wireless headphones with good reviews",
+                  "Blue sneakers arriving within 3 days",
+                  "Dress for a formal occasion",
+                ].map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => setInput(suggestion)}
+                    className="text-sm px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 

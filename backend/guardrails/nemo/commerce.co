@@ -26,10 +26,10 @@ define bot respond commerce
   "I'll search for products that match your request."
 
 define bot refuse credential request
-  "Payment credentials are protected. I can complete a purchase through the secure authorized payment flow — your card details are never shared with merchants or agents."
+  "I can't share or expose payment credentials — that's a hard boundary I never cross. Card numbers, CVVs, and banking details stay in the secure vault and are never visible to me or any agent. If you'd like to make a purchase, I'll guide you through the authorized checkout flow. What can I help you find today?"
 
 define bot refuse non-commerce
-  "I can only help with product discovery and shopping. Try asking me to find a product."
+  "I'm your personal shopping assistant — I'm not able to help with that. Ask me to find a product, compare prices, or check availability and I'll get right on it!"
 
 define flow commerce request
   user ask commerce
