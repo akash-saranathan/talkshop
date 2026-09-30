@@ -54,7 +54,19 @@ The JSON must match this schema exactly:
 
 Rules:
 - max_price must be a number, not a string ("under $100" → 100.0)
-- category must be one of: running_shoes, electronics, accessories, general, chitchat
+- category must be one of:
+    running_shoes, sneakers, boots, clothing, laptops, phones, watches,
+    bags, sunglasses, electronics, accessories, general, chitchat
+  Map user words precisely:
+    "shirt", "t-shirt", "tee", "polo", "dress", "pants", "jeans" → "clothing"
+    "sneaker", "casual shoe", "trainer" → "sneakers"
+    "boot", "chelsea boot" → "boots"
+    "laptop", "notebook", "computer" → "laptops"
+    "phone", "smartphone", "iphone", "android" → "phones"
+    "watch", "timepiece" → "watches"
+    "bag", "backpack", "purse", "handbag" → "bags"
+    "sunglasses", "shades", "sunnies" → "sunglasses"
+    "headphones", "earbuds", "speaker" → "electronics"
 - Use "chitchat" when the message is a greeting, thanks, or anything else that
   isn't actually a product request (e.g. "hi", "hello", "thanks", "how are you")
   — leave every other field null in that case

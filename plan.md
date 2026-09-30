@@ -13,10 +13,10 @@
 | 3 | Agent persona names in step messages | UX copy | 30 min | ✅ Done |
 | 4 | Suggestion chips on empty chat state | Cosmetic | 30 min | ✅ Done |
 | 5 | Multi-select products → floating checkout bar | UX flow | 2 hrs | ⏳ Pending |
-| 6 | Fix irrelevant product results (category filter tighten) | Bug fix | 1 hr | ⏳ Pending |
-| 7 | Expand local seed data (~120 products, all categories) | Data | 2 hrs | ⏳ Pending |
+| 6 | Fix irrelevant product results (category filter tighten) | Bug fix | 1 hr | ✅ Done |
+| 7 | Expand local seed data (~120 products, all categories) | Data | 2 hrs | ✅ Done |
 | 8 | DummyJSON free product API adapter (no key needed) | Backend | 1 hr | ⏳ Pending |
-| 9 | Delivery / size / color filters wired end-to-end | Backend | 2 hrs | ⏳ Pending |
+| 9 | Delivery / size / color filters wired end-to-end | Backend | 2 hrs | ✅ Done |
 | 10 | Agent trail right panel (live agent activity per query) | Frontend | 4 hrs | ⏳ Pending |
 | 11 | Card selection on checkout (multi-card wallet) | Frontend | 3 hrs | ⏳ Pending |
 | 12 | Dashboard rebuild — table + inline audit trail expand | Frontend | 4 hrs | ⏳ Pending |
@@ -35,6 +35,9 @@
 | 2026-09-30 | 2 | Guardrail copy rewritten — friendly PII refusal + scope guard message |
 | 2026-09-30 | 3 | All 7 workflow step messages now name VibeCheck / SneakPeek by role |
 | 2026-09-30 | 4 | Empty chat state replaced with heading + 6 suggestion chips |
+| 2026-09-30 | 6 | CATEGORY_ALIASES dict + strict filter in `sneakpeek.py`; VibeCheck prompt updated with 11 canonical categories and user-word mappings |
+| 2026-09-30 | 7 | `data/products.json` expanded from 80 → 137 products across 11 categories with real brand names, Pexels images, colors, delivery days |
+| 2026-09-30 | 9 | Color and delivery_days constraint filters added to `filter_products()`; color match bonus (+12pts) added to `rank_products()` |
 
 ---
 

@@ -659,3 +659,45 @@ kept in a ref for the life of the tab, never persisted anywhere.
 - [x] The right panel shows real orders, matching the Dashboard
 - [x] 157 tests passing (148 prior + 9 new), zero regressions
 - [x] `tsc --noEmit` clean
+
+---
+
+## Enhancement — UI/UX Polish for Client Demo 🔄
+
+**Branch:** `enhancement/ui-ux-polish`
+**Status:** In progress — tracked in `plan.md`
+
+Focused improvement pass before the JPMC/Citi demo — 15 tasks covering UX
+bugs, copy quality, data richness, and feature polish. No phase gate; each
+task is independently committable. See `plan.md` for the full task tracker.
+
+### Completed so far (Batch 1 — Quick wins)
+
+| Task | What changed | File(s) |
+|------|-------------|---------|
+| 1 — Mic duplicate fix | Added `isFinal` guard in `onresult` handler; continuous mode was appending the same phrase 3–5× | `Chat.tsx` |
+| 2 — Guardrail copy | PII refusal and scope guard messages rewritten to sound human and contextual instead of robotic | `backend/guardrails/nemo/commerce.co` |
+| 3 — Agent persona names | All 7 workflow step messages now name VibeCheck/SneakPeek by role ("SneakPeek is searching stores...") | `backend/graph/workflow.py` |
+| 4 — Suggestion chips | Empty chat state replaced with a welcome heading + 6 clickable chips to guide first-time users | `Chat.tsx` |
+
+### Completed (Batch 2 — Catalog & filter correctness)
+
+| Task | What changed | File(s) |
+|------|-------------|---------|
+| 6 — Category filter fix | `CATEGORY_ALIASES` dict maps 50+ user terms → canonical DB categories; `filter_products()` now does strict alias-resolved matching — "shirt" no longer returns watches | `backend/agents/sneakpeek.py` |
+| 6 (cont.) — VibeCheck prompt | Added all 11 canonical categories to the system prompt with word-mapping examples (shirt→clothing, laptop→laptops, etc.) | `backend/agents/vibecheck.py` |
+| 7 — Seed data expansion | `data/products.json` expanded from 80 → 137 products across 11 categories (running_shoes, sneakers, boots, clothing, laptops, phones, watches, bags, sunglasses, electronics, accessories); real brand names, Pexels images, colors, delivery days 1–7 | `data/products.json` |
+| 9 — Color + delivery filters | `filter_products()` enforces color (substring match) and delivery_days constraints; `rank_products()` adds +12 pts for color match | `backend/agents/sneakpeek.py` |
+
+### Remaining tasks (from plan.md)
+
+| # | Task | Status |
+|---|------|--------|
+| 5 | Multi-select products → floating checkout bar | ⏳ Pending |
+| 8 | DummyJSON free product API adapter | ⏳ Pending |
+| 10 | Agent trail right panel (live agent activity per query) | ⏳ Pending |
+| 11 | Card selection on checkout (multi-card wallet) | ⏳ Pending |
+| 12 | Dashboard rebuild — table + inline audit trail expand | ⏳ Pending |
+| 13 | Ranked recommendation cards with score explanation | ⏳ Pending |
+| 14 | Dark / light mode toggle | ⏳ Pending |
+| 15 | Logo left-aligned, header polish | ⏳ Pending |
