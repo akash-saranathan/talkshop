@@ -181,6 +181,7 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [sessionCartCount, setSessionCartCount] = useState(0);
+  const [sessionCartIds, setSessionCartIds] = useState<Set<string>>(new Set());
   const [turnSortModes, setTurnSortModes] = useState<Map<string, SortMode>>(new Map());
   const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
   const [addingToCheckout, setAddingToCheckout] = useState(false);
@@ -307,6 +308,7 @@ export default function Chat() {
     switchToSession(crypto.randomUUID());
     setTurns([]);
     setSessionCartCount(0);
+    setSessionCartIds(new Set());
     try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
   }, [switchToSession]);
 
@@ -330,6 +332,7 @@ export default function Chat() {
     setLoading(false);
     activeTurnId.current = null;
     setSessionCartCount(0);
+    setSessionCartIds(new Set());
     try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
     await loadSession(clickedId);
   }, [loadSession]);
@@ -849,11 +852,7 @@ export default function Chat() {
                                     getCart().then((items) => setCartCount(items.length)).catch(() => {});
                                     if (cartItem) {
                                       setSessionCartCount((n) => n + 1);
-                                      try {
-                                        const ids: string[] = JSON.parse(sessionStorage.getItem("talkshop_session_cart_ids") || "[]");
-                                        ids.push(cartItem.cart_item_id);
-                                        sessionStorage.setItem("talkshop_session_cart_ids", JSON.stringify(ids));
-                                      } catch { /* noop */ }
+                                      setSessionCartIds((prev) => new Set(prev).add(cartItem.cart_item_id));
                                     }
                                     triggerCheckoutCountdown(cartItem);
                                   }}
@@ -1039,10 +1038,7 @@ export default function Chat() {
             setShowCartDrawer(false);
             getCart().then((items) => setCartCount(items.length)).catch(() => {});
           }}
-          sessionCartIds={(() => {
-            try { return new Set<string>(JSON.parse(sessionStorage.getItem("talkshop_session_cart_ids") || "[]")); }
-            catch { return new Set<string>(); }
-          })()}
+          sessionCartIds={sessionCartIds}
         />
 
         {/* Input bar */}
