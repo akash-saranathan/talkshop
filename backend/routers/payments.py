@@ -42,6 +42,7 @@ class ExecutePaymentRequest(BaseModel):
     subtotal: float
     tax: float
     shipping: float
+    payment_method: str = "wallet"  # "wallet" | "card"
 
 
 class ExecutePaymentResponse(BaseModel):
@@ -186,32 +187,30 @@ async def execute_payment_endpoint(
                     blocked_reason=result.decline_reason,
                 )
 
-            # The mock processor says the card is fine — but the token-based
-            # "wallet" balance is a separate, layered check (matches a real
-            # network's "card valid but insufficient funds" decline). Kept
-            # here rather than inside mock_processor.py so that module and
-            # its existing tests stay untouched — identity/user_id only
-            # exists at this router layer.
+            # Wallet balance check + deduction — only when paying from wallet.
+            # Card payments are processed by the mock processor and bypass this
+            # so a card purchase never drains or checks the wallet balance.
             wallet = session.query(Wallet).filter(Wallet.user_id == current_user.user_id).first()
-            if wallet is None or wallet.balance < result.amount:
-                auth = session.query(PaymentAuthorization).filter(
-                    PaymentAuthorization.order_id == req.checkout_id
-                ).order_by(PaymentAuthorization.approved_at.desc()).first()
-                if auth:
-                    auth.status = "declined"
-                write_audit_event(session, "PAYMENT_DECLINED", user_id=current_user.user_id,
-                                   agent_id=PAYIT.agent_id, order_id=req.checkout_id,
-                                   metadata={"reason": "INSUFFICIENT_BALANCE"})
-                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "declined", current_user.user_id))
-                session.commit()
-                return ExecutePaymentResponse(
-                    status="blocked", order_id=req.checkout_id, amount=req.total,
-                    merchant=req.merchant_name,
-                    summary=trackit.summarize_decline(req.checkout_id, "INSUFFICIENT_BALANCE"),
-                    blocked_reason="INSUFFICIENT_BALANCE",
-                    wallet_balance=wallet.balance if wallet else 0.0,
-                )
-            wallet.balance -= result.amount
+            if req.payment_method != "card":
+                if wallet is None or wallet.balance < result.amount:
+                    auth = session.query(PaymentAuthorization).filter(
+                        PaymentAuthorization.order_id == req.checkout_id
+                    ).order_by(PaymentAuthorization.approved_at.desc()).first()
+                    if auth:
+                        auth.status = "declined"
+                    write_audit_event(session, "PAYMENT_DECLINED", user_id=current_user.user_id,
+                                       agent_id=PAYIT.agent_id, order_id=req.checkout_id,
+                                       metadata={"reason": "INSUFFICIENT_BALANCE"})
+                    _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "declined", current_user.user_id))
+                    session.commit()
+                    return ExecutePaymentResponse(
+                        status="blocked", order_id=req.checkout_id, amount=req.total,
+                        merchant=req.merchant_name,
+                        summary=trackit.summarize_decline(req.checkout_id, "INSUFFICIENT_BALANCE"),
+                        blocked_reason="INSUFFICIENT_BALANCE",
+                        wallet_balance=wallet.balance if wallet else 0.0,
+                    )
+                wallet.balance -= result.amount
 
             auth = session.query(PaymentAuthorization).filter(
                 PaymentAuthorization.order_id == req.checkout_id

@@ -191,6 +191,7 @@ export default function Checkout() {
           subtotal: checkoutData.subtotal,
           tax: checkoutData.tax,
           shipping: checkoutData.shipping,
+          payment_method: paymentMethod,
         }),
       });
       if (!execRes.ok) throw new Error(await readErrorDetail(execRes, "Payment execution failed"));
