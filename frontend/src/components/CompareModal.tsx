@@ -1,12 +1,21 @@
 import { createPortal } from "react-dom";
-import { motion } from "framer-motion";
-import { X, Star, Zap, ShoppingCart } from "lucide-react";
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Star, Zap, ShoppingCart, Sparkles, Trophy, Loader } from "lucide-react";
 import type { ProductData } from "../api/chat";
+import { authFetch } from "../api/client";
 
 interface Props {
   products: ProductData[];
   onClose: () => void;
   onAddToCart: (product: ProductData) => void;
+}
+
+interface AiVerdict {
+  winner_product_id: string;
+  headline: string;
+  reasoning: string;
+  trade_offs: string[];
 }
 
 function getDeliveryLabel(days: number): string {
@@ -30,6 +39,36 @@ const SPEC_ROWS: Array<{ label: string; key: keyof ProductData; format?: (v: unk
 ];
 
 export default function CompareModal({ products, onClose, onAddToCart }: Props) {
+  const [verdict, setVerdict] = useState<AiVerdict | null>(null);
+  const [verdictLoading, setVerdictLoading] = useState(true);
+
+  useEffect(() => {
+    setVerdictLoading(true);
+    authFetch("/api/compare", {
+      method: "POST",
+      body: JSON.stringify({
+        products: products.map((p) => ({
+          product_id: p.product_id,
+          title: p.title,
+          brand: p.brand,
+          price: p.price,
+          rating: p.rating,
+          review_count: p.review_count,
+          delivery_days: p.delivery_days,
+          shipping_cost: p.shipping_cost,
+          color: p.color,
+          size: p.size,
+          merchant_name: p.merchant_name,
+        })),
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data) setVerdict(data); })
+      .catch(() => {})
+      .finally(() => setVerdictLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Highlight the column with the best value for price (lowest) and rating (highest)
   const bestPrice = Math.min(...products.map((p) => p.price));
   const bestRating = Math.max(...products.map((p) => p.rating));
@@ -66,6 +105,58 @@ export default function CompareModal({ products, onClose, onAddToCart }: Props) 
           </button>
         </div>
 
+        {/* AI Verdict panel */}
+        <AnimatePresence mode="wait">
+          {verdictLoading ? (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="mx-5 my-4 rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 px-4 py-3 flex items-center gap-3"
+            >
+              <Sparkles size={16} className="text-[var(--color-primary)] shrink-0 animate-pulse" />
+              <div className="flex items-center gap-2 text-sm text-[var(--color-primary)]">
+                <Loader size={13} className="animate-spin shrink-0" />
+                <span>AI is analysing these products...</span>
+              </div>
+            </motion.div>
+          ) : verdict ? (
+            <motion.div
+              key="verdict"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mx-5 my-4 rounded-xl border border-[var(--color-primary)]/30 bg-gradient-to-br from-[var(--color-primary)]/8 to-violet-500/5 px-4 py-4 flex flex-col gap-2"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles size={15} className="text-[var(--color-primary)] shrink-0" />
+                <span className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">AI Recommendation</span>
+              </div>
+              {/* Winner highlight */}
+              {(() => {
+                const winner = products.find((p) => p.product_id === verdict.winner_product_id);
+                return winner ? (
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Trophy size={14} className="text-amber-500 shrink-0" />
+                    <span className="text-sm font-semibold text-[var(--color-text)]">{verdict.headline}</span>
+                  </div>
+                ) : null;
+              })()}
+              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">{verdict.reasoning}</p>
+              {verdict.trade_offs.length > 0 && (
+                <ul className="mt-1 flex flex-col gap-1">
+                  {verdict.trade_offs.map((t, i) => (
+                    <li key={i} className="text-[11px] text-[var(--color-text-muted)] flex items-start gap-1.5">
+                      <span className="text-[var(--color-border)] mt-0.5">•</span>
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             {/* Product thumbnails */}
@@ -74,16 +165,25 @@ export default function CompareModal({ products, onClose, onAddToCart }: Props) 
                 <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] w-28">
                   Spec
                 </th>
-                {products.map((p) => (
-                  <th key={p.product_id} className="px-4 py-3 text-center min-w-[160px]">
-                    {p.image_url ? (
-                      <img src={p.image_url} alt={p.title} className="w-16 h-16 object-cover rounded-lg mx-auto mb-2" />
-                    ) : (
-                      <div className="w-16 h-16 rounded-lg bg-[var(--color-bg)] mx-auto mb-2" />
-                    )}
-                    <p className="text-xs font-semibold text-[var(--color-text)] line-clamp-2 leading-tight">{p.title}</p>
-                  </th>
-                ))}
+                {products.map((p) => {
+                  const isWinner = verdict?.winner_product_id === p.product_id;
+                  return (
+                    <th key={p.product_id} className={`px-4 py-3 text-center min-w-[160px] ${isWinner ? "bg-[var(--color-primary)]/5" : ""}`}>
+                      {isWinner && (
+                        <div className="flex items-center justify-center gap-1 mb-1.5">
+                          <Trophy size={11} className="text-amber-500" />
+                          <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Best Pick</span>
+                        </div>
+                      )}
+                      {p.image_url ? (
+                        <img src={p.image_url} alt={p.title} className={`w-16 h-16 object-cover rounded-lg mx-auto mb-2 ${isWinner ? "ring-2 ring-[var(--color-primary)]/40" : ""}`} />
+                      ) : (
+                        <div className={`w-16 h-16 rounded-lg bg-[var(--color-bg)] mx-auto mb-2 ${isWinner ? "ring-2 ring-[var(--color-primary)]/40" : ""}`} />
+                      )}
+                      <p className={`text-xs font-semibold line-clamp-2 leading-tight ${isWinner ? "text-[var(--color-primary)]" : "text-[var(--color-text)]"}`}>{p.title}</p>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
 
