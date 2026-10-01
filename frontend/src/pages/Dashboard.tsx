@@ -171,7 +171,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
-      <AppHeader title="My Orders" backHref="/" backLabel="Chat" />
+      <AppHeader title="Order Tracker" backHref="/" backLabel="Chat" />
 
       <div className="flex-1 p-6 max-w-5xl mx-auto w-full">
         {/* KPI row */}

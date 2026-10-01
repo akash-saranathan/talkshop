@@ -673,7 +673,7 @@ export default function Chat() {
           </div>
           <div className="flex items-center gap-3">
             <a href="/dashboard" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">
-              Dashboard ↗
+              Order Tracker ↗
             </a>
             <button
               onClick={() => setShowCartDrawer(true)}
