@@ -26,12 +26,17 @@ Discovery (VibeCheck → SneakPeek) runs as a [LangGraph](https://github.com/lan
 ## Features
 
 - **Conversational discovery** — natural-language search with follow-up questions when you're vague ("running shoes" → "what size, color, budget?"), voice input, and image-paste search (multimodal)
-- **Real product catalog** — 80 products across running shoes / electronics / accessories, with real, color-matched product photography
-- **Cart** — add from chat, edit quantity, remove items, choose what to check out now vs. save for later
-- **Checkout & payment** — scoped token authorization, independent guardrail re-verification, wallet-based payment (no real payment gateway — see [Limitations](#limitations))
+- **Streaming responses** — recommendation text streams word-by-word with a live cursor, GPT-style
+- **Real product catalog** — 137 products across 11 categories (running shoes, electronics, clothing, accessories, laptops, and more), 73 brands, 3 merchants, $14.99–$1,399
+- **Match tags** — every product card shows exactly which of your constraints were verified (✓ blue ✓ size 10 ✓ under $100), with tooltip explanations on hover
+- **Image lightbox** — click any product image to open a full-screen spring-animated overlay
+- **Merchant trust badges** — Verified / Premium tier, ships-in time, return policy on every card
+- **Compare mode** — select 2–4 products, get a side-by-side spec table with an AI Recommendation panel: the LLM picks the winner, explains why with actual numbers, and lists one trade-off per other product
+- **Cart drawer** — slides in over the chat without navigating away; shows items added this session vs. previously, with qty controls and wallet balance
+- **Checkout & payment** — wallet or card, scoped DPAT token authorization, independent 12-check guardrail re-verification (no real payment gateway — see [Limitations](#limitations))
 - **Fulfillment** — order confirmation, tracking numbers, simulated delivery status
 - **Persistent chat history** — ChatGPT-style session sidebar, resumable conversations
-- **Dashboard** — wallet balance, order history, delivery status, spend summary
+- **Order Tracker** — wallet balance, order history, delivery status, spend summary, sortable by purchase or arrival date
 - **Real authentication** — JWT + bcrypt, not a UI mock
 - **Observability** — OpenTelemetry tracing on the payment path, viewable in [Arize Phoenix](https://github.com/Arize-ai/phoenix)
 
@@ -75,7 +80,7 @@ python -m uvicorn backend.main:app --port 8000
 ```bash
 cd frontend
 npm install
-npm run dev                 # http://localhost:5173
+npm run dev                 # http://localhost:5175
 ```
 
 ### Try it
