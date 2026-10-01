@@ -198,7 +198,29 @@ async def generate_recommendation_text(
     All factual values (prices, ratings) come from the products list — LLM only writes prose.
     """
     if not products:
-        return "I couldn't find products matching your criteria. Try adjusting your filters."
+        parts: list[str] = []
+        if intent.category:
+            parts.append(intent.category.replace("_", " "))
+        if intent.color:
+            parts.append(f"in {intent.color}")
+        if intent.size:
+            parts.append(f"size {intent.size}")
+        if intent.brand:
+            parts.append(f"from {intent.brand}")
+        if intent.max_price:
+            parts.append(f"under ${intent.max_price:.0f}")
+        what = " ".join(parts) if parts else "products matching your criteria"
+        hints: list[str] = []
+        if intent.max_price:
+            hints.append(f"try raising your budget to ${int(intent.max_price * 1.3)}")
+        if intent.color:
+            hints.append("try a different color")
+        if intent.brand:
+            hints.append("remove the brand filter")
+        if intent.size:
+            hints.append("check if a similar style comes in that size")
+        hint = (" — " + hints[0].capitalize() + "?") if hints else ""
+        return f"No {what} found right now{hint} Try broadening your search."
 
     top = products[:3]
     product_summary = "\n".join(

@@ -58,7 +58,7 @@ function generateFollowUpChips(products: ProductData[], intent: SimpleIntent): s
   }
   const fastCount = products.filter(p => p.delivery_days <= 2).length;
   if (fastCount > 0 && fastCount < products.length) chips.push("Fastest delivery only");
-  if (chips.length < 4) chips.push("Which one should I buy?");
+  if (products.length > 1 && chips.length < 4) chips.push("Which one should I buy?");
   return chips.slice(0, 4);
 }
 
@@ -435,7 +435,24 @@ export default function Chat() {
         });
       },
       onRecommendation: (text, prods) => {
-        updateActiveTurn((turn) => ({ ...turn, recommendation: text, products: prods }));
+        const capturedId = activeTurnId.current;
+        // Set products immediately
+        setTurns((prev) => prev.map((t) =>
+          t.id === capturedId ? { ...t, products: prods } : t
+        ));
+        // Stream recommendation text word-by-word (ChatGPT-style)
+        const words = text.split(" ");
+        words.forEach((_, i) => {
+          const partial = words.slice(0, i + 1).join(" ");
+          const isLast = i === words.length - 1;
+          setTimeout(() => {
+            setTurns((prev) => prev.map((t) =>
+              t.id === capturedId
+                ? { ...t, recommendation: partial + (isLast ? "" : " ▍") }
+                : t
+            ));
+          }, i * 40);
+        });
       },
       onBlocked: (message) => {
         updateActiveTurn((turn) => ({ ...turn, blocked: message }));

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { Loader, Eye, Plus, Minus } from "lucide-react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { Loader, Eye, Plus, Minus, X, ZoomIn } from "lucide-react";
 import type { ProductData } from "../api/chat";
 import { getProductVisual } from "../utils/productVisual";
 import { addToCart, updateCartItemQuantity, removeFromCart, type CartItemData } from "../api/cart";
@@ -42,6 +43,7 @@ export default function ProductCard({ product, index, selected = false, onToggle
   const [cartItemId, setCartItemId] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [showLightbox, setShowLightbox] = useState(false);
   const badgeClass = MERCHANT_COLORS[product.merchant_id] ?? "bg-slate-100 text-slate-600";
   const visual = getProductVisual(product.title, product.category);
   const VisualIcon = visual.icon;
@@ -136,13 +138,21 @@ export default function ProductCard({ product, index, selected = false, onToggle
           </button>
         )}
         {showImage ? (
-          <img
-            src={product.image_url!}
-            alt={product.title}
-            onError={() => setImageFailed(true)}
-            onClick={() => setShowDetail(true)}
-            className="h-28 w-full rounded-lg object-cover cursor-pointer"
-          />
+          <div className="relative group/img">
+            <img
+              src={product.image_url!}
+              alt={product.title}
+              onError={() => setImageFailed(true)}
+              onClick={() => setShowLightbox(true)}
+              className="h-28 w-full rounded-lg object-cover cursor-zoom-in"
+            />
+            <div
+              onClick={() => setShowLightbox(true)}
+              className="absolute inset-0 rounded-lg bg-black/0 group-hover/img:bg-black/20 transition-colors flex items-center justify-center cursor-zoom-in"
+            >
+              <ZoomIn size={20} className="text-white opacity-0 group-hover/img:opacity-100 transition-opacity drop-shadow-md" />
+            </div>
+          </div>
         ) : (
           <div
             onClick={() => setShowDetail(true)}
@@ -183,11 +193,24 @@ export default function ProductCard({ product, index, selected = false, onToggle
       {/* Match tags — what the AI matched for this result */}
       {matchTags && matchTags.length > 0 && (
         <div className="flex gap-1 flex-wrap">
-          {matchTags.map((tag) => (
-            <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--color-success)] bg-[var(--color-success)]/10 border border-[var(--color-success)]/20 px-1.5 py-0.5 rounded-full">
-              ✓ {tag}
-            </span>
-          ))}
+          {matchTags.map((tag) => {
+            const reason = tag.startsWith("under $")
+              ? `Price $${product.price.toFixed(2)} is within your ${tag} budget`
+              : tag.startsWith("size ")
+              ? `This product comes in your requested ${tag}`
+              : product.color?.toLowerCase().includes(tag.toLowerCase())
+              ? `Color "${product.color}" matches your "${tag}" filter`
+              : `Brand "${product.brand}" matches your "${tag}" filter`;
+            return (
+              <span
+                key={tag}
+                title={reason}
+                className="relative inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--color-success)] bg-[var(--color-success)]/10 border border-[var(--color-success)]/20 px-1.5 py-0.5 rounded-full cursor-help"
+              >
+                ✓ {tag}
+              </span>
+            );
+          })}
         </div>
       )}
 
@@ -255,6 +278,43 @@ export default function ProductCard({ product, index, selected = false, onToggle
           onClose={() => setShowDetail(false)}
           onSelect={handleAddToCart}
         />
+      )}
+
+      {/* Image lightbox */}
+      {showLightbox && product.image_url && createPortal(
+        <AnimatePresence>
+          <motion.div
+            key="lightbox"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowLightbox(false)}
+            className="fixed inset-0 z-[200] bg-black/85 flex items-center justify-center p-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", damping: 22, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-2xl max-h-[80vh] flex flex-col items-center gap-3"
+            >
+              <img
+                src={product.image_url}
+                alt={product.title}
+                className="max-w-full max-h-[70vh] rounded-xl object-contain shadow-2xl"
+              />
+              <p className="text-white/80 text-sm font-medium text-center">{product.title}</p>
+              <button
+                onClick={() => setShowLightbox(false)}
+                className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+              >
+                <X size={16} className="text-white" />
+              </button>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
       )}
     </motion.div>
   );
