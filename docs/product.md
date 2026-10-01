@@ -78,25 +78,25 @@ Checkbox each card you want; a floating bar shows the total and a single "Buy Se
 
 **1. Voice as the primary input** — the mic button is secondary today. It should be the hero CTA, especially on mobile, with a large hold-to-speak surface. A truly conversational app should make speaking feel easier than typing.
 
-**2. Compare mode** — when 2–3 products are selected, a "Compare" button should open a side-by-side spec table (price, rating, delivery, size, key attributes). Decisions happen at the comparison stage; right now that step is missing.
+**2. Compare mode** ✅ *Shipped* — select 2–4 products → Compare button → side-by-side spec table (price, rating, delivery, color, size, shipping, merchant). Best value highlighted per column. Each column has Add to Cart. AI-powered recommendation panel explains which product wins overall and why (price, rating, delivery, free shipping), with a highlighted winner card.
 
-**3. Smarter no-results message** — currently falls back to a generic "Try adjusting your filters." The AI knows exactly why it found nothing (price too low, color not stocked, size out of stock). It should explain: *"No blue sneakers under $50 — closest is $74. Try $80?"* with a tappable suggestion.
+**3. Smarter no-results message** ✅ *Shipped* — when search returns nothing, the AI now names exactly what it couldn't find ("No blue running shoes size 10 under $80 found") and suggests the most actionable fix ("Try raising budget to $104?").
 
 **4. Preference learning** — across sessions, the app should notice patterns (user always picks Nike, always size 10, always under $100) and surface them: *"Based on your past searches, adding Nike and size 10 — is that right?"* This turns a search tool into a personal shopper.
 
-**5. Cart drawer** — navigating away to `/cart` breaks the chat context. A slide-in drawer over the chat would let users review cart items, adjust quantities, and start checkout without losing their conversation.
+**5. Cart drawer** ✅ *Shipped* — cart icon and session-cart strip now open a slide-in drawer over the chat. Shows session vs. previous items, qty controls, remove, wallet balance, and a link to the full cart page. Chat context is never lost.
 
 ### Medium priority
 
-**6. Streaming recommendation text** — the recommendation paragraph appears all at once after the products. Streaming it in word by word (like ChatGPT responses) would make the AI feel more present and alive.
+**6. Streaming recommendation text** ✅ *Shipped* — recommendation text now streams word-by-word at 40ms/word with a live cursor, matching the ChatGPT feel.
 
-**7. Product image zoom** — clicking the product image should open a full-size lightbox with swipe support, not just the detail modal.
+**7. Product image zoom** ✅ *Shipped* — clicking a product image opens a full-screen lightbox with spring animation. ZoomIn icon appears on hover. Eye button still opens the detail modal.
 
-**8. "Why this?" explainer** — a tap/hover on the match checkmarks should expand to a one-sentence explanation: *"Ranked #1 because it matched all 3 of your filters and has the highest rating among blue size-10 shoes under $100."*
+**8. "Why this?" explainer** ✅ *Shipped* — hovering match tags (✓ blue, ✓ size 10, ✓ under $100) shows a tooltip explaining exactly why that constraint was matched for that product.
 
 **9. One-tap reorder** — the Recent Orders list in the Agent Trail panel already shows past purchases. Adding a "Reorder" button next to each would let users re-run the same purchase in two taps.
 
-**10. Merchant trust badges** — show verified merchant indicators (response time, return policy, trust tier) on cards. This is a trust signal that matters when buying from an unfamiliar store via an AI recommendation.
+**10. Merchant trust badges** ✅ *Shipped* — Verified / Premium badge next to every merchant name. Hovering shows ships-in time and return policy. A persistent "🚚 Ships in 24h · ↩ 30-day returns" line appears below the badge.
 
 ### Future / larger scope
 
