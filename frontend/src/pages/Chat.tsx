@@ -7,6 +7,7 @@ import { getCart, addToCart } from "../api/cart";
 import ProductCard from "../components/ProductCard";
 import SkeletonProductCard from "../components/SkeletonProductCard";
 import CompareModal from "../components/CompareModal";
+import CartDrawer from "../components/CartDrawer";
 import ChatSidebar from "../components/ChatSidebar";
 import AgentTrailPanel from "../components/AgentTrailPanel";
 import ThemeToggle from "../components/ThemeToggle";
@@ -184,6 +185,7 @@ export default function Chat() {
   const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
   const [addingToCheckout, setAddingToCheckout] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
+  const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftWidth, setLeftWidth] = useState(256);
@@ -673,14 +675,18 @@ export default function Chat() {
             <a href="/dashboard" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">
               Dashboard ↗
             </a>
-            <a href="/cart" className="relative text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors" title="Cart">
+            <button
+              onClick={() => setShowCartDrawer(true)}
+              className="relative text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
+              title="Cart"
+            >
               <ShoppingCart size={18} />
               {cartCount > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-semibold grid place-items-center">
                   {cartCount}
                 </span>
               )}
-            </a>
+            </button>
             <ThemeToggle />
             <div className="flex items-center gap-2 text-sm border-l border-[var(--color-border)] pl-3">
               <span className="text-[var(--color-text-muted)]">{user?.name}</span>
@@ -913,7 +919,7 @@ export default function Chat() {
         {sessionCartCount > 0 && autoCheckoutIn === null && (
           <div className="mx-6 mb-1">
             <button
-              onClick={() => navigate("/cart")}
+              onClick={() => setShowCartDrawer(true)}
               className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-surface)] hover:bg-[var(--color-bg)] transition-colors group"
             >
               <div className="flex items-center gap-2 text-sm text-[var(--color-primary)] font-medium">
@@ -1025,6 +1031,19 @@ export default function Chat() {
             }}
           />
         )}
+
+        {/* Cart drawer */}
+        <CartDrawer
+          open={showCartDrawer}
+          onClose={() => {
+            setShowCartDrawer(false);
+            getCart().then((items) => setCartCount(items.length)).catch(() => {});
+          }}
+          sessionCartIds={(() => {
+            try { return new Set<string>(JSON.parse(sessionStorage.getItem("talkshop_session_cart_ids") || "[]")); }
+            catch { return new Set<string>(); }
+          })()}
+        />
 
         {/* Input bar */}
         <div className="px-6 py-4 border-t border-[var(--color-border)] shrink-0">
