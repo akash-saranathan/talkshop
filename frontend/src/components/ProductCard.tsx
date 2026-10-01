@@ -30,6 +30,12 @@ const MERCHANT_COLORS: Record<string, string> = {
   MERCHANT_C: "bg-emerald-100 text-emerald-700",
 };
 
+const MERCHANT_TRUST: Record<string, { tier: "Premium" | "Verified"; ships: string; returns: string }> = {
+  MERCHANT_A: { tier: "Verified", ships: "Ships in 24h", returns: "30-day returns" },
+  MERCHANT_B: { tier: "Verified", ships: "Ships in 48h", returns: "14-day returns" },
+  MERCHANT_C: { tier: "Premium",  ships: "Ships same day", returns: "60-day returns" },
+};
+
 const RANK_BADGE: Record<number, { label: string; className: string }> = {
   0: { label: "#1", className: "bg-amber-400 text-white" },
   1: { label: "#2", className: "bg-slate-400 text-white" },
@@ -45,6 +51,7 @@ export default function ProductCard({ product, index, selected = false, onToggle
   const [showDetail, setShowDetail] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
   const badgeClass = MERCHANT_COLORS[product.merchant_id] ?? "bg-slate-100 text-slate-600";
+  const trust = MERCHANT_TRUST[product.merchant_id];
   const visual = getProductVisual(product.title, product.category);
   const VisualIcon = visual.icon;
   const showImage = product.image_url && !imageFailed;
@@ -163,15 +170,37 @@ export default function ProductCard({ product, index, selected = false, onToggle
         )}
       </div>
 
-      {/* Merchant badge */}
+      {/* Merchant badge + trust tier */}
       <div className="flex items-center justify-between">
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
-          {product.merchant_name}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
+            {product.merchant_name}
+          </span>
+          {trust && (
+            <span
+              title={`${trust.ships} · ${trust.returns}`}
+              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-help ${
+                trust.tier === "Premium"
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-green-100 text-green-700"
+              }`}
+            >
+              ✓ {trust.tier}
+            </span>
+          )}
+        </div>
         {product.shipping_cost === 0 && (
           <span className="text-xs text-[var(--color-success)] font-medium">Free shipping</span>
         )}
       </div>
+      {/* Trust details: ships + returns */}
+      {trust && (
+        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
+          <span>🚚 {trust.ships}</span>
+          <span>·</span>
+          <span>↩ {trust.returns}</span>
+        </div>
+      )}
 
       {/* Title */}
       <p className="text-sm font-semibold text-[var(--color-text)] leading-tight line-clamp-2">
