@@ -659,3 +659,47 @@ kept in a ref for the life of the tab, never persisted anywhere.
 - [x] The right panel shows real orders, matching the Dashboard
 - [x] 157 tests passing (148 prior + 9 new), zero regressions
 - [x] `tsc --noEmit` clean
+
+---
+
+## Enhancement — UI/UX Polish for Client Demo 🔄
+
+**Branch:** `enhancement/ui-ux-polish`
+**Status:** In progress — tracked in `plan.md`
+
+Focused improvement pass before the JPMC/Citi demo — 15 tasks covering UX
+bugs, copy quality, data richness, and feature polish. No phase gate; each
+task is independently committable. See `plan.md` for the full task tracker.
+
+### Completed so far (Batch 1 — Quick wins)
+
+| Task | What changed | File(s) |
+|------|-------------|---------|
+| 1 — Mic duplicate fix | Added `isFinal` guard in `onresult` handler; continuous mode was appending the same phrase 3–5× | `Chat.tsx` |
+| 2 — Guardrail copy | PII refusal and scope guard messages rewritten to sound human and contextual instead of robotic | `backend/guardrails/nemo/commerce.co` |
+| 3 — Agent persona names | All 7 workflow step messages now name VibeCheck/SneakPeek by role ("SneakPeek is searching stores...") | `backend/graph/workflow.py` |
+| 4 — Suggestion chips | Empty chat state replaced with a welcome heading + 6 clickable chips to guide first-time users | `Chat.tsx` |
+
+### Completed (Batch 2 — Catalog & filter correctness)
+
+| Task | What changed | File(s) |
+|------|-------------|---------|
+| 6 — Category filter fix | `CATEGORY_ALIASES` dict maps 50+ user terms → canonical DB categories; `filter_products()` now does strict alias-resolved matching — "shirt" no longer returns watches | `backend/agents/sneakpeek.py` |
+| 6 (cont.) — VibeCheck prompt | Added all 11 canonical categories to the system prompt with word-mapping examples (shirt→clothing, laptop→laptops, etc.) | `backend/agents/vibecheck.py` |
+| 7 — Seed data expansion | `data/products.json` expanded from 80 → 137 products across 11 categories (running_shoes, sneakers, boots, clothing, laptops, phones, watches, bags, sunglasses, electronics, accessories); real brand names, Pexels images, colors, delivery days 1–7 | `data/products.json` |
+| 9 — Color + delivery filters | `filter_products()` enforces color (substring match) and delivery_days constraints; `rank_products()` adds +12 pts for color match | `backend/agents/sneakpeek.py` |
+
+### Completed (Batch 3 — UI polish + agent trail + dark mode)
+
+| Task | What changed | File(s) |
+|------|-------------|---------|
+| 14 — Dark/light mode | CSS dark-mode tokens; `ThemeToggle` component; `index.html` init script prevents FOUC | `index.css`, `ThemeToggle.tsx`, `index.html` |
+| 15 — Header polish | ThemeToggle added to Chat header; compact right-side controls | `Chat.tsx` |
+| 13 — Ranked cards | #1/#2/#3 gold/silver/bronze badges on ProductCard; score tag (e.g. "42pts") | `ProductCard.tsx` |
+| 10 — Agent trail panel | `AgentTrailPanel` replaces OrdersPanel: 6 agents with live status dots (idle/running/done), step timeline, recent orders widget | `AgentTrailPanel.tsx`, `Chat.tsx` |
+| 11 — Card selection | 3 mock saved cards (Visa ●●●● 4242, MC ●●●● 8317, Amex ●●●● 5591) with radio selection on Checkout | `Checkout.tsx` |
+| 12 — Dashboard audit | Per-order "Audit ▼" expand button fetches `/api/audit/{id}` and shows event timeline inline | `Dashboard.tsx` |
+| 5 — Multi-select bar | Checkbox on each ProductCard; floating "Buy Selected" bar (count + total + Clear) navigates to cart for checkout | `ProductCard.tsx`, `Chat.tsx` |
+| 8 — DummyJSON adapter | `backend/merchants/dummyjson.py`: free public API, no key, 20 results/call, wired into MCP fan-out as 4th source | `dummyjson.py`, `mcp/server.py` |
+
+### All 15 tasks — COMPLETE ✅

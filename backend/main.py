@@ -7,7 +7,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db.init_db import init_db, run as seed_db
-from backend.routers import auth, merchants, products, chat, authorizations, payments, cart
+from backend.routers import auth, merchants, products, chat, authorizations, payments, cart, compare
 from backend.config.llm import resolve_llm
 from backend.observability.tracing import init_tracing
 
@@ -47,6 +47,7 @@ app.include_router(chat.router)
 app.include_router(authorizations.router)
 app.include_router(payments.router)
 app.include_router(cart.router)
+app.include_router(compare.router)
 
 
 @app.get("/")

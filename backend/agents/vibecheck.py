@@ -54,7 +54,21 @@ The JSON must match this schema exactly:
 
 Rules:
 - max_price must be a number, not a string ("under $100" → 100.0)
-- category must be one of: running_shoes, electronics, accessories, general, chitchat
+- category must be one of:
+    running_shoes, sneakers, boots, shoes, clothing, laptops, phones, watches,
+    bags, sunglasses, electronics, accessories, general, chitchat
+  Map user words precisely:
+    "shirt", "t-shirt", "tee", "polo", "dress", "pants", "jeans" → "clothing"
+    "shoe", "shoes" (generic, no qualifier) → "shoes"
+    "sneaker", "casual shoe", "trainer" → "sneakers"
+    "running shoe", "running sneaker" → "running_shoes"
+    "boot", "chelsea boot" → "boots"
+    "laptop", "notebook", "computer" → "laptops"
+    "phone", "smartphone", "iphone", "android" → "phones"
+    "watch", "timepiece" → "watches"
+    "bag", "backpack", "purse", "handbag" → "bags"
+    "sunglasses", "shades", "sunnies" → "sunglasses"
+    "headphones", "earbuds", "speaker" → "electronics"
 - Use "chitchat" when the message is a greeting, thanks, or anything else that
   isn't actually a product request (e.g. "hi", "hello", "thanks", "how are you")
   — leave every other field null in that case
@@ -184,7 +198,29 @@ async def generate_recommendation_text(
     All factual values (prices, ratings) come from the products list — LLM only writes prose.
     """
     if not products:
-        return "I couldn't find products matching your criteria. Try adjusting your filters."
+        parts: list[str] = []
+        if intent.category:
+            parts.append(intent.category.replace("_", " "))
+        if intent.color:
+            parts.append(f"in {intent.color}")
+        if intent.size:
+            parts.append(f"size {intent.size}")
+        if intent.brand:
+            parts.append(f"from {intent.brand}")
+        if intent.max_price:
+            parts.append(f"under ${intent.max_price:.0f}")
+        what = " ".join(parts) if parts else "products matching your criteria"
+        hints: list[str] = []
+        if intent.max_price:
+            hints.append(f"try raising your budget to ${int(intent.max_price * 1.3)}")
+        if intent.color:
+            hints.append("try a different color")
+        if intent.brand:
+            hints.append("remove the brand filter")
+        if intent.size:
+            hints.append("check if a similar style comes in that size")
+        hint = (" — " + hints[0].capitalize() + "?") if hints else ""
+        return f"No {what} found right now{hint} Try broadening your search."
 
     top = products[:3]
     product_summary = "\n".join(

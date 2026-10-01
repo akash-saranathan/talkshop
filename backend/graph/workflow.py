@@ -58,20 +58,20 @@ async def _emit(state: CommerceState, event_type: str, message: str, data: Any =
 # ── Graph nodes ───────────────────────────────────────────────────────────────
 
 async def input_guardrail(state: CommerceState) -> CommerceState:
-    await _emit(state, "step_start", "Checking request safety...")
+    await _emit(state, "step_start", "VibeCheck is reviewing your request for safety...")
     from backend.guardrails.nemo import check_input
     allowed, block_msg = await check_input(state["user_message"])
     if not allowed:
         await _emit(state, "blocked", block_msg or "Request blocked by safety guardrail")
         return {**state, "blocked": True, "error": block_msg}
-    await _emit(state, "step_done", "Safety check passed")
+    await _emit(state, "step_done", "VibeCheck — all clear, ready to shop!")
     return {**state, "blocked": False}
 
 
 async def extract_intent(state: CommerceState) -> CommerceState:
     if state.get("blocked"):
         return state
-    await _emit(state, "step_start", "Understanding your request...")
+    await _emit(state, "step_start", "VibeCheck is understanding what you're looking for...")
     session_id = state["session_id"]
     prior = session_state.get_partial_intent(session_id)
     image = session_state.pop_pending_image(session_id)
@@ -80,16 +80,16 @@ async def extract_intent(state: CommerceState) -> CommerceState:
         await _emit(state, "error", f"Could not understand request: {error}")
         return {**state, "error": error or "intent_extraction_failed", "blocked": True}
     if intent.category == "chitchat":
-        await _emit(state, "step_done", "Just saying hello, not shopping yet")
+        await _emit(state, "step_done", "VibeCheck — just a greeting, no products needed")
         return {**state, "intent": intent, "chitchat": True}
 
     if not session_state.has_asked_followup(session_id) and vibecheck.needs_followup(intent):
-        await _emit(state, "step_done", f"Intent understood: {intent.category} — need a bit more detail")
+        await _emit(state, "step_done", "VibeCheck — got your request, need one more detail")
         session_state.save_followup_asked(session_id, intent.model_dump(mode="json"))
         return {**state, "intent": intent, "awaiting_followup": True}
 
     session_state.clear(session_id)
-    await _emit(state, "step_done", f"Intent understood: {intent.category}", {"intent": intent.model_dump()})
+    await _emit(state, "step_done", f"VibeCheck — understood! Looking for {intent.category.replace('_', ' ')}", {"intent": intent.model_dump()})
     return {**state, "intent": intent}
 
 
@@ -97,13 +97,12 @@ async def mcp_product_search(state: CommerceState) -> CommerceState:
     if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
-    sources_msg = "Searching 3 merchant sources via MCP..."
-    await _emit(state, "step_start", sources_msg)
+    await _emit(state, "step_start", "SneakPeek is searching stores for your product...")
 
     products, stats = await sneakpeek.search_and_rank(intent, top_n=50)
 
     total = stats["total_found"]
-    await _emit(state, "step_done", f"Found {total} products across {len(stats['merchants'])} merchants", stats)
+    await _emit(state, "step_done", f"SneakPeek — found {total} products across {len(stats['merchants'])} stores", stats)
     return {**state, "raw_products": [p.model_dump() for p in products], "stats": stats}
 
 
@@ -111,7 +110,7 @@ async def normalize_products(state: CommerceState) -> CommerceState:
     if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
         return state
     products = [NormalizedProduct.model_validate(p) for p in state["raw_products"]]
-    await _emit(state, "step_done", f"Normalized {len(products)} products")
+    await _emit(state, "step_done", f"SneakPeek — catalogued {len(products)} products")
     return {**state, "filtered_products": products}
 
 
@@ -119,9 +118,9 @@ async def deterministic_filter(state: CommerceState) -> CommerceState:
     if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
-    await _emit(state, "step_start", "Applying your constraints...")
+    await _emit(state, "step_start", "SneakPeek is applying your filters (size, price, availability)...")
     filtered = sneakpeek.filter_products(state["filtered_products"], intent)
-    await _emit(state, "step_done", f"{len(filtered)} products meet your constraints")
+    await _emit(state, "step_done", f"SneakPeek — {len(filtered)} products match your criteria")
     return {**state, "filtered_products": filtered}
 
 
@@ -129,10 +128,10 @@ async def rank_products_node(state: CommerceState) -> CommerceState:
     if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
-    await _emit(state, "step_start", "Ranking by your preferences...")
+    await _emit(state, "step_start", "SneakPeek is ranking the best options for you...")
     ranked = sneakpeek.rank_products(state["filtered_products"], intent)
     top5 = ranked[:5]
-    await _emit(state, "step_done", f"Top {len(top5)} recommendations ready", [p.model_dump() for p in top5])
+    await _emit(state, "step_done", f"SneakPeek — top {len(top5)} picks ready for you", [p.model_dump() for p in top5])
     return {**state, "ranked_products": top5}
 
 
@@ -147,7 +146,7 @@ async def generate_recommendation(state: CommerceState) -> CommerceState:
         text = vibecheck.generate_followup_question(state["intent"])
         await _emit(state, "recommendation", text, [])
         return {**state, "recommendation_text": text}
-    await _emit(state, "step_start", "Generating personalized recommendation...")
+    await _emit(state, "step_start", "VibeCheck is writing your personalized recommendation...")
     text = await vibecheck.generate_recommendation_text(
         state["intent"],
         [p.model_dump() for p in state["ranked_products"]],

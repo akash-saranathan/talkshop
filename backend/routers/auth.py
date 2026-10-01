@@ -70,3 +70,19 @@ async def login(req: LoginRequest):
 @router.get("/api/auth/me", response_model=CurrentUser)
 async def me(current_user: CurrentUser = Depends(get_current_user)):
     return current_user
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    new_password: str = Field(..., min_length=8)
+
+
+@router.post("/api/auth/reset-password")
+async def reset_password(req: ResetPasswordRequest):
+    with get_session() as session:
+        user = session.query(User).filter(User.email == req.email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="No account found with that email")
+        user.password_hash = hash_password(req.new_password)
+        session.commit()
+    return {"ok": True}

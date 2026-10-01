@@ -18,7 +18,7 @@ from sqlalchemy import update
 from backend.agents import payit, trackit
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.config.agents import PAYIT, TRACKIT
-from backend.db.schema import AuditEvent, DelegatedToken, Merchant, Order, PaymentAuthorization, Product, Wallet
+from backend.db.schema import AuditEvent, CartItem, DelegatedToken, Merchant, Order, PaymentAuthorization, Product, Wallet
 from backend.db.session_utils import get_session, now_utc, write_audit_event
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import PaymentRequest
@@ -42,6 +42,7 @@ class ExecutePaymentRequest(BaseModel):
     subtotal: float
     tax: float
     shipping: float
+    payment_method: str = "wallet"  # "wallet" | "card"
 
 
 class ExecutePaymentResponse(BaseModel):
@@ -186,32 +187,30 @@ async def execute_payment_endpoint(
                     blocked_reason=result.decline_reason,
                 )
 
-            # The mock processor says the card is fine — but the token-based
-            # "wallet" balance is a separate, layered check (matches a real
-            # network's "card valid but insufficient funds" decline). Kept
-            # here rather than inside mock_processor.py so that module and
-            # its existing tests stay untouched — identity/user_id only
-            # exists at this router layer.
+            # Wallet balance check + deduction — only when paying from wallet.
+            # Card payments are processed by the mock processor and bypass this
+            # so a card purchase never drains or checks the wallet balance.
             wallet = session.query(Wallet).filter(Wallet.user_id == current_user.user_id).first()
-            if wallet is None or wallet.balance < result.amount:
-                auth = session.query(PaymentAuthorization).filter(
-                    PaymentAuthorization.order_id == req.checkout_id
-                ).order_by(PaymentAuthorization.approved_at.desc()).first()
-                if auth:
-                    auth.status = "declined"
-                write_audit_event(session, "PAYMENT_DECLINED", user_id=current_user.user_id,
-                                   agent_id=PAYIT.agent_id, order_id=req.checkout_id,
-                                   metadata={"reason": "INSUFFICIENT_BALANCE"})
-                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "declined", current_user.user_id))
-                session.commit()
-                return ExecutePaymentResponse(
-                    status="blocked", order_id=req.checkout_id, amount=req.total,
-                    merchant=req.merchant_name,
-                    summary=trackit.summarize_decline(req.checkout_id, "INSUFFICIENT_BALANCE"),
-                    blocked_reason="INSUFFICIENT_BALANCE",
-                    wallet_balance=wallet.balance if wallet else 0.0,
-                )
-            wallet.balance -= result.amount
+            if req.payment_method != "card":
+                if wallet is None or wallet.balance < result.amount:
+                    auth = session.query(PaymentAuthorization).filter(
+                        PaymentAuthorization.order_id == req.checkout_id
+                    ).order_by(PaymentAuthorization.approved_at.desc()).first()
+                    if auth:
+                        auth.status = "declined"
+                    write_audit_event(session, "PAYMENT_DECLINED", user_id=current_user.user_id,
+                                       agent_id=PAYIT.agent_id, order_id=req.checkout_id,
+                                       metadata={"reason": "INSUFFICIENT_BALANCE"})
+                    _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "declined", current_user.user_id))
+                    session.commit()
+                    return ExecutePaymentResponse(
+                        status="blocked", order_id=req.checkout_id, amount=req.total,
+                        merchant=req.merchant_name,
+                        summary=trackit.summarize_decline(req.checkout_id, "INSUFFICIENT_BALANCE"),
+                        blocked_reason="INSUFFICIENT_BALANCE",
+                        wallet_balance=wallet.balance if wallet else 0.0,
+                    )
+                wallet.balance -= result.amount
 
             auth = session.query(PaymentAuthorization).filter(
                 PaymentAuthorization.order_id == req.checkout_id
@@ -252,13 +251,18 @@ def _block_reason(session, order_id: str) -> Optional[str]:
     return None
 
 
-def _delivery_fields(order: Order, product: Optional[Product]) -> dict:
-    """Product info + time-based delivery simulation, shared by both order endpoints."""
-    delivery = trackit.compute_delivery_status(order.created_at, product.delivery_days if product else None)
+def _delivery_fields(order: Order, product: Optional[Product], cart_fallback: Optional[CartItem] = None) -> dict:
+    """Product info + time-based delivery simulation, shared by both order endpoints.
+    cart_fallback is a CartItem snapshot used when the Product row is missing (e.g. external product IDs)."""
+    fb = cart_fallback
+    delivery = trackit.compute_delivery_status(
+        order.created_at,
+        product.delivery_days if product else (fb.delivery_days if fb else None),
+    )
     return {
-        "product_title": product.name if product else None,
-        "product_category": product.category if product else None,
-        "product_image_url": product.image_url if product else None,
+        "product_title":     (product.name      if product else None) or (fb.title     if fb else None),
+        "product_category":  (product.category  if product else None) or (fb.category  if fb else None),
+        "product_image_url": (product.image_url if product else None) or (fb.image_url if fb else None),
         "tracking_number": order.tracking_number,
         "delivery_status": delivery["status"] if order.status == "confirmed" else None,
         "estimated_delivery": delivery["estimated_delivery"] if order.status == "confirmed" else None,
@@ -280,6 +284,16 @@ async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
         results = []
         for order, merchant, product in rows:
             is_paid = order.status == "confirmed"
+            # When the product isn't in the catalog (e.g. external/DummyJSON IDs),
+            # fall back to the CartItem snapshot which was saved at add-to-cart time.
+            cart_fallback = None
+            if product is None:
+                cart_fallback = (
+                    session.query(CartItem)
+                    .filter(CartItem.product_id == order.product_id, CartItem.user_id == order.user_id)
+                    .order_by(CartItem.added_at.desc())
+                    .first()
+                )
             results.append({
                 "order_id": order.order_id,
                 "merchant": merchant.merchant_name,
@@ -287,7 +301,7 @@ async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
                 "status": "paid" if is_paid else "blocked",
                 "reason": None if is_paid else _block_reason(session, order.order_id),
                 "created_at": order.created_at.isoformat() if order.created_at else None,
-                **_delivery_fields(order, product),
+                **_delivery_fields(order, product, cart_fallback),
             })
         return results
 

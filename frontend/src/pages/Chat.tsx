@@ -1,13 +1,80 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, Store, LogOut, ShoppingCart } from "lucide-react";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown, GitCompare } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
-import { getCart } from "../api/cart";
+import { getCart, addToCart } from "../api/cart";
 import ProductCard from "../components/ProductCard";
+import SkeletonProductCard from "../components/SkeletonProductCard";
+import CompareModal from "../components/CompareModal";
+import CartDrawer from "../components/CartDrawer";
 import ChatSidebar from "../components/ChatSidebar";
-import OrdersPanel from "../components/OrdersPanel";
+import AgentTrailPanel from "../components/AgentTrailPanel";
+import ThemeToggle from "../components/ThemeToggle";
 import { useAuth } from "../auth/AuthContext";
+
+// ── Intent parsing ──────────────────────────────────────────────────────────
+
+interface SimpleIntent {
+  color?: string;
+  size?: string;
+  maxPrice?: number;
+  brand?: string;
+}
+
+const KNOWN_COLORS = ["black","white","blue","red","green","grey","gray","navy","pink","orange","yellow","purple","brown","beige","floral"];
+const KNOWN_BRANDS = ["nike","adidas","new balance","brooks","asics","saucony","hoka","puma","reebok","on running","mizuno","sony","apple","samsung","bose","jabra","garmin","bcbg","zara","h&m","converse","vans","jordan"];
+
+function parseSimpleIntent(message: string): SimpleIntent {
+  const m = message.toLowerCase();
+  const intent: SimpleIntent = {};
+  for (const c of KNOWN_COLORS) { if (m.includes(c)) { intent.color = c; break; } }
+  const sizeMatch = m.match(/\bsize\s+(\w+)\b/i) ?? m.match(/\bin\s+(xs|s|m|l|xl|xxl)\b/i);
+  if (sizeMatch) intent.size = sizeMatch[1].toUpperCase();
+  const priceMatch = m.match(/under\s+\$?(\d+)/i) ?? m.match(/\$?(\d+)\s+or\s+less/i) ?? m.match(/below\s+\$?(\d+)/i);
+  if (priceMatch) intent.maxPrice = parseInt(priceMatch[1]);
+  for (const b of KNOWN_BRANDS) { if (m.includes(b)) { intent.brand = b.split(" ").map(w => w[0].toUpperCase() + w.slice(1)).join(" "); break; } }
+  return intent;
+}
+
+function computeMatchTags(intent: SimpleIntent, product: ProductData): string[] {
+  const tags: string[] = [];
+  if (intent.color && product.color?.toLowerCase().includes(intent.color)) tags.push(intent.color);
+  if (intent.size && product.size?.toLowerCase() === intent.size.toLowerCase()) tags.push(`size ${intent.size}`);
+  if (intent.maxPrice && product.price <= intent.maxPrice) tags.push(`under $${intent.maxPrice}`);
+  if (intent.brand && product.brand?.toLowerCase().includes(intent.brand.toLowerCase())) tags.push(intent.brand);
+  return tags;
+}
+
+function generateFollowUpChips(products: ProductData[], intent: SimpleIntent): string[] {
+  const chips: string[] = [];
+  const brands = [...new Set(products.map(p => p.brand).filter(Boolean))] as string[];
+  if (brands.length > 1) {
+    chips.push(`Only ${brands[0]}`);
+    if (brands[1] && chips.length < 3) chips.push(`Only ${brands[1]}`);
+  }
+  const prices = products.map(p => p.price).sort((a, b) => a - b);
+  const spread = prices[prices.length - 1] - prices[0];
+  if (spread > prices[0] * 0.4 && !intent.maxPrice) {
+    chips.push(`Under $${Math.round(prices[0] + spread * 0.5)}`);
+  }
+  const fastCount = products.filter(p => p.delivery_days <= 2).length;
+  if (fastCount > 0 && fastCount < products.length) chips.push("Fastest delivery only");
+  if (products.length > 1 && chips.length < 4) chips.push("Which one should I buy?");
+  return chips.slice(0, 4);
+}
+
+type SortMode = "match" | "price" | "rating" | "delivery";
+
+function sortProducts(products: ProductData[], mode: SortMode): ProductData[] {
+  const arr = [...products];
+  if (mode === "price") return arr.sort((a, b) => a.price - b.price);
+  if (mode === "rating") return arr.sort((a, b) => b.rating - a.rating);
+  if (mode === "delivery") return arr.sort((a, b) => a.delivery_days - b.delivery_days);
+  return arr.sort((a, b) => b.rank_score - a.rank_score);
+}
+
+// ── Turn types ───────────────────────────────────────────────────────────────
 
 interface Step {
   id: string;
@@ -23,6 +90,7 @@ interface Turn {
   products: ProductData[];
   recommendation: string;
   blocked: string | null;
+  intent: SimpleIntent;
 }
 
 // Pasted screenshots can be huge — downscale before it ever leaves the
@@ -39,10 +107,50 @@ async function resizeImageForUpload(file: Blob, maxDim = 768, quality = 0.7): Pr
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-// Which session was last open, so navigating back from Dashboard (a full
-// page reload of this component) resumes it instead of starting a blank
-// new chat every time.
-const LAST_SESSION_KEY = "talkshop_last_session";
+// Map robotic agent step messages to first-person friendly text.
+// Returns null to suppress zero-count noise steps.
+function humanizeStep(message: string): string | null {
+  const m = message.toLowerCase();
+
+  // Suppress zero-product noise
+  if (/\b0 products?\b/.test(m) || /catalogued 0/.test(m) || /top 0 picks/.test(m)) return null;
+
+  // VibeCheck
+  if (m.includes("vibecheck")) {
+    if (m.includes("all clear") || m.includes("ready to shop")) return "Let me figure out what you're looking for...";
+    if (m.includes("understood") || m.includes("looking for")) {
+      const hit = message.match(/[Ll]ooking for (.+)/);
+      return hit ? `Got it! I'm searching for ${hit[1]}...` : "On it! Starting the search...";
+    }
+    if (m.includes("writing") || m.includes("recommendation")) return "Picking the best options for you...";
+    if (m.includes("chitchat") || m.includes("greeting") || m.includes("no products")) return "Hey there! What can I help you find?";
+  }
+
+  // SneakPeek
+  if (m.includes("sneakpeek")) {
+    const found = message.match(/found (\d+) products? across (\d+)/i);
+    if (found) {
+      const n = parseInt(found[1]);
+      if (n === 0) return null;
+      return `Found ${n} option${n !== 1 ? "s" : ""} across ${found[2]} store${found[2] !== "1" ? "s" : ""}!`;
+    }
+    const top = message.match(/top (\d+) picks/i);
+    if (top) {
+      const n = parseInt(top[1]);
+      if (n === 0) return null;
+      return `Here are your top ${n} picks!`;
+    }
+    return null;
+  }
+
+  // CartUp / GreenLight / PayIt / TrackIt
+  if (m.includes("cartup")) return "Setting up your order...";
+  if (m.includes("greenlight")) return m.includes("authorized") || m.includes("approved") ? "Transaction approved!" : "Running security checks...";
+  if (m.includes("payit")) return m.includes("success") || m.includes("confirm") ? "Payment confirmed!" : "Processing payment securely...";
+  if (m.includes("trackit")) return "Your order is confirmed and on its way!";
+
+  return message;
+}
 
 function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
   const turns: Turn[] = [];
@@ -57,6 +165,7 @@ function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
       products: assistantMsg?.products ?? [],
       recommendation: assistantMsg?.content ?? "",
       blocked: assistantMsg?.blocked_reason ?? null,
+      intent: parseSimpleIntent(userMsg.content),
     });
   }
   return turns;
@@ -71,6 +180,13 @@ export default function Chat() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+  const [sessionCartCount, setSessionCartCount] = useState(0);
+  const [sessionCartIds, setSessionCartIds] = useState<Set<string>>(new Set());
+  const [turnSortModes, setTurnSortModes] = useState<Map<string, SortMode>>(new Map());
+  const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
+  const [addingToCheckout, setAddingToCheckout] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
+  const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftWidth, setLeftWidth] = useState(256);
@@ -80,6 +196,9 @@ export default function Chat() {
   const [micError, setMicError] = useState<string | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(4));
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const [autoCheckoutIn, setAutoCheckoutIn] = useState<number | null>(null);
+  const autoCheckoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastAddedItemRef = useRef<import("../api/cart").CartItemData | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -152,7 +271,7 @@ export default function Chat() {
     };
   }, []);
 
-  // Cleanup SSE + mic on unmount
+  // Cleanup SSE + mic + checkout timer on unmount
   useEffect(() => () => {
     closeStream.current?.();
     stoppingRef.current = true;
@@ -160,6 +279,7 @@ export default function Chat() {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     audioCtxRef.current?.close().catch(() => {});
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
   }, []);
 
   // Auto-scroll to the newest turn, matching standard chat UX.
@@ -176,7 +296,9 @@ export default function Chat() {
   const switchToSession = useCallback((id: string) => {
     sessionIdRef.current = id;
     setCurrentSessionId(id);
-    localStorage.setItem(LAST_SESSION_KEY, id);
+    // sessionStorage (not localStorage) so it persists within this tab
+    // (cart → back → chat restores session) but clears on fresh tab open.
+    try { sessionStorage.setItem("talkshop_session", id); } catch { /* noop */ }
   }, []);
 
   const handleNewChat = useCallback(() => {
@@ -185,6 +307,9 @@ export default function Chat() {
     activeTurnId.current = null;
     switchToSession(crypto.randomUUID());
     setTurns([]);
+    setSessionCartCount(0);
+    setSessionCartIds(new Set());
+    try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
   }, [switchToSession]);
 
   // Shared by "click a session in the sidebar" and "restore on page load" —
@@ -206,30 +331,62 @@ export default function Chat() {
     closeStream.current?.();
     setLoading(false);
     activeTurnId.current = null;
+    setSessionCartCount(0);
+    setSessionCartIds(new Set());
+    try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
     await loadSession(clickedId);
   }, [loadSession]);
 
-  // Resume whatever chat was last open instead of always starting blank —
-  // e.g. coming back from the Dashboard's "Back to Chat" link.
+  // Restore session within the same browser tab (e.g. returning from /cart).
+  // sessionStorage clears on new-tab / browser-restart so the app starts fresh there.
   useEffect(() => {
-    const lastSessionId = localStorage.getItem(LAST_SESSION_KEY);
-    if (lastSessionId) {
-      loadSession(lastSessionId);
-    }
-    // Mount-only: this restores whatever was open when the page loaded.
+    try {
+      const saved = sessionStorage.getItem("talkshop_session");
+      if (saved) loadSession(saved);
+    } catch { /* noop */ }
+    // Mount-only
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const triggerCheckoutCountdown = useCallback((item?: import("../api/cart").CartItemData) => {
+    if (item) lastAddedItemRef.current = item;
+    if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
+    setAutoCheckoutIn(10);
+    let remaining = 10;
+    autoCheckoutTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      setAutoCheckoutIn(remaining);
+      if (remaining <= 0) {
+        clearInterval(autoCheckoutTimerRef.current!);
+        autoCheckoutTimerRef.current = null;
+        setAutoCheckoutIn(null);
+        navigate("/cart");
+      }
+    }, 1000);
+  }, [navigate]);
+
+  const cancelCheckoutCountdown = useCallback(() => {
+    if (autoCheckoutTimerRef.current) { clearInterval(autoCheckoutTimerRef.current); autoCheckoutTimerRef.current = null; }
+    setAutoCheckoutIn(null);
+  }, []);
+
+  const handleSessionDeleted = useCallback((deletedId: string) => {
+    if (deletedId === sessionIdRef.current) {
+      handleNewChat();
+    }
+  }, [handleNewChat]);
 
   const handleSend = useCallback(async () => {
     const msg = input.trim();
     if (!msg || loading) return;
 
-    // Covers the very first default session, which is never routed through
-    // switchToSession() until a message actually makes it real server-side.
-    localStorage.setItem(LAST_SESSION_KEY, sessionIdRef.current);
+    // Always persist the active session so returning from Dashboard/Cart
+    // restores this chat, even if the user never clicked a sidebar session.
+    switchToSession(sessionIdRef.current);
 
     const turnId = crypto.randomUUID();
     const imageForTurn = pastedImage;
+    const parsedIntent = parseSimpleIntent(msg);
     activeTurnId.current = turnId;
     setTurns((prev) => [...prev, {
       id: turnId,
@@ -239,6 +396,7 @@ export default function Chat() {
       products: [],
       recommendation: "",
       blocked: null,
+      intent: parsedIntent,
     }]);
     setLoading(true);
     setInput("");
@@ -284,7 +442,24 @@ export default function Chat() {
         });
       },
       onRecommendation: (text, prods) => {
-        updateActiveTurn((turn) => ({ ...turn, recommendation: text, products: prods }));
+        const capturedId = activeTurnId.current;
+        // Set products immediately
+        setTurns((prev) => prev.map((t) =>
+          t.id === capturedId ? { ...t, products: prods } : t
+        ));
+        // Stream recommendation text word-by-word (ChatGPT-style)
+        const words = text.split(" ");
+        words.forEach((_, i) => {
+          const partial = words.slice(0, i + 1).join(" ");
+          const isLast = i === words.length - 1;
+          setTimeout(() => {
+            setTurns((prev) => prev.map((t) =>
+              t.id === capturedId
+                ? { ...t, recommendation: partial + (isLast ? "" : " ▍") }
+                : t
+            ));
+          }, i * 40);
+        });
       },
       onBlocked: (message) => {
         updateActiveTurn((turn) => ({ ...turn, blocked: message }));
@@ -299,8 +474,11 @@ export default function Chat() {
       },
       onDone: () => {
         setLoading(false);
-        // The backend just persisted this turn (and maybe created a new
-        // session) — refresh the sidebar so it shows up without a manual reload.
+        // Mark any still-running steps done so their spinners clear.
+        updateActiveTurn((turn) => ({
+          ...turn,
+          steps: turn.steps.map((s) => s.status === "running" ? { ...s, status: "done" } : s),
+        }));
         setSidebarRefreshKey((k) => k + 1);
       },
     });
@@ -387,6 +565,7 @@ export default function Chat() {
     recognition.onresult = (event) => {
       let newText = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (!event.results[i].isFinal) continue;
         const transcript = event.results[i][0].transcript.trim();
         if (transcript) newText += (newText ? " " : "") + transcript;
       }
@@ -446,12 +625,36 @@ export default function Chat() {
     navigate("/login");
   };
 
+  const handleToggleSelect = useCallback((product: ProductData) => {
+    setSelectedProducts((prev) => {
+      const next = new Map(prev);
+      if (next.has(product.product_id)) next.delete(product.product_id);
+      else next.set(product.product_id, product);
+      return next;
+    });
+  }, []);
+
+  const handleBuySelected = useCallback(async () => {
+    if (addingToCheckout || selectedProducts.size === 0) return;
+    setAddingToCheckout(true);
+    try {
+      for (const product of selectedProducts.values()) {
+        await addToCart(product);
+      }
+      setSelectedProducts(new Map());
+      navigate("/cart");
+    } catch {
+      setAddingToCheckout(false);
+    }
+  }, [addingToCheckout, selectedProducts, navigate]);
+
   return (
     <div className="flex h-screen bg-[var(--color-bg)]">
       <ChatSidebar
         activeSessionId={currentSessionId}
         onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
+        onSessionDeleted={handleSessionDeleted}
         refreshKey={sidebarRefreshKey}
         collapsed={leftCollapsed}
         onToggleCollapse={() => setLeftCollapsed((c) => !c)}
@@ -470,24 +673,25 @@ export default function Chat() {
         {/* Header */}
         <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--color-border)] shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] text-white grid place-items-center">
-              <Store size={14} />
-            </div>
-            <span className="font-semibold text-[var(--color-primary)]">Talkshop</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <a href="/dashboard" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">
-              Dashboard ↗
+              Order Tracker ↗
             </a>
-            <a href="/cart" className="relative text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors" title="Cart">
+            <button
+              onClick={() => setShowCartDrawer(true)}
+              className="relative text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
+              title="Cart"
+            >
               <ShoppingCart size={18} />
               {cartCount > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-semibold grid place-items-center">
                   {cartCount}
                 </span>
               )}
-            </a>
-            <div className="flex items-center gap-2 text-sm border-l border-[var(--color-border)] pl-4">
+            </button>
+            <ThemeToggle />
+            <div className="flex items-center gap-2 text-sm border-l border-[var(--color-border)] pl-3">
               <span className="text-[var(--color-text-muted)]">{user?.name}</span>
               <button
                 onClick={handleLogout}
@@ -516,10 +720,14 @@ export default function Chat() {
                   </div>
                 </div>
 
-                {/* Assistant response, with a Talkshop avatar */}
+                {/* Assistant response — AI shopping agent avatar */}
                 <div className="flex gap-3">
-                  <div className="w-7 h-7 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] grid place-items-center shrink-0">
-                    <Store size={14} />
+                  <div className={`w-8 h-8 rounded-full grid place-items-center shrink-0 ${
+                    isActiveTurn
+                      ? "bg-gradient-to-br from-[var(--color-primary)] to-violet-500 shadow-md shadow-[var(--color-primary)]/30"
+                      : "bg-[var(--color-primary)]/15"
+                  }`}>
+                    <Sparkles size={14} className={isActiveTurn ? "text-white animate-pulse" : "text-[var(--color-primary)]"} />
                   </div>
                   <div className="flex-1 flex flex-col gap-3 min-w-0 pt-1">
                     {/* Typing indicator — shown until the first step event arrives */}
@@ -531,33 +739,31 @@ export default function Chat() {
                       </div>
                     )}
 
-                    {/* Agent steps */}
+                    {/* Agent steps — humanized first-person messages */}
                     <AnimatePresence>
-                      {turn.steps.map((step, i) => (
-                        <motion.div
-                          key={step.id + i}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center gap-3 text-sm"
-                        >
-                          {step.status === "done" ? (
-                            <span className="text-[var(--color-success)] font-bold text-base">✓</span>
-                          ) : step.status === "error" ? (
-                            <span className="text-rose-500 font-bold text-base">✗</span>
-                          ) : (
-                            <span className="w-3 h-3 rounded-full bg-[var(--color-primary)] animate-pulse shrink-0" />
-                          )}
-                          <span
-                            className={`${
-                              step.status === "error"
-                                ? "text-rose-500"
-                                : "text-[var(--color-text-muted)]"
-                            }`}
+                      {turn.steps.map((step, i) => {
+                        const friendly = humanizeStep(step.message);
+                        if (!friendly) return null;
+                        return (
+                          <motion.div
+                            key={step.id + i}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="flex items-center gap-2.5 text-sm"
                           >
-                            {step.message}
-                          </span>
-                        </motion.div>
-                      ))}
+                            {step.status === "done" ? (
+                              <span className="w-4 h-4 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] text-[10px] grid place-items-center shrink-0 font-bold">✓</span>
+                            ) : step.status === "error" ? (
+                              <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-500 text-[10px] grid place-items-center shrink-0 font-bold">✗</span>
+                            ) : (
+                              <span className="w-4 h-4 rounded-full border-2 border-[var(--color-primary)] border-t-transparent animate-spin shrink-0" />
+                            )}
+                            <span className={step.status === "error" ? "text-rose-500" : "text-[var(--color-text-muted)]"}>
+                              {friendly}
+                            </span>
+                          </motion.div>
+                        );
+                      })}
                     </AnimatePresence>
 
                     {/* Blocked message */}
@@ -565,9 +771,10 @@ export default function Chat() {
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-700"
+                        className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-700 flex items-start gap-2"
                       >
-                        ⛔ {turn.blocked}
+                        <span className="shrink-0 mt-0.5">🛡️</span>
+                        <span>{turn.blocked}</span>
                       </motion.div>
                     )}
 
@@ -582,11 +789,93 @@ export default function Chat() {
                       </motion.div>
                     )}
 
-                    {/* Product cards grid */}
-                    {turn.products.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {turn.products.map((p, i) => (
-                          <ProductCard key={p.product_id} product={p} index={i} />
+                    {/* Skeleton cards — shown while the active turn is loading */}
+                    {isActiveTurn && turn.products.length === 0 && turn.steps.length > 0 && (
+                      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+                        {[0, 1, 2].map((i) => (
+                          <div key={i} className="w-64 shrink-0"><SkeletonProductCard /></div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Intent badge — what the AI understood */}
+                    {turn.products.length > 0 && Object.keys(turn.intent).length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">AI matched:</span>
+                        {turn.intent.color && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium capitalize">{turn.intent.color}</span>}
+                        {turn.intent.size && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium">size {turn.intent.size}</span>}
+                        {turn.intent.maxPrice && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium">under ${turn.intent.maxPrice}</span>}
+                        {turn.intent.brand && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium">{turn.intent.brand}</span>}
+                      </div>
+                    )}
+
+                    {/* Sort bar + product grid */}
+                    {turn.products.length > 0 && (() => {
+                      const sortMode = turnSortModes.get(turn.id) ?? "match";
+                      const sorted = sortProducts(turn.products, sortMode);
+                      const setSortMode = (m: SortMode) => setTurnSortModes(prev => new Map(prev).set(turn.id, m));
+                      return (
+                        <div className="flex flex-col gap-2">
+                          {/* Sort bar */}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="text-[10px] text-[var(--color-text-muted)] mr-1">Sort:</span>
+                            {([
+                              { key: "match", label: "Best Match", icon: <ArrowUpDown size={10} /> },
+                              { key: "price", label: "↓ Price", icon: <TrendingDown size={10} /> },
+                              { key: "rating", label: "Top Rated", icon: <Star size={10} /> },
+                              { key: "delivery", label: "Fastest", icon: <Zap size={10} /> },
+                            ] as { key: SortMode; label: string; icon: React.ReactNode }[]).map(({ key, label, icon }) => (
+                              <button
+                                key={key}
+                                onClick={() => setSortMode(key)}
+                                className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                                  sortMode === key
+                                    ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]"
+                                    : "bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+                                }`}
+                              >
+                                {icon} {label}
+                              </button>
+                            ))}
+                          </div>
+                          {/* Cards — horizontal scroll row */}
+                          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+                            {sorted.map((p, i) => (
+                              <div key={p.product_id} className="w-64 shrink-0">
+                                <ProductCard
+                                  product={p}
+                                  index={i}
+                                  selected={selectedProducts.has(p.product_id)}
+                                  onToggleSelect={handleToggleSelect}
+                                  matchTags={computeMatchTags(turn.intent, p)}
+                                  onAdded={(cartItem) => {
+                                    getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                                    if (cartItem) {
+                                      setSessionCartCount((n) => n + 1);
+                                      setSessionCartIds((prev) => new Set(prev).add(cartItem.cart_item_id));
+                                    }
+                                    triggerCheckoutCountdown(cartItem);
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Follow-up chips */}
+                    {turn.products.length > 0 && !isActiveTurn && (
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[10px] text-[var(--color-text-muted)]">Ask:</span>
+                        {generateFollowUpChips(turn.products, turn.intent).map((chip) => (
+                          <button
+                            key={chip}
+                            onClick={() => { setInput(chip); textareaRef.current?.focus(); }}
+                            className="text-[11px] px-2.5 py-1 rounded-full border border-[var(--color-primary)]/40 text-[var(--color-primary)] bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/15 hover:border-[var(--color-primary)] transition-all font-medium"
+                          >
+                            {chip}
+                          </button>
                         ))}
                       </div>
                     )}
@@ -598,12 +887,159 @@ export default function Chat() {
 
           {/* Empty state */}
           {turns.length === 0 && (
-            <p className="text-[var(--color-text-muted)] text-sm mt-12 text-center">
-              Ask something to start shopping — e.g.{" "}
-              <span className="italic">"Find running shoes size 10 under $100"</span>
-            </p>
+            <div className="flex flex-col items-center gap-6 mt-16">
+              <div className="text-center">
+                <p className="text-lg font-semibold text-[var(--color-text)] mb-1">What are you shopping for?</p>
+                <p className="text-sm text-[var(--color-text-muted)]">Ask me anything — I'll search across multiple stores and find the best options for you.</p>
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+                {[
+                  "Running shoes size 10 under $100",
+                  "Blue running shoes arriving in 2 days",
+                  "Wireless headphones with great reviews",
+                  "Dress for a formal occasion",
+                  "Blue polo shirt in size M",
+                  "Sony noise cancelling earbuds",
+                ].map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => setInput(suggestion)}
+                    className="text-sm px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
+
+        {/* Persistent cart reminder — shown when items were added this session */}
+        {sessionCartCount > 0 && autoCheckoutIn === null && (
+          <div className="mx-6 mb-1">
+            <button
+              onClick={() => setShowCartDrawer(true)}
+              className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-surface)] hover:bg-[var(--color-bg)] transition-colors group"
+            >
+              <div className="flex items-center gap-2 text-sm text-[var(--color-primary)] font-medium">
+                <ShoppingCart size={15} />
+                <span>{sessionCartCount} item{sessionCartCount !== 1 ? "s" : ""} added this chat</span>
+                {cartCount > sessionCartCount && (
+                  <span className="text-xs text-[var(--color-text-muted)] font-normal">· {cartCount} in cart total</span>
+                )}
+              </div>
+              <span className="flex items-center gap-1 text-xs text-[var(--color-primary)] font-semibold group-hover:gap-2 transition-all">
+                View Cart <ArrowRight size={13} />
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* Auto-checkout countdown toast — appears after "Add to Cart" */}
+        <AnimatePresence>
+          {autoCheckoutIn !== null && (
+            <motion.div
+              initial={{ y: 80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 80, opacity: 0 }}
+              className="mx-6 mb-2 rounded-xl bg-gradient-to-r from-[var(--color-primary)] to-violet-600 text-white px-5 py-3 flex items-center justify-between shadow-lg"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-white/20 grid place-items-center shrink-0">
+                  <ShoppingCart size={15} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Item added! Heading to checkout...</p>
+                  <p className="text-xs text-white/70">Taking you there in {autoCheckoutIn}s</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={cancelCheckoutCountdown}
+                  className="text-xs text-white/70 hover:text-white transition-colors px-2 py-1"
+                >
+                  Stay here
+                </button>
+                <button
+                  onClick={() => {
+                    cancelCheckoutCountdown();
+                    navigate("/cart");
+                  }}
+                  className="flex items-center gap-1.5 text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors"
+                >
+                  Go now <ArrowRight size={14} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Floating multi-select bar */}
+        {selectedProducts.size > 0 && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            className="mx-6 mb-2 rounded-xl bg-[var(--color-primary)] text-white px-4 py-3 flex items-center justify-between shadow-lg"
+          >
+            <div className="flex items-center gap-3">
+              <ShoppingCart size={16} />
+              <span className="text-sm font-medium">
+                {selectedProducts.size} item{selectedProducts.size > 1 ? "s" : ""} selected
+              </span>
+              <span className="text-sm text-white/70">
+                · ${Array.from(selectedProducts.values()).reduce((s, p) => s + p.price, 0).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedProducts(new Map())}
+                className="text-xs text-white/70 hover:text-white transition-colors"
+              >
+                Clear
+              </button>
+              {selectedProducts.size >= 2 && selectedProducts.size <= 4 && (
+                <button
+                  onClick={() => setShowCompare(true)}
+                  className="flex items-center gap-1.5 text-sm font-semibold bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <GitCompare size={14} /> Compare
+                </button>
+              )}
+              <button
+                onClick={handleBuySelected}
+                disabled={addingToCheckout}
+                className="text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors disabled:opacity-60"
+              >
+                {addingToCheckout ? "Adding..." : "Buy Selected"}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Compare modal */}
+        {showCompare && selectedProducts.size >= 2 && (
+          <CompareModal
+            products={Array.from(selectedProducts.values())}
+            onClose={() => setShowCompare(false)}
+            onAddToCart={(product) => {
+              addToCart(product).then((item) => {
+                getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                triggerCheckoutCountdown(item);
+              }).catch(() => {});
+            }}
+          />
+        )}
+
+        {/* Cart drawer */}
+        <CartDrawer
+          open={showCartDrawer}
+          onClose={() => {
+            setShowCartDrawer(false);
+            getCart().then((items) => setCartCount(items.length)).catch(() => {});
+          }}
+          sessionCartIds={sessionCartIds}
+        />
 
         {/* Input bar */}
         <div className="px-6 py-4 border-t border-[var(--color-border)] shrink-0">
@@ -714,10 +1150,12 @@ export default function Chat() {
           className="w-1 shrink-0 cursor-col-resize hover:bg-[var(--color-primary)] transition-colors"
         />
       )}
-      <OrdersPanel
+      <AgentTrailPanel
         collapsed={rightCollapsed}
         onToggleCollapse={() => setRightCollapsed((c) => !c)}
         width={rightWidth}
+        activeTurnSteps={turns.find((t) => t.id === activeTurnId.current)?.steps ?? []}
+        activeLoading={loading}
       />
     </div>
   );

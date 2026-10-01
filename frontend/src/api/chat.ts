@@ -62,6 +62,11 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
   return res.json();
 }
 
+export async function deleteChatSession(sessionId: string): Promise<void> {
+  const res = await authFetch(`/api/chat/sessions/${sessionId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete chat session");
+}
+
 // Stashes a pasted image server-side for the next message in this session —
 // EventSource (used by streamChat) can only issue GET, so the image can't
 // ride along in that request.
