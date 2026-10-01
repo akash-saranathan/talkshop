@@ -1,11 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown } from "lucide-react";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown, GitCompare } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
 import { getCart, addToCart } from "../api/cart";
 import ProductCard from "../components/ProductCard";
 import SkeletonProductCard from "../components/SkeletonProductCard";
+import CompareModal from "../components/CompareModal";
 import ChatSidebar from "../components/ChatSidebar";
 import AgentTrailPanel from "../components/AgentTrailPanel";
 import ThemeToggle from "../components/ThemeToggle";
@@ -182,6 +183,7 @@ export default function Chat() {
   const [turnSortModes, setTurnSortModes] = useState<Map<string, SortMode>>(new Map());
   const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
   const [addingToCheckout, setAddingToCheckout] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftWidth, setLeftWidth] = useState(256);
@@ -967,7 +969,7 @@ export default function Chat() {
           )}
         </AnimatePresence>
 
-        {/* Floating multi-select checkout bar */}
+        {/* Floating multi-select bar */}
         {selectedProducts.size > 0 && (
           <motion.div
             initial={{ y: 80, opacity: 0 }}
@@ -991,6 +993,14 @@ export default function Chat() {
               >
                 Clear
               </button>
+              {selectedProducts.size >= 2 && selectedProducts.size <= 4 && (
+                <button
+                  onClick={() => setShowCompare(true)}
+                  className="flex items-center gap-1.5 text-sm font-semibold bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <GitCompare size={14} /> Compare
+                </button>
+              )}
               <button
                 onClick={handleBuySelected}
                 disabled={addingToCheckout}
@@ -1000,6 +1010,20 @@ export default function Chat() {
               </button>
             </div>
           </motion.div>
+        )}
+
+        {/* Compare modal */}
+        {showCompare && selectedProducts.size >= 2 && (
+          <CompareModal
+            products={Array.from(selectedProducts.values())}
+            onClose={() => setShowCompare(false)}
+            onAddToCart={(product) => {
+              addToCart(product).then((item) => {
+                getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                triggerCheckoutCountdown(item);
+              }).catch(() => {});
+            }}
+          />
         )}
 
         {/* Input bar */}
