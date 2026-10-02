@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2, ChevronRight } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
 import { getCart, addToCart, removeFromCart, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
@@ -107,6 +107,14 @@ function renderWithBold(text: string): React.ReactNode {
 function isAffirmativeInput(text: string): boolean {
   const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
   return /^(yes|yeah|yep|sure|ok|okay|confirm|add to cart|proceed|pay|go ahead|do it|sounds good|add it|let's do it|lets do it|add)$/.test(t);
+}
+
+// Broader checkout intent — catches multi-word phrases like "add it to my cart",
+// "lets move on to buying it", "make payment", "proceed to checkout", etc.
+// Used in handleSend to intercept these before sending to the backend.
+function isCheckoutIntent(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return /\b(add\s+it|add\s+to\s+(my\s+)?cart|buy\s+it|purchase\s+it|place\s+order|proceed\s+to\s+(checkout|pay)|make\s+payment|complete\s+purchase|checkout|let'?s\s+buy|move\s+on\s+to\s+buy|go\s+ahead\s+and\s+(buy|pay)|ready\s+to\s+pay|want\s+to\s+buy)\b/.test(t);
 }
 
 // Pasted screenshots can be huge — downscale before it ever leaves the
@@ -217,7 +225,7 @@ export default function Chat() {
   const [leftCollapsed, setLeftCollapsed] = useState(true);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftWidth, setLeftWidth] = useState(256);
-  const [rightWidth, setRightWidth] = useState(340);
+  const [rightWidth, setRightWidth] = useState(390);
   const resizingRef = useRef<"left" | "right" | null>(null);
   const [recording, setRecording] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -398,8 +406,8 @@ export default function Chat() {
     if (!msg || loading) return;
 
     // ── Inline checkout intercepts ──────────────────────────────────────────
-    // User said "yes" after agent recommended a product → bypass LangGraph, start checkout
-    if (isAffirmativeInput(msg) && lastRecommendedProductRef.current) {
+    // User said "yes"/checkout phrase after agent recommended a product → bypass LangGraph, start checkout
+    if ((isAffirmativeInput(msg) || isCheckoutIntent(msg)) && lastRecommendedProductRef.current) {
       doCheckoutSummaryRef.current?.(msg, lastRecommendedProductRef.current);
       lastRecommendedProductRef.current = null;
       setPendingCheckoutProduct(null);
@@ -1004,8 +1012,26 @@ export default function Chat() {
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
-        <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--color-border)] shrink-0">
-          <div className="flex items-center gap-2">
+        <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
+          <div className="flex items-center gap-3">
+            {leftCollapsed && (
+              <button
+                onClick={() => setLeftCollapsed(false)}
+                title="Expand sidebar"
+                className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg)] transition-colors shrink-0"
+              >
+                <ChevronRight size={16} />
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] grid place-items-center shrink-0">
+                <Sparkles size={13} className="text-white" />
+              </div>
+              <div className="leading-none">
+                <p className="text-sm font-bold text-[var(--color-text)] tracking-tight">TalkShop</p>
+                <p className="text-[10px] text-[var(--color-text-muted)] font-medium">Agentic Commerce Intelligence</p>
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <a href="/dashboard" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">
@@ -1165,8 +1191,8 @@ export default function Chat() {
                       />
                     )}
 
-                    {/* Skeleton cards — shown while the active turn is loading */}
-                    {isActiveTurn && turn.products.length === 0 && turn.steps.length > 0 && (
+                    {/* Skeleton cards — only while a product search is in progress (not for follow-up Q&A) */}
+                    {isActiveTurn && turn.products.length === 0 && turn.steps.some(s => s.message.toLowerCase().includes("sneakpeek") || s.message.toLowerCase().includes("searching")) && (
                       <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
                         {[0, 1, 2].map((i) => (
                           <div key={i} className="w-64 shrink-0"><SkeletonProductCard /></div>

@@ -208,9 +208,17 @@ _OBVIOUS_CHITCHAT = {
 
 _NEW_SEARCH_KEYWORDS = {
     "show me", "find me", "search for", "look for", "i want", "i need",
-    "get me", "buy", "running shoes", "sneakers", "boots", "laptop",
+    "get me", "buy me", "running shoes", "sneakers", "boots", "laptop",
     "phone", "watch", "shirt", "bag", "headphones", "earbuds", "jacket",
     "dress", "pants", "sunglasses", "backpack", "camera",
+}
+
+# Phrases that indicate checkout/purchase intent for the CURRENT session product —
+# fast-path so the LLM never sees these when context products exist.
+_CHECKOUT_HINTS = {
+    "add it", "add to cart", "buy it", "purchase it", "checkout",
+    "make payment", "proceed to pay", "proceed to checkout", "place order",
+    "complete purchase", "ready to pay", "move on to buy", "let's buy", "lets buy",
 }
 
 
@@ -224,6 +232,10 @@ def _fast_classify(message: str) -> Optional[str]:
     # Bare one-or-two-word greetings/acks
     if m in _OBVIOUS_CHITCHAT or all(w in _OBVIOUS_CHITCHAT for w in m.split()):
         return "chitchat"
+    # Checkout intent → treat as product_followup so the pipeline skips search
+    # and the frontend's own isCheckoutIntent() intercepts it before it gets here
+    if any(kw in m for kw in _CHECKOUT_HINTS):
+        return "product_followup"
     # Explicit search phrasing or clear product category mention
     if any(kw in m for kw in _NEW_SEARCH_KEYWORDS):
         return "new_search"
