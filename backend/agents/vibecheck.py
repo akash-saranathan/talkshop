@@ -255,29 +255,32 @@ async def generate_recommendation_text(
         return f"No {what} found right now{hint} Try broadening your search.", suggestion
 
     top = products[:3]
-    product_summary = "\n".join(
-        f"- {p['title']} | ${p['price']} | Rating: {p['rating']} | "
-        f"Merchant: {p['merchant_name']} | In stock: {p['available']}"
-        for p in top
-    )
+    best = top[0]
+    others_summary = "\n".join(
+        f"- {p['title']} | ${p['price']} | Rating: {p['rating']}"
+        for p in top[1:]
+    ) if len(top) > 1 else ""
 
     prompt = f"""The user asked: "{intent.raw_query}"
 
-Top matching products found:
-{product_summary}
+Best match (rank #1):
+- {best['title']} | ${best['price']} | Rating: {best['rating']} | Merchant: {best['merchant_name']}
 
-Write a 2–3 sentence recommendation explaining which product best fits their needs and why.
-Be specific about the price and key feature. Do not invent any facts not listed above."""
+Other options shown:
+{others_summary if others_summary else "(none)"}
+
+Write ONE short sentence (max 20 words) highlighting why the #1 pick is the best match.
+Then on a new line, ask: "Want me to add the **{best['title']}** to your cart?"
+Do NOT mention the other options. Do not invent any facts not listed above."""
 
     try:
         llm = get_llm(temperature=0.3)
         response = await llm.ainvoke([HumanMessage(content=prompt)])
         return _content_text(response.content).strip(), None
     except Exception:
-        # LLM is prose-only here — fall back to a deterministic sentence built
+        # LLM is prose-only here — fall back to a deterministic CTA built
         # from data already in `products` rather than losing the search results.
-        best = top[0]
         return (
-            f"Here's what I found: {best['title']} for ${best['price']} "
-            f"at {best['merchant_name']}."
+            f"Top pick: **{best['title']}** — ${best['price']} at {best['merchant_name']} "
+            f"(rated {best['rating']}/5).\n\nWant me to add the **{best['title']}** to your cart?"
         ), None

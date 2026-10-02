@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown, GitCompare } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
 import { getCart, addToCart } from "../api/cart";
+import { authFetch } from "../api/client";
 import ProductCard from "../components/ProductCard";
 import SkeletonProductCard from "../components/SkeletonProductCard";
 import CompareModal from "../components/CompareModal";
@@ -11,6 +12,7 @@ import CartDrawer from "../components/CartDrawer";
 import ChatSidebar from "../components/ChatSidebar";
 import AgentTrailPanel from "../components/AgentTrailPanel";
 import ThemeToggle from "../components/ThemeToggle";
+import InlineCheckout, { SAVED_CARDS, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape } from "../components/InlineCheckout";
 import { useAuth } from "../auth/AuthContext";
 
 // ── Intent parsing ──────────────────────────────────────────────────────────
@@ -91,6 +93,12 @@ interface Turn {
   recommendation: string;
   blocked: string | null;
   intent: SimpleIntent;
+  checkout?: InlineCheckoutData;
+}
+
+function isAffirmativeInput(text: string): boolean {
+  const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
+  return /^(yes|yeah|yep|sure|ok|okay|confirm|add to cart|proceed|pay|go ahead|do it|sounds good|add it|let's do it|lets do it|add)$/.test(t);
 }
 
 // Pasted screenshots can be huge — downscale before it ever leaves the
@@ -207,6 +215,13 @@ export default function Chat() {
   // pause — should silently resume so it feels continuous) from "the user
   // clicked Stop/Cancel" (should actually end).
   const stoppingRef = useRef(false);
+  const autoSendRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Always points to the latest handleSend — lets recognition callbacks call
+  // it directly without capturing a stale closure.
+  const handleSendRef = useRef<(() => void) | null>(null);
+  // Same pattern for doCheckoutSummary — avoids TDZ when handleSend references it.
+  const doCheckoutSummaryRef = useRef<((userText: string, product: ProductData) => void) | null>(null);
   // sessionIdRef is the source of truth read inside async streaming
   // callbacks (avoids stale-closure bugs); currentSessionId mirrors it so
   // the sidebar can reactively highlight the active thread.
@@ -224,6 +239,7 @@ export default function Chat() {
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
+
 
   // Refresh the cart badge on mount and whenever the tab regains focus —
   // covers coming back from Cart/Checkout after adding, removing, or buying.
@@ -280,6 +296,7 @@ export default function Chat() {
     audioCtxRef.current?.close().catch(() => {});
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   }, []);
 
   // Auto-scroll to the newest turn, matching standard chat UX.
@@ -380,6 +397,13 @@ export default function Chat() {
     const msg = input.trim();
     if (!msg || loading) return;
 
+    // ── Inline checkout intercepts ──────────────────────────────────────────
+    // User said "yes" with a product selected → bypass LangGraph, do checkout
+    if (isAffirmativeInput(msg) && selectedProducts.size > 0) {
+      doCheckoutSummaryRef.current?.(msg, [...selectedProducts.values()][0]);
+      return;
+    }
+
     // Always persist the active session so returning from Dashboard/Cart
     // restores this chat, even if the user never clicked a sidebar session.
     switchToSession(sessionIdRef.current);
@@ -447,6 +471,11 @@ export default function Chat() {
         setTurns((prev) => prev.map((t) =>
           t.id === capturedId ? { ...t, products: prods } : t
         ));
+        // Auto-select the top-ranked product so the user sees it highlighted
+        // and can just say "yes" / "add to cart" to proceed.
+        if (prods.length > 0) {
+          setSelectedProducts(new Map([[prods[0].product_id, prods[0]]]));
+        }
         // Stream recommendation text word-by-word (ChatGPT-style)
         const words = text.split(" ");
         words.forEach((_, i) => {
@@ -484,7 +513,250 @@ export default function Chat() {
     });
 
     closeStream.current = close;
-  }, [input, loading, pastedImage, updateActiveTurn]);
+  }, [input, loading, pastedImage, updateActiveTurn, selectedProducts]);
+
+  // Keep the ref always pointing at the current handleSend so recognition
+  // callbacks can fire it without stale-closure issues.
+  handleSendRef.current = handleSend;
+
+  // ── Inline checkout flow ──────────────────────────────────────────────────
+
+  // Step 1: user said "yes" to agent's cart question → create checkout summary turn
+  const doCheckoutSummary = useCallback(async (userText: string, product: ProductData) => {
+    setInput("");
+    setPastedImage(null);
+    setLoading(true);
+    setSelectedProducts(new Map());
+
+    const turnId = crypto.randomUUID();
+    activeTurnId.current = turnId;
+
+    setTurns((prev) => [
+      ...prev,
+      {
+        id: turnId,
+        userMessage: userText,
+        steps: [{ id: "c1", message: "Preparing your order...", status: "running" as const }],
+        products: [],
+        recommendation: "",
+        blocked: null,
+        intent: {},
+        checkout: {
+          phase: "setup" as const,
+          product,
+          selectedCard: SAVED_CARDS[0].id,
+        },
+      },
+    ]);
+
+    try {
+      await addToCart(product);
+      const res = await authFetch("/api/checkout/create", {
+        method: "POST",
+        body: JSON.stringify({
+          product_id: product.product_id,
+          merchant_id: product.merchant_id,
+          quantity: 1,
+        }),
+      });
+      if (!res.ok) throw new Error("Checkout creation failed");
+      const checkoutData: InlineCheckoutDataShape = await res.json();
+
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                steps: [{ id: "c1", message: "Order ready", status: "done" as const }],
+                checkout: {
+                  phase: "summary" as const,
+                  product,
+                  checkoutData,
+                  selectedCard: SAVED_CARDS[0].id,
+                },
+              }
+            : t
+        )
+      );
+    } catch {
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                steps: [],
+                checkout: {
+                  phase: "failed" as const,
+                  product,
+                  selectedCard: SAVED_CARDS[0].id,
+                  error: "Could not prepare your order. Please try again.",
+                },
+              }
+            : t
+        )
+      );
+    } finally {
+      setLoading(false);
+    }
+    doCheckoutSummaryRef.current = doCheckoutSummary;
+  }, []);
+
+  // Step 2: user clicked "Confirm & Pay" → run DPAT + payment inline
+  const doPayment = useCallback(async (
+    turnId: string,
+    checkoutData: InlineCheckoutDataShape,
+    selectedCard: string,
+    product: ProductData,
+  ) => {
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === turnId
+          ? {
+              ...t,
+              checkout: {
+                ...t.checkout!,
+                phase: "processing" as const,
+                processingSteps: [
+                  { label: "GreenLight issuing DPAT authorization…", status: "running" as const },
+                  { label: "DPAT token ready", status: "pending" as const },
+                  { label: "PayIt executing payment…", status: "pending" as const },
+                  { label: "TrackIt recording your order…", status: "pending" as const },
+                ],
+              },
+            }
+          : t
+      )
+    );
+    setLoading(true);
+
+    const updateSteps = (steps: Array<{ label: string; status: "pending" | "running" | "done" | "error" }>) => {
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId ? { ...t, checkout: { ...t.checkout!, processingSteps: steps } } : t
+        )
+      );
+    };
+
+    try {
+      // GreenLight: approve authorization
+      const approveRes = await authFetch("/api/authorizations/approve", {
+        method: "POST",
+        body: JSON.stringify({
+          checkout_id: checkoutData.checkout_id,
+          checkout_hash: checkoutData.checkout_hash,
+          merchant_id: checkoutData.merchant_id,
+          total: checkoutData.total,
+          currency: checkoutData.currency,
+          product_id: checkoutData.product_id,
+          product_title: checkoutData.product_title,
+          merchant_name: checkoutData.merchant_name,
+          subtotal: checkoutData.subtotal,
+          tax: checkoutData.tax,
+          shipping: checkoutData.shipping,
+        }),
+      });
+      if (!approveRes.ok) throw new Error("Authorization failed");
+      const approveData = await approveRes.json();
+
+      updateSteps([
+        { label: "GreenLight — authorization approved", status: "done" },
+        { label: "DPAT token issued", status: "done" },
+        { label: "PayIt executing payment…", status: "running" },
+        { label: "TrackIt recording your order…", status: "pending" },
+      ]);
+
+      // PayIt: execute payment
+      const execRes = await authFetch("/api/payments/execute", {
+        method: "POST",
+        body: JSON.stringify({
+          token_id: approveData.token_id,
+          checkout_id: checkoutData.checkout_id,
+          checkout_hash: checkoutData.checkout_hash,
+          merchant_id: checkoutData.merchant_id,
+          merchant_name: checkoutData.merchant_name,
+          total: checkoutData.total,
+          currency: checkoutData.currency,
+          product_id: checkoutData.product_id,
+          product_title: checkoutData.product_title,
+          subtotal: checkoutData.subtotal,
+          tax: checkoutData.tax,
+          shipping: checkoutData.shipping,
+          payment_method: "card",
+        }),
+      });
+      if (!execRes.ok) throw new Error("Payment failed");
+      const execData = await execRes.json();
+
+      updateSteps([
+        { label: "GreenLight — authorization approved", status: "done" },
+        { label: "DPAT token issued", status: "done" },
+        { label: "Payment processed successfully", status: "done" },
+        { label: "TrackIt — order recorded", status: "done" },
+      ]);
+
+      // Small delay so the user sees all steps green before flipping to confirmed
+      await new Promise((r) => setTimeout(r, 600));
+
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                checkout: {
+                  phase: "confirmed" as const,
+                  product,
+                  selectedCard,
+                  orderId: execData.order_id,
+                  confirmedTotal: execData.amount,
+                },
+              }
+            : t
+        )
+      );
+
+      // Clear session cart
+      setCartCount(0);
+      setSessionCartCount(0);
+      setSessionCartIds(new Set());
+    } catch (err) {
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                checkout: {
+                  ...t.checkout!,
+                  phase: "failed" as const,
+                  error: "Payment failed. Please check your card details and try again.",
+                },
+              }
+            : t
+        )
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Cancel inline checkout — marks the turn as cancelled
+  const cancelCheckout = useCallback((turnId: string) => {
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === turnId
+          ? { ...t, checkout: { ...t.checkout!, phase: "cancelled" as const } }
+          : t
+      )
+    );
+  }, []);
+
+  // Update selected card within a checkout turn
+  const updateCheckoutCard = useCallback((turnId: string, cardId: string) => {
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === turnId ? { ...t, checkout: { ...t.checkout!, selectedCard: cardId } } : t
+      )
+    );
+  }, []);
 
   const BAR_COUNT = 32;
 
@@ -557,20 +829,55 @@ export default function Chat() {
 
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
-    // Keep listening across natural pauses — only the Stop/Cancel buttons
-    // should end the session, not a moment of silence mid-sentence.
+    // Interim results fire as you speak (near real-time), so we can detect
+    // silence accurately: reset the 1.5s timer on every event.  Without this,
+    // Chrome with continuous=true waits 5-7 s before delivering a "final"
+    // result — the silence timer never even starts until then.
+    recognition.interimResults = true;
     recognition.continuous = true;
 
     recognition.onresult = (event) => {
       let newText = "";
+      let hasActivity = false;
       for (let i = event.resultIndex; i < event.results.length; i++) {
+        hasActivity = true;
         if (!event.results[i].isFinal) continue;
         const transcript = event.results[i][0].transcript.trim();
         if (transcript) newText += (newText ? " " : "") + transcript;
       }
+
+      // Accumulate only final text into the input field.
       if (newText) {
         setInput((prev) => (prev ? `${prev} ${newText}` : newText));
+      }
+
+      // Voice command routing on final results — instant send.
+      if (newText) {
+        const isCommand = /^(choose|select|pick)\s+(first|second|third|1st|2nd|3rd)/i.test(newText.trim()) ||
+          /^(yes|confirm|approve|proceed|go ahead)\.?$/i.test(newText.trim()) ||
+          /^(cancel|no|stop|go back)\.?$/i.test(newText.trim()) ||
+          /^track\s+(my\s+)?order/i.test(newText.trim());
+
+        if (isCommand) {
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          autoSendRef.current = true;
+          stoppingRef.current = true;
+          recognitionRef.current?.stop();
+          return;
+        }
+      }
+
+      // Reset the silence timer on ANY speech activity (interim = user still
+      // speaking).  The timer fires 1.5 s after the very last word, which is
+      // when interim events stop flowing.
+      if (hasActivity) {
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          silenceTimerRef.current = null;
+          autoSendRef.current = true;
+          stoppingRef.current = true;
+          recognitionRef.current?.stop();
+        }, 1500);
       }
     };
 
@@ -590,6 +897,12 @@ export default function Chat() {
       if (stoppingRef.current) {
         stopLevelMeter();
         setRecording(false);
+        if (autoSendRef.current) {
+          autoSendRef.current = false;
+          // Small delay so React can flush the setInput call from onresult
+          // before handleSend reads the input value.
+          setTimeout(() => { handleSendRef.current?.(); }, 100);
+        }
         return;
       }
       // Chrome ended the session on its own (e.g. after a pause) even
@@ -607,14 +920,21 @@ export default function Chat() {
     setRecording(true);
   };
 
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+  };
+
   // Stop = finalize whatever was heard so far (onresult still fires, then onend).
   const handleStopRecording = () => {
+    clearSilenceTimer();
     stoppingRef.current = true;
     recognitionRef.current?.stop();
   };
 
   // Cancel = discard the recording entirely, no transcript inserted.
   const handleCancelRecording = () => {
+    clearSilenceTimer();
+    autoSendRef.current = false;
     stoppingRef.current = true;
     setMicError(null);
     recognitionRef.current?.abort();
@@ -789,6 +1109,20 @@ export default function Chat() {
                       </motion.div>
                     )}
 
+                    {/* Inline checkout card — shown when user confirmed a product */}
+                    {turn.checkout && (
+                      <InlineCheckout
+                        {...turn.checkout}
+                        onConfirm={() => {
+                          if (turn.checkout?.checkoutData) {
+                            doPayment(turn.id, turn.checkout.checkoutData, turn.checkout.selectedCard, turn.checkout.product);
+                          }
+                        }}
+                        onCancel={() => cancelCheckout(turn.id)}
+                        onCardChange={(cardId) => updateCheckoutCard(turn.id, cardId)}
+                      />
+                    )}
+
                     {/* Skeleton cards — shown while the active turn is loading */}
                     {isActiveTurn && turn.products.length === 0 && turn.steps.length > 0 && (
                       <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
@@ -854,7 +1188,6 @@ export default function Chat() {
                                       setSessionCartCount((n) => n + 1);
                                       setSessionCartIds((prev) => new Set(prev).add(cartItem.cart_item_id));
                                     }
-                                    triggerCheckoutCountdown(cartItem);
                                   }}
                                 />
                               </div>
@@ -1023,9 +1356,8 @@ export default function Chat() {
             products={Array.from(selectedProducts.values())}
             onClose={() => setShowCompare(false)}
             onAddToCart={(product) => {
-              addToCart(product).then((item) => {
+              addToCart(product).then(() => {
                 getCart().then((items) => setCartCount(items.length)).catch(() => {});
-                triggerCheckoutCountdown(item);
               }).catch(() => {});
             }}
           />
@@ -1063,6 +1395,7 @@ export default function Chat() {
             </div>
           )}
           {recording ? (
+            <>
             <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
               <button
                 type="button"
@@ -1090,6 +1423,10 @@ export default function Chat() {
                 <Square size={13} fill="currentColor" />
               </button>
             </div>
+            <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 text-center">
+              Say <span className="font-medium text-[var(--color-primary)]">"choose first"</span> · <span className="font-medium text-[var(--color-primary)]">"confirm"</span> · <span className="font-medium text-[var(--color-primary)]">"cancel"</span> to act hands-free
+            </p>
+          </>
           ) : (
             <div className="flex items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
               <textarea
@@ -1156,6 +1493,9 @@ export default function Chat() {
         width={rightWidth}
         activeTurnSteps={turns.find((t) => t.id === activeTurnId.current)?.steps ?? []}
         activeLoading={loading}
+        activeProducts={turns.find((t) => t.id === activeTurnId.current)?.products}
+        activeIntent={turns.find((t) => t.id === activeTurnId.current)?.intent}
+        activeRecommendation={turns.find((t) => t.id === activeTurnId.current)?.recommendation}
       />
     </div>
   );
