@@ -197,6 +197,9 @@ export default function Chat() {
   const [imageError, setImageError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
+  // Product the agent just recommended and asked "Want me to add to cart?" —
+  // drives the Add/Dismiss chips below the recommendation text.
+  const [pendingCheckoutProduct, setPendingCheckoutProduct] = useState<ProductData | null>(null);
   const [cartCount, setCartCount] = useState(0);
   const [sessionCartCount, setSessionCartCount] = useState(0);
   // Incrementing this forces ProductCards to remount and reset their qty state after payment.
@@ -396,8 +399,12 @@ export default function Chat() {
     if (isAffirmativeInput(msg) && lastRecommendedProductRef.current) {
       doCheckoutSummaryRef.current?.(msg, lastRecommendedProductRef.current);
       lastRecommendedProductRef.current = null;
+      setPendingCheckoutProduct(null);
       return;
     }
+    // Starting a new search — clear any pending cart CTA
+    setPendingCheckoutProduct(null);
+    lastRecommendedProductRef.current = null;
 
     // Always persist the active session so returning from Dashboard/Cart
     // restores this chat, even if the user never clicked a sidebar session.
@@ -469,6 +476,7 @@ export default function Chat() {
         // Remember the top-ranked product so affirmative replies ("yes", "ok") can trigger checkout.
         if (prods.length > 0) {
           lastRecommendedProductRef.current = prods[0];
+          setPendingCheckoutProduct(prods[0]);
         }
         // Stream recommendation text word-by-word (ChatGPT-style)
         const words = text.split(" ");
@@ -521,6 +529,8 @@ export default function Chat() {
     setPastedImage(null);
     setLoading(true);
     setSelectedProducts(new Map());
+    setPendingCheckoutProduct(null);
+    lastRecommendedProductRef.current = null;
 
     const turnId = crypto.randomUUID();
     activeTurnId.current = turnId;
@@ -1106,6 +1116,34 @@ export default function Chat() {
                         className="rounded-xl rounded-tl-sm bg-[var(--color-surface)] border border-[var(--color-border)] px-4 py-2.5 text-sm text-[var(--color-text)] max-w-[85%]"
                       >
                         {renderWithBold(turn.recommendation)}
+                      </motion.div>
+                    )}
+
+                    {/* Cart action chips — only on the last turn when agent asked "Want me to add to cart?" */}
+                    {turn.recommendation && pendingCheckoutProduct && !isActiveTurn && !turn.checkout &&
+                      turn.id === turns[turns.length - 1].id && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center gap-2"
+                      >
+                        <button
+                          onClick={() => {
+                            doCheckoutSummaryRef.current?.("yes", pendingCheckoutProduct);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--color-primary)] text-white text-xs font-semibold hover:bg-[var(--color-primary-dark)] transition-colors shadow-sm"
+                        >
+                          🛒 Yes, add to cart
+                        </button>
+                        <button
+                          onClick={() => {
+                            setPendingCheckoutProduct(null);
+                            lastRecommendedProductRef.current = null;
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--color-border)] text-xs text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+                        >
+                          No thanks
+                        </button>
                       </motion.div>
                     )}
 
