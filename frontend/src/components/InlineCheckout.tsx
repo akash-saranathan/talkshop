@@ -65,6 +65,8 @@ export interface InlineCheckoutData {
   confirmedTotal?: number;
   error?: string;
   processingSteps?: ProcessingStep[];
+  pointsEarned?: number;
+  loyaltyBalance?: number;
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -480,12 +482,14 @@ const TRACKER_STEPS = [
 ];
 
 function ConfirmedCard({
-  product, orderId, confirmedTotal, deliveryDays,
+  product, orderId, confirmedTotal, deliveryDays, pointsEarned, loyaltyBalance,
 }: {
   product: ProductData;
   orderId: string;
   confirmedTotal: number;
   deliveryDays: number;
+  pointsEarned?: number;
+  loyaltyBalance?: number;
 }) {
   const [trackerOpen, setTrackerOpen] = useState(true);
 
@@ -513,6 +517,24 @@ function ConfirmedCard({
           Estimated delivery: <span className="font-medium text-[var(--color-primary)]">{deliveryDays} business days</span>
         </p>
       </div>
+
+      {/* Loyalty points earned */}
+      {pointsEarned != null && pointsEarned > 0 && (
+        <div className="px-4 py-2.5 border-b border-[var(--color-border)] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-base">⭐</span>
+            <div>
+              <p className="text-xs font-semibold text-[var(--color-text)]">+{pointsEarned} loyalty points earned</p>
+              {loyaltyBalance != null && (
+                <p className="text-[11px] text-[var(--color-text-muted)]">Total balance: {loyaltyBalance} pts</p>
+              )}
+            </div>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold border border-amber-200">
+            Chase Rewards
+          </span>
+        </div>
+      )}
 
       {/* Collapsible tracker */}
       <button
@@ -575,7 +597,8 @@ function ConfirmedCard({
 
 export default function InlineCheckout(props: Props) {
   const { phase, product, checkoutData, selectedCard, onCardChange, onConfirm, onCancel,
-    processingSteps, orderId, confirmedTotal, error, isGuest, guestCard, onGuestCardChange } = props;
+    processingSteps, orderId, confirmedTotal, error, isGuest, guestCard, onGuestCardChange,
+    pointsEarned, loyaltyBalance } = props;
 
   if (phase === "setup") {
     return <SetupCard />;
@@ -612,6 +635,8 @@ export default function InlineCheckout(props: Props) {
         orderId={orderId}
         confirmedTotal={confirmedTotal}
         deliveryDays={product.delivery_days ?? 3}
+        pointsEarned={pointsEarned}
+        loyaltyBalance={loyaltyBalance}
       />
     );
   }
