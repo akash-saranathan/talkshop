@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown, GitCompare } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
-import { getCart, addToCart } from "../api/cart";
+import { getCart, addToCart, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
 import ProductCard from "../components/ProductCard";
 import SkeletonProductCard from "../components/SkeletonProductCard";
@@ -204,9 +204,6 @@ export default function Chat() {
   const [micError, setMicError] = useState<string | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(4));
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
-  const [autoCheckoutIn, setAutoCheckoutIn] = useState<number | null>(null);
-  const autoCheckoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastAddedItemRef = useRef<import("../api/cart").CartItemData | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -295,7 +292,6 @@ export default function Chat() {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     audioCtxRef.current?.close().catch(() => {});
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
-    if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   }, []);
 
@@ -363,28 +359,6 @@ export default function Chat() {
     } catch { /* noop */ }
     // Mount-only
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const triggerCheckoutCountdown = useCallback((item?: import("../api/cart").CartItemData) => {
-    if (item) lastAddedItemRef.current = item;
-    if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
-    setAutoCheckoutIn(10);
-    let remaining = 10;
-    autoCheckoutTimerRef.current = setInterval(() => {
-      remaining -= 1;
-      setAutoCheckoutIn(remaining);
-      if (remaining <= 0) {
-        clearInterval(autoCheckoutTimerRef.current!);
-        autoCheckoutTimerRef.current = null;
-        setAutoCheckoutIn(null);
-        navigate("/cart");
-      }
-    }, 1000);
-  }, [navigate]);
-
-  const cancelCheckoutCountdown = useCallback(() => {
-    if (autoCheckoutTimerRef.current) { clearInterval(autoCheckoutTimerRef.current); autoCheckoutTimerRef.current = null; }
-    setAutoCheckoutIn(null);
   }, []);
 
   const handleSessionDeleted = useCallback((deletedId: string) => {
@@ -967,19 +941,12 @@ export default function Chat() {
     });
   }, []);
 
-  const handleBuySelected = useCallback(async () => {
+  const handleBuySelected = useCallback(() => {
     if (addingToCheckout || selectedProducts.size === 0) return;
-    setAddingToCheckout(true);
-    try {
-      for (const product of selectedProducts.values()) {
-        await addToCart(product);
-      }
-      setSelectedProducts(new Map());
-      navigate("/cart");
-    } catch {
-      setAddingToCheckout(false);
-    }
-  }, [addingToCheckout, selectedProducts, navigate]);
+    // Take the first selected product — inline checkout handles one at a time
+    const product = [...selectedProducts.values()][0];
+    doCheckoutSummaryRef.current?.("Buy selected", product);
+  }, [addingToCheckout, selectedProducts]);
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)]">
@@ -1262,7 +1229,7 @@ export default function Chat() {
         </div>
 
         {/* Persistent cart reminder — shown when items were added this session */}
-        {sessionCartCount > 0 && autoCheckoutIn === null && (
+        {sessionCartCount > 0 && (
           <div className="mx-6 mb-1">
             <button
               onClick={() => setShowCartDrawer(true)}
@@ -1281,45 +1248,6 @@ export default function Chat() {
             </button>
           </div>
         )}
-
-        {/* Auto-checkout countdown toast — appears after "Add to Cart" */}
-        <AnimatePresence>
-          {autoCheckoutIn !== null && (
-            <motion.div
-              initial={{ y: 80, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 80, opacity: 0 }}
-              className="mx-6 mb-2 rounded-xl bg-gradient-to-r from-[var(--color-primary)] to-violet-600 text-white px-5 py-3 flex items-center justify-between shadow-lg"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/20 grid place-items-center shrink-0">
-                  <ShoppingCart size={15} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold">Item added! Heading to checkout...</p>
-                  <p className="text-xs text-white/70">Taking you there in {autoCheckoutIn}s</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={cancelCheckoutCountdown}
-                  className="text-xs text-white/70 hover:text-white transition-colors px-2 py-1"
-                >
-                  Stay here
-                </button>
-                <button
-                  onClick={() => {
-                    cancelCheckoutCountdown();
-                    navigate("/cart");
-                  }}
-                  className="flex items-center gap-1.5 text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors"
-                >
-                  Go now <ArrowRight size={14} />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Floating multi-select bar */}
         {selectedProducts.size > 0 && (
@@ -1385,6 +1313,33 @@ export default function Chat() {
             getCart().then((items) => setCartCount(items.length)).catch(() => {});
           }}
           sessionCartIds={sessionCartIds}
+          onCheckout={(cartItem: CartItemData) => {
+            setShowCartDrawer(false);
+            const product: ProductData = {
+              product_id: cartItem.product_id,
+              merchant_id: cartItem.merchant_id,
+              merchant_name: cartItem.merchant_name,
+              title: cartItem.title,
+              brand: cartItem.brand,
+              category: cartItem.category,
+              price: cartItem.price,
+              currency: cartItem.currency,
+              size: cartItem.size,
+              color: cartItem.color,
+              available: true,
+              inventory: 1,
+              delivery_days: cartItem.delivery_days,
+              rating: cartItem.rating,
+              review_count: 0,
+              shipping_cost: 0,
+              rank_score: 0,
+              source: "cart",
+              image_url: cartItem.image_url,
+              weight_grams: null,
+              cushioning: null,
+            };
+            doCheckoutSummaryRef.current?.("Checkout", product);
+          }}
         />
 
         {/* Input bar */}

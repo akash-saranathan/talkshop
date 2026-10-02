@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ShoppingBag, Trash2, Loader, ArrowRight } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { X, ShoppingBag, Trash2, Loader, ShoppingCart } from "lucide-react";
 import { getCart, removeFromCart, updateCartItemQuantity, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
 import { getProductVisual } from "../utils/productVisual";
@@ -11,6 +10,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   sessionCartIds?: Set<string>;
+  onCheckout?: (item: CartItemData) => void;
 }
 
 function getArrivalLabel(days: number): string {
@@ -21,8 +21,7 @@ function getArrivalLabel(days: number): string {
   return `Arrives ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }
 
-export default function CartDrawer({ open, onClose, sessionCartIds }: Props) {
-  const navigate = useNavigate();
+export default function CartDrawer({ open, onClose, sessionCartIds, onCheckout }: Props) {
   const [items, setItems] = useState<CartItemData[]>([]);
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
@@ -69,8 +68,13 @@ export default function CartDrawer({ open, onClose, sessionCartIds }: Props) {
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
 
   const handleCheckout = () => {
-    onClose();
-    navigate("/cart");
+    const target = sessionItems[0] ?? items[0];
+    if (target && onCheckout) {
+      onClose();
+      onCheckout(target);
+    } else {
+      onClose();
+    }
   };
 
   return createPortal(
@@ -163,7 +167,7 @@ export default function CartDrawer({ open, onClose, sessionCartIds }: Props) {
                   onClick={handleCheckout}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-light)] transition-colors"
                 >
-                  View full cart <ArrowRight size={15} />
+                  <ShoppingCart size={15} /> Checkout in Chat
                 </button>
               </div>
             )}
