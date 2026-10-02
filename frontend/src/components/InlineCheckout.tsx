@@ -111,13 +111,17 @@ function formatExpiry(raw: string): string {
 }
 
 function SecurePaymentModal({
-  total, onClose, onConfirm,
+  total, onClose, onConfirm, initialCard,
 }: {
   total: number;
   onClose: () => void;
   onConfirm: (card: GuestCardInput) => void;
+  initialCard?: GuestCardInput;
 }) {
-  const [card, setCard] = useState<GuestCardInput>({ number: "", expiry: "", cvc: "", name: "" });
+  const hasSaved = !!(initialCard?.number);
+  const [card, setCard] = useState<GuestCardInput>(
+    initialCard ?? { number: "", expiry: "", cvc: "", name: "" }
+  );
   const [error, setError] = useState<string | null>(null);
 
   const inputCls = "w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-2.5 text-sm outline-none focus:border-[var(--color-primary)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]";
@@ -174,6 +178,20 @@ function SecurePaymentModal({
             <Lock size={11} />
             <span>Your card details are encrypted and never stored in chat</span>
           </div>
+          {hasSaved && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-[var(--color-primary)]/8 border border-[var(--color-primary)]/20 text-xs">
+              <span className="text-[var(--color-primary)] font-medium">
+                ···· {card.number.replace(/\s/g, "").slice(-4)} saved from this session
+              </span>
+              <button
+                type="button"
+                onClick={() => setCard({ number: "", expiry: "", cvc: "", name: "" })}
+                className="text-[var(--color-text-muted)] hover:text-rose-500 underline transition-colors"
+              >
+                Use different card
+              </button>
+            </div>
+          )}
 
           <div className="space-y-2.5">
             <div>
@@ -258,7 +276,7 @@ function SecurePaymentModal({
 
 function SummaryCard({
   product, checkoutData, selectedCard, onCardChange, onConfirm, onCancel,
-  isGuest, onGuestCardChange,
+  isGuest, guestCard, onGuestCardChange,
 }: {
   product: ProductData;
   checkoutData: CheckoutData;
@@ -267,6 +285,7 @@ function SummaryCard({
   onConfirm: () => void;
   onCancel: () => void;
   isGuest?: boolean;
+  guestCard?: GuestCardInput;
   onGuestCardChange?: (c: GuestCardInput) => void;
 }) {
   const visual: ProductVisual = getProductVisual(product.title, product.category);
@@ -408,6 +427,7 @@ function SummaryCard({
             total={checkoutData.total}
             onClose={() => setShowPayModal(false)}
             onConfirm={handleGuestPay}
+            initialCard={guestCard?.number ? guestCard : undefined}
           />
         )}
       </AnimatePresence>
@@ -571,6 +591,7 @@ export default function InlineCheckout(props: Props) {
         onConfirm={onConfirm}
         onCancel={onCancel}
         isGuest={isGuest}
+        guestCard={guestCard}
         onGuestCardChange={onGuestCardChange}
       />
     );

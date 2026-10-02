@@ -183,6 +183,8 @@ function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
 export default function Chat() {
   const navigate = useNavigate();
   const { user, logout, isGuest } = useAuth();
+  // Remembers the guest card entered during this session — never persisted to storage.
+  const sessionGuestCardRef = useRef<import("../components/InlineCheckout").GuestCardInput | null>(null);
   const [input, setInput] = useState("");
   const [pastedImage, setPastedImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -531,7 +533,7 @@ export default function Chat() {
           product,
           selectedCard: SAVED_CARDS[0].id,
           isGuest,
-          guestCard: isGuest ? { number: "", expiry: "", cvc: "", name: "" } : undefined,
+          guestCard: isGuest ? (sessionGuestCardRef.current ?? { number: "", expiry: "", cvc: "", name: "" }) : undefined,
         },
       },
     ]);
@@ -561,7 +563,7 @@ export default function Chat() {
                   checkoutData,
                   selectedCard: SAVED_CARDS[0].id,
                   isGuest,
-                  guestCard: isGuest ? { number: "", expiry: "", cvc: "", name: "" } : undefined,
+                  guestCard: isGuest ? (sessionGuestCardRef.current ?? { number: "", expiry: "", cvc: "", name: "" }) : undefined,
                 },
               }
             : t
@@ -751,8 +753,9 @@ export default function Chat() {
     );
   }, []);
 
-  // Update guest card fields within a checkout turn
+  // Update guest card fields and remember for the rest of the session
   const updateGuestCard = useCallback((turnId: string, card: NonNullable<InlineCheckoutData["guestCard"]>) => {
+    sessionGuestCardRef.current = card;
     setTurns((prev) =>
       prev.map((t) =>
         t.id === turnId ? { ...t, checkout: { ...t.checkout!, guestCard: card } } : t
