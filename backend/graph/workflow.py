@@ -34,6 +34,7 @@ from backend.models.product import NormalizedProduct
 class CommerceState(TypedDict):
     user_message: str
     session_id: str
+    user_id: Optional[str]  # injected per request for order-history personalization
     intent: Optional[ShoppingIntent]
     raw_products: list[dict]
     filtered_products: list[NormalizedProduct]
@@ -152,6 +153,41 @@ async def rank_products_node(state: CommerceState) -> CommerceState:
     return {**state, "ranked_products": top5}
 
 
+def _get_order_history(user_id: Optional[str]) -> list[dict]:
+    """Fetch last 3 confirmed orders for personalization context. Returns [] on any error."""
+    if not user_id:
+        return []
+    try:
+        from backend.db.schema import Order, CartItem
+        from backend.db.session_utils import get_session
+        with get_session() as session:
+            rows = (
+                session.query(Order)
+                .filter(Order.user_id == user_id, Order.status == "confirmed")
+                .order_by(Order.created_at.desc())
+                .limit(3)
+                .all()
+            )
+            history = []
+            for order in rows:
+                cart = (
+                    session.query(CartItem)
+                    .filter(CartItem.product_id == order.product_id, CartItem.user_id == user_id)
+                    .order_by(CartItem.added_at.desc())
+                    .first()
+                )
+                history.append({
+                    "product_id": order.product_id,
+                    "title": cart.title if cart else order.product_id,
+                    "category": cart.category if cart else "unknown",
+                    "brand": cart.brand if cart else None,
+                    "amount": order.amount,
+                })
+            return history
+    except Exception:
+        return []
+
+
 async def generate_recommendation(state: CommerceState) -> CommerceState:
     if state.get("blocked"):
         return state
@@ -164,9 +200,11 @@ async def generate_recommendation(state: CommerceState) -> CommerceState:
         await _emit(state, "recommendation", text, [])
         return {**state, "recommendation_text": text}
     await _emit(state, "step_start", "VibeCheck is writing your personalized recommendation...")
+    order_history = _get_order_history(state.get("user_id"))
     text, pending_suggestion = await vibecheck.generate_recommendation_text(
         state["intent"],
         [p.model_dump() for p in state["ranked_products"]],
+        order_history=order_history,
     )
     if pending_suggestion:
         # So a bare "yes" on the next turn can apply this suggestion
@@ -222,11 +260,13 @@ async def run_discovery(
     user_message: str,
     session_id: str,
     sse_queue: asyncio.Queue,
+    user_id: Optional[str] = None,
 ) -> CommerceState:
     """Run the Phase 2 discovery graph and stream events via sse_queue."""
     initial_state: CommerceState = {
         "user_message": user_message,
         "session_id": session_id,
+        "user_id": user_id,
         "intent": None,
         "raw_products": [],
         "filtered_products": [],

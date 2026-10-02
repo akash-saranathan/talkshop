@@ -61,7 +61,7 @@ async def _event_stream(user_message: str, session_id: str, user_id: str):
     queue: asyncio.Queue = asyncio.Queue()
 
     # Run the graph as a background task so we can stream events as they arrive
-    task = asyncio.create_task(run_discovery(user_message, session_id, queue))
+    task = asyncio.create_task(run_discovery(user_message, session_id, queue, user_id=user_id))
 
     try:
         while True:

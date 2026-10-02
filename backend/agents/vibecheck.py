@@ -215,6 +215,7 @@ def generate_greeting_reply() -> str:
 async def generate_recommendation_text(
     intent: ShoppingIntent,
     products: list[dict],
+    order_history: Optional[list[dict]] = None,
 ) -> tuple[str, Optional[dict]]:
     """
     LLM writes a human-readable recommendation explanation.
@@ -261,6 +262,14 @@ async def generate_recommendation_text(
         for p in top[1:]
     ) if len(top) > 1 else ""
 
+    history_context = ""
+    if order_history:
+        lines = ", ".join(
+            f"{h['title']} ({h['category']})" + (f" by {h['brand']}" if h.get("brand") else "")
+            for h in order_history
+        )
+        history_context = f"\nThis customer previously bought: {lines}. Factor this in if relevant — mention a brand match or suggest it fits their taste, in ONE extra phrase at most."
+
     prompt = f"""The user asked: "{intent.raw_query}"
 
 Best match (rank #1):
@@ -268,8 +277,8 @@ Best match (rank #1):
 
 Other options shown:
 {others_summary if others_summary else "(none)"}
-
-Write ONE short sentence (max 20 words) highlighting why the #1 pick is the best match.
+{history_context}
+Write ONE short sentence (max 25 words) highlighting why the #1 pick is the best match.
 Then on a new line, ask: "Want me to add the **{best['title']}** to your cart?"
 Do NOT mention the other options. Do not invent any facts not listed above."""
 
