@@ -18,6 +18,20 @@ interface AiVerdict {
   trade_offs: string[];
 }
 
+// Makes the actual comparison figures ($49.99, 4.6/5, 8,921 reviews) pop out
+// of the AI's prose instead of blending into the muted paragraph text.
+const NUMBER_PATTERN = /(\$[\d,]+(?:\.\d{1,2})?|\d+(?:\.\d+)?\/5|\d+(?:\.\d+)?-star|\d{1,3}(?:,\d{3})*\+?\s*reviews?)/gi;
+
+function highlightNumbers(text: string) {
+  return text.split(NUMBER_PATTERN).map((part, i) =>
+    i % 2 === 1 ? (
+      <strong key={i} className="font-bold text-[var(--color-text)]">{part}</strong>
+    ) : (
+      part
+    )
+  );
+}
+
 function getDeliveryLabel(days: number): string {
   if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
@@ -95,15 +109,20 @@ export default function CompareModal({ products, onClose, onAddToCart }: Props) 
         exit={{ y: 40, opacity: 0 }}
         transition={{ type: "spring", damping: 24, stiffness: 280 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-3xl bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shadow-2xl overflow-hidden"
+        className="w-full max-w-3xl max-h-[90vh] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shadow-2xl overflow-hidden flex flex-col"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)] shrink-0">
           <h2 className="font-semibold text-[var(--color-text)]">Compare {products.length} products</h2>
           <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
             <X size={18} />
           </button>
         </div>
+
+        {/* Scrollable middle: AI verdict + comparison table. Add-to-cart and
+            the legend stay pinned below, outside this scroll area, so the
+            buttons are never hidden off the bottom of a tall comparison. */}
+        <div className="flex-1 overflow-y-auto min-h-0">
 
         {/* AI Verdict panel */}
         <AnimatePresence mode="wait">
@@ -142,13 +161,13 @@ export default function CompareModal({ products, onClose, onAddToCart }: Props) 
                   </div>
                 ) : null;
               })()}
-              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">{verdict.reasoning}</p>
+              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">{highlightNumbers(verdict.reasoning)}</p>
               {verdict.trade_offs.length > 0 && (
                 <ul className="mt-1 flex flex-col gap-1">
                   {verdict.trade_offs.map((t, i) => (
                     <li key={i} className="text-[11px] text-[var(--color-text-muted)] flex items-start gap-1.5">
                       <span className="text-[var(--color-border)] mt-0.5">•</span>
-                      <span>{t}</span>
+                      <span>{highlightNumbers(t)}</span>
                     </li>
                   ))}
                 </ul>
@@ -209,8 +228,11 @@ export default function CompareModal({ products, onClose, onAddToCart }: Props) 
           </table>
         </div>
 
+        </div>
+        {/* End scrollable middle — action row and legend below are pinned, always visible */}
+
         {/* Add-to-cart row */}
-        <div className="grid px-5 py-4 gap-3 border-t border-[var(--color-border)]"
+        <div className="grid px-5 py-4 gap-3 border-t border-[var(--color-border)] shrink-0"
           style={{ gridTemplateColumns: `7rem repeat(${products.length}, 1fr)` }}
         >
           <div className="flex items-center">
@@ -228,7 +250,7 @@ export default function CompareModal({ products, onClose, onAddToCart }: Props) 
         </div>
 
         {/* Legend */}
-        <div className="px-5 pb-3 flex items-center gap-4 text-[10px] text-[var(--color-text-muted)]">
+        <div className="px-5 pb-3 flex items-center gap-4 text-[10px] text-[var(--color-text-muted)] shrink-0">
           <span className="flex items-center gap-1"><span className="text-[var(--color-success)] font-bold">Green</span> = best value</span>
           <span className="flex items-center gap-1"><Star size={10} className="text-amber-500" /> <span className="text-amber-600 font-bold">Amber</span> = top rated</span>
           <span className="flex items-center gap-1"><Zap size={10} className="text-[var(--color-success)]" /> <span className="text-[var(--color-success)] font-semibold">Green delivery</span> = fastest</span>

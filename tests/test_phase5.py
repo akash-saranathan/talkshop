@@ -28,7 +28,7 @@ async def test_generate_recommendation_falls_back_on_llm_error():
     broken_llm.ainvoke = AsyncMock(side_effect=RuntimeError("rate limited"))
 
     with patch("backend.agents.vibecheck.get_llm", return_value=broken_llm):
-        text = await generate_recommendation_text(intent, products)
+        text, _ = await generate_recommendation_text(intent, products)
 
     assert "Nike Pegasus 41" in text
     assert "117.94" in text
@@ -39,8 +39,8 @@ async def test_generate_recommendation_falls_back_on_llm_error():
 async def test_generate_recommendation_empty_products_unaffected():
     from backend.agents.vibecheck import generate_recommendation_text
     intent = ShoppingIntent(category="running_shoes", raw_query="fast shoes")
-    text = await generate_recommendation_text(intent, [])
-    assert "couldn't find" in text.lower()
+    text, suggestion = await generate_recommendation_text(intent, [])
+    assert "found right now" in text.lower()
 
 
 # ── VibeCheck: LLM content can be str OR list[str|dict] (LangChain typing) ──────
@@ -82,7 +82,7 @@ async def test_generate_recommendation_handles_list_shaped_content():
     llm.ainvoke = AsyncMock(return_value=fake_response)
 
     with patch("backend.agents.vibecheck.get_llm", return_value=llm):
-        text = await generate_recommendation_text(intent, products)
+        text, _ = await generate_recommendation_text(intent, products)
 
     assert text == "Great pick for you."
 

@@ -75,6 +75,20 @@ async def extract_intent(state: CommerceState) -> CommerceState:
     session_id = state["session_id"]
     prior = session_state.get_partial_intent(session_id)
     image = session_state.pop_pending_image(session_id)
+
+    # A bare "yes" to "try raising your budget to $65?" carries no product
+    # info an LLM could extract on its own — apply the pending suggestion
+    # deterministically instead of guessing, same reasoning as everything
+    # else price-related in this app never being left to the LLM.
+    pending = session_state.get_pending_suggestion(session_id)
+    if prior and pending and vibecheck.is_affirmative(state["user_message"]):
+        intent = ShoppingIntent.model_validate({
+            **prior, pending["field"]: pending["value"], "raw_query": state["user_message"],
+        })
+        session_state.save_context(session_id, intent.model_dump(mode="json"))
+        await _emit(state, "step_done", f"VibeCheck — got it, updated {pending['field'].replace('_', ' ')}", {"intent": intent.model_dump()})
+        return {**state, "intent": intent}
+
     intent, error = await vibecheck.extract_intent(state["user_message"], prior_intent=prior, image_base64=image)
     if error or not intent:
         await _emit(state, "error", f"Could not understand request: {error}")
@@ -88,7 +102,10 @@ async def extract_intent(state: CommerceState) -> CommerceState:
         session_state.save_followup_asked(session_id, intent.model_dump(mode="json"))
         return {**state, "intent": intent, "awaiting_followup": True}
 
-    session_state.clear(session_id)
+    # Keep this intent as the conversation's ongoing context (not cleared)
+    # so a later short follow-up — "budget is 50", "only black" — keeps
+    # merging into the same search instead of starting over from nothing.
+    session_state.save_context(session_id, intent.model_dump(mode="json"))
     await _emit(state, "step_done", f"VibeCheck — understood! Looking for {intent.category.replace('_', ' ')}", {"intent": intent.model_dump()})
     return {**state, "intent": intent}
 
@@ -147,10 +164,14 @@ async def generate_recommendation(state: CommerceState) -> CommerceState:
         await _emit(state, "recommendation", text, [])
         return {**state, "recommendation_text": text}
     await _emit(state, "step_start", "VibeCheck is writing your personalized recommendation...")
-    text = await vibecheck.generate_recommendation_text(
+    text, pending_suggestion = await vibecheck.generate_recommendation_text(
         state["intent"],
         [p.model_dump() for p in state["ranked_products"]],
     )
+    if pending_suggestion:
+        # So a bare "yes" on the next turn can apply this suggestion
+        # directly — see the extract_intent node's affirmative short-circuit.
+        session_state.save_context(state["session_id"], state["intent"].model_dump(mode="json"), pending_suggestion)
     await _emit(state, "recommendation", text, [p.model_dump() for p in state["ranked_products"]])
     return {**state, "recommendation_text": text}
 

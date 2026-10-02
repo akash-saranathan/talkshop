@@ -109,8 +109,16 @@ async def extract_intent(
         user_content = (
             f"Previously gathered info: {json.dumps(prior_intent)}\n"
             f'User\'s new message: "{user_message}"\n'
-            f"Merge the new message into the previous info — keep fields "
-            f"already known unless the new message changes them."
+            f"First decide: is the new message a REFINEMENT of the same product search "
+            f"(a size, color, budget, or brand for the same kind of item), or does it ask "
+            f"for a DIFFERENT kind of product entirely (a new category)?\n"
+            f"- Refinement: merge the new message into the previous info — keep fields "
+            f"already known unless the new message changes them.\n"
+            f"- Different product: this is a fresh search. Use only what the new message "
+            f"says. Reset brand, size, color, max_price, preferences, and use_case to null "
+            f"— a size/color/budget that applied to the old category (e.g. a bag) almost "
+            f"never applies to the new one (e.g. shoes), so do not carry them over unless "
+            f"the new message states them again."
         )
 
     human_content: Any = user_content
@@ -146,6 +154,21 @@ async def extract_intent(
         intent = intent.model_copy(update={"raw_query": user_message})
 
     return intent, None
+
+
+_AFFIRMATIVE = {
+    "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "please do",
+    "go ahead", "do it", "sounds good", "that works", "raise it", "increase it",
+}
+
+
+def is_affirmative(message: str) -> bool:
+    """
+    Deterministic check for a bare "yes"-style reply — used to apply a
+    pending suggestion (e.g. a budget raise) without asking the LLM to
+    guess what a one-word message is agreeing to.
+    """
+    return message.strip().lower().rstrip(".!") in _AFFIRMATIVE
 
 
 _DISTINGUISHING_FIELDS = ("brand", "size", "color", "max_price")
@@ -192,10 +215,16 @@ def generate_greeting_reply() -> str:
 async def generate_recommendation_text(
     intent: ShoppingIntent,
     products: list[dict],
-) -> str:
+) -> tuple[str, Optional[dict]]:
     """
     LLM writes a human-readable recommendation explanation.
     All factual values (prices, ratings) come from the products list — LLM only writes prose.
+
+    Returns (text, pending_suggestion). pending_suggestion is only set for the
+    one relaxation that has a concrete, reapplicable value (raising the
+    budget) — enough for a bare "yes" on the next turn to apply it directly,
+    see vibecheck.is_affirmative(). The other hints ("try a different color")
+    don't have a single value to auto-apply, so they're prose-only.
     """
     if not products:
         parts: list[str] = []
@@ -211,8 +240,11 @@ async def generate_recommendation_text(
             parts.append(f"under ${intent.max_price:.0f}")
         what = " ".join(parts) if parts else "products matching your criteria"
         hints: list[str] = []
+        suggestion: Optional[dict] = None
         if intent.max_price:
-            hints.append(f"try raising your budget to ${int(intent.max_price * 1.3)}")
+            raised = round(intent.max_price * 1.3, 2)
+            hints.append(f"try raising your budget to ${int(raised)}")
+            suggestion = {"field": "max_price", "value": raised}
         if intent.color:
             hints.append("try a different color")
         if intent.brand:
@@ -220,7 +252,7 @@ async def generate_recommendation_text(
         if intent.size:
             hints.append("check if a similar style comes in that size")
         hint = (" — " + hints[0].capitalize() + "?") if hints else ""
-        return f"No {what} found right now{hint} Try broadening your search."
+        return f"No {what} found right now{hint} Try broadening your search.", suggestion
 
     top = products[:3]
     product_summary = "\n".join(
@@ -240,7 +272,7 @@ Be specific about the price and key feature. Do not invent any facts not listed 
     try:
         llm = get_llm(temperature=0.3)
         response = await llm.ainvoke([HumanMessage(content=prompt)])
-        return _content_text(response.content).strip()
+        return _content_text(response.content).strip(), None
     except Exception:
         # LLM is prose-only here — fall back to a deterministic sentence built
         # from data already in `products` rather than losing the search results.
@@ -248,4 +280,4 @@ Be specific about the price and key feature. Do not invent any facts not listed 
         return (
             f"Here's what I found: {best['title']} for ${best['price']} "
             f"at {best['merchant_name']}."
-        )
+        ), None
