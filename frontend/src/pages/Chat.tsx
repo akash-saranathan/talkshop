@@ -97,6 +97,13 @@ interface Turn {
   checkout?: InlineCheckoutData;
 }
 
+function renderWithBold(text: string): React.ReactNode {
+  const parts = text.split(/\*\*(.+?)\*\*/g);
+  return parts.map((part, i) =>
+    i % 2 === 1 ? <strong key={i} className="font-semibold text-[var(--color-text)]">{part}</strong> : part
+  );
+}
+
 function isAffirmativeInput(text: string): boolean {
   const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
   return /^(yes|yeah|yep|sure|ok|okay|confirm|add to cart|proceed|pay|go ahead|do it|sounds good|add it|let's do it|lets do it|add)$/.test(t);
@@ -700,6 +707,8 @@ export default function Chat() {
                   selectedCard,
                   orderId: execData.order_id,
                   confirmedTotal: execData.amount,
+                  pointsEarned: execData.points_earned ?? undefined,
+                  loyaltyBalance: execData.loyalty_balance ?? undefined,
                 },
               }
             : t
@@ -1096,7 +1105,7 @@ export default function Chat() {
                         animate={{ opacity: 1, y: 0 }}
                         className="rounded-xl rounded-tl-sm bg-[var(--color-surface)] border border-[var(--color-border)] px-4 py-2.5 text-sm text-[var(--color-text)] max-w-[85%]"
                       >
-                        {turn.recommendation}
+                        {renderWithBold(turn.recommendation)}
                       </motion.div>
                     )}
 
