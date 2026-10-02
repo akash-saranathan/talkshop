@@ -181,7 +181,7 @@ function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
 
 export default function Chat() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, isGuest } = useAuth();
   const [input, setInput] = useState("");
   const [pastedImage, setPastedImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -545,6 +545,8 @@ export default function Chat() {
           phase: "setup" as const,
           product,
           selectedCard: SAVED_CARDS[0].id,
+          isGuest,
+          guestCard: isGuest ? { number: "", expiry: "", cvc: "", name: "" } : undefined,
         },
       },
     ]);
@@ -573,6 +575,8 @@ export default function Chat() {
                   product,
                   checkoutData,
                   selectedCard: SAVED_CARDS[0].id,
+                  isGuest,
+                  guestCard: isGuest ? { number: "", expiry: "", cvc: "", name: "" } : undefined,
                 },
               }
             : t
@@ -754,6 +758,15 @@ export default function Chat() {
     setTurns((prev) =>
       prev.map((t) =>
         t.id === turnId ? { ...t, checkout: { ...t.checkout!, selectedCard: cardId } } : t
+      )
+    );
+  }, []);
+
+  // Update guest card fields within a checkout turn
+  const updateGuestCard = useCallback((turnId: string, card: NonNullable<InlineCheckoutData["guestCard"]>) => {
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === turnId ? { ...t, checkout: { ...t.checkout!, guestCard: card } } : t
       )
     );
   }, []);
@@ -1120,6 +1133,7 @@ export default function Chat() {
                         }}
                         onCancel={() => cancelCheckout(turn.id)}
                         onCardChange={(cardId) => updateCheckoutCard(turn.id, cardId)}
+                        onGuestCardChange={(card) => updateGuestCard(turn.id, card)}
                       />
                     )}
 

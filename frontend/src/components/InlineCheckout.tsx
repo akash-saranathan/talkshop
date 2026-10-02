@@ -46,11 +46,20 @@ export interface ProcessingStep {
 
 export type InlineCheckoutPhase = "setup" | "summary" | "processing" | "confirmed" | "failed" | "cancelled";
 
+export interface GuestCardInput {
+  number: string;
+  expiry: string;
+  cvc: string;
+  name: string;
+}
+
 export interface InlineCheckoutData {
   phase: InlineCheckoutPhase;
   product: ProductData;
   checkoutData?: CheckoutData;
   selectedCard: string;
+  isGuest?: boolean;
+  guestCard?: GuestCardInput;
   orderId?: string;
   confirmedTotal?: number;
   error?: string;
@@ -63,6 +72,7 @@ interface Props extends InlineCheckoutData {
   onConfirm: () => void;
   onCancel: () => void;
   onCardChange: (cardId: string) => void;
+  onGuestCardChange?: (card: GuestCardInput) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -89,8 +99,50 @@ function SetupCard() {
   );
 }
 
+function GuestCardForm({ card, onChange }: { card: GuestCardInput; onChange: (c: GuestCardInput) => void }) {
+  const inputCls = "w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]";
+  return (
+    <div className="space-y-2">
+      <input
+        type="text"
+        maxLength={19}
+        placeholder="Card number (e.g. 4242 4242 4242 4242)"
+        value={card.number}
+        onChange={(e) => onChange({ ...card, number: e.target.value.replace(/[^\d ]/g, "") })}
+        className={inputCls}
+      />
+      <div className="flex gap-2">
+        <input
+          type="text"
+          maxLength={5}
+          placeholder="MM/YY"
+          value={card.expiry}
+          onChange={(e) => onChange({ ...card, expiry: e.target.value })}
+          className={inputCls}
+        />
+        <input
+          type="text"
+          maxLength={4}
+          placeholder="CVC"
+          value={card.cvc}
+          onChange={(e) => onChange({ ...card, cvc: e.target.value.replace(/\D/g, "") })}
+          className={inputCls}
+        />
+      </div>
+      <input
+        type="text"
+        placeholder="Name on card"
+        value={card.name}
+        onChange={(e) => onChange({ ...card, name: e.target.value })}
+        className={inputCls}
+      />
+    </div>
+  );
+}
+
 function SummaryCard({
   product, checkoutData, selectedCard, onCardChange, onConfirm, onCancel,
+  isGuest, guestCard, onGuestCardChange,
 }: {
   product: ProductData;
   checkoutData: CheckoutData;
@@ -98,6 +150,9 @@ function SummaryCard({
   onCardChange: (id: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
+  isGuest?: boolean;
+  guestCard?: GuestCardInput;
+  onGuestCardChange?: (c: GuestCardInput) => void;
 }) {
   const visual: ProductVisual = getProductVisual(product.title, product.category);
   const ProductIcon = visual.icon;
@@ -155,38 +210,45 @@ function SummaryCard({
         </div>
       </div>
 
-      {/* Card picker */}
+      {/* Card picker / guest card form */}
       <div className="px-4 py-3 border-b border-[var(--color-border)]">
         <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
-          Pay with
+          {isGuest ? "Enter card details" : "Pay with"}
         </p>
-        <div className="space-y-1.5">
-          {SAVED_CARDS.map((card) => (
-            <button
-              key={card.id}
-              onClick={() => onCardChange(card.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm transition-colors ${
-                selectedCard === card.id
-                  ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-text)]"
-                  : "border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/50"
-              }`}
-            >
-              <span>{cardNetworkIcon(card.network)}</span>
-              <span className="flex-1 text-left">
-                {card.network} ···· {card.last4}
-              </span>
-              <span className="text-xs text-[var(--color-text-muted)]">{card.expiry}</span>
-              {card.isDefault && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">Default</span>
-              )}
-              {selectedCard === card.id && (
-                <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] grid place-items-center shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
+        {isGuest ? (
+          <GuestCardForm
+            card={guestCard ?? { number: "", expiry: "", cvc: "", name: "" }}
+            onChange={(c) => onGuestCardChange?.(c)}
+          />
+        ) : (
+          <div className="space-y-1.5">
+            {SAVED_CARDS.map((card) => (
+              <button
+                key={card.id}
+                onClick={() => onCardChange(card.id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                  selectedCard === card.id
+                    ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-text)]"
+                    : "border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/50"
+                }`}
+              >
+                <span>{cardNetworkIcon(card.network)}</span>
+                <span className="flex-1 text-left">
+                  {card.network} ···· {card.last4}
                 </span>
-              )}
-            </button>
-          ))}
-        </div>
+                <span className="text-xs text-[var(--color-text-muted)]">{card.expiry}</span>
+                {card.isDefault && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">Default</span>
+                )}
+                {selectedCard === card.id && (
+                  <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] grid place-items-center shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Actions */}
@@ -348,7 +410,8 @@ function ConfirmedCard({
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export default function InlineCheckout(props: Props) {
-  const { phase, product, checkoutData, selectedCard, onCardChange, onConfirm, onCancel, processingSteps, orderId, confirmedTotal, error } = props;
+  const { phase, product, checkoutData, selectedCard, onCardChange, onConfirm, onCancel,
+    processingSteps, orderId, confirmedTotal, error, isGuest, guestCard, onGuestCardChange } = props;
 
   if (phase === "setup") {
     return <SetupCard />;
@@ -363,6 +426,9 @@ export default function InlineCheckout(props: Props) {
         onCardChange={onCardChange}
         onConfirm={onConfirm}
         onCancel={onCancel}
+        isGuest={isGuest}
+        guestCard={guestCard}
+        onGuestCardChange={onGuestCardChange}
       />
     );
   }
