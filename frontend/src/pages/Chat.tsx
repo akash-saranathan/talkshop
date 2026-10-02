@@ -131,6 +131,9 @@ function humanizeStep(message: string): string | null {
   // Suppress zero-product noise
   if (/\b0 products?\b/.test(m) || /catalogued 0/.test(m) || /top 0 picks/.test(m)) return null;
 
+  // Suppress internal follow-up routing messages — right pane handles those
+  if (m.includes("answering your question") || m.includes("follow-up question")) return null;
+
   // VibeCheck
   if (m.includes("vibecheck")) {
     if (m.includes("all clear") || m.includes("ready to shop")) return "Let me figure out what you're looking for...";
@@ -211,10 +214,10 @@ export default function Chat() {
   const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
   const [showCompare, setShowCompare] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(true);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftWidth, setLeftWidth] = useState(256);
-  const [rightWidth, setRightWidth] = useState(288);
+  const [rightWidth, setRightWidth] = useState(340);
   const resizingRef = useRef<"left" | "right" | null>(null);
   const [recording, setRecording] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
