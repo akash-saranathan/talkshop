@@ -1,9 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown, GitCompare } from "lucide-react";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
-import { getCart, addToCart, type CartItemData } from "../api/cart";
+import { getCart, addToCart, removeFromCart, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
 import ProductCard from "../components/ProductCard";
 import SkeletonProductCard from "../components/SkeletonProductCard";
@@ -14,6 +14,7 @@ import AgentTrailPanel from "../components/AgentTrailPanel";
 import ThemeToggle from "../components/ThemeToggle";
 import InlineCheckout, { SAVED_CARDS, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape } from "../components/InlineCheckout";
 import { useAuth } from "../auth/AuthContext";
+import { getProductVisual } from "../utils/productVisual";
 
 // ── Intent parsing ──────────────────────────────────────────────────────────
 
@@ -190,6 +191,8 @@ export default function Chat() {
   const [cartCount, setCartCount] = useState(0);
   const [sessionCartCount, setSessionCartCount] = useState(0);
   const [sessionCartIds, setSessionCartIds] = useState<Set<string>>(new Set());
+  const [sessionCartItems, setSessionCartItems] = useState<CartItemData[]>([]);
+  const [cartPanelOpen, setCartPanelOpen] = useState(false);
   const [turnSortModes, setTurnSortModes] = useState<Map<string, SortMode>>(new Map());
   const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
   const [addingToCheckout, setAddingToCheckout] = useState(false);
@@ -322,6 +325,8 @@ export default function Chat() {
     setTurns([]);
     setSessionCartCount(0);
     setSessionCartIds(new Set());
+    setSessionCartItems([]);
+    setCartPanelOpen(false);
     try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
   }, [switchToSession]);
 
@@ -346,6 +351,8 @@ export default function Chat() {
     activeTurnId.current = null;
     setSessionCartCount(0);
     setSessionCartIds(new Set());
+    setSessionCartItems([]);
+    setCartPanelOpen(false);
     try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
     await loadSession(clickedId);
   }, [loadSession]);
@@ -696,6 +703,8 @@ export default function Chat() {
       setCartCount(0);
       setSessionCartCount(0);
       setSessionCartIds(new Set());
+      setSessionCartItems([]);
+      setCartPanelOpen(false);
     } catch (err) {
       setTurns((prev) =>
         prev.map((t) =>
@@ -1168,6 +1177,10 @@ export default function Chat() {
                                     if (cartItem) {
                                       setSessionCartCount((n) => n + 1);
                                       setSessionCartIds((prev) => new Set(prev).add(cartItem.cart_item_id));
+                                      setSessionCartItems((prev) => {
+                                        if (prev.some((i) => i.cart_item_id === cartItem.cart_item_id)) return prev;
+                                        return [...prev, cartItem];
+                                      });
                                     }
                                   }}
                                 />
@@ -1228,26 +1241,113 @@ export default function Chat() {
           )}
         </div>
 
-        {/* Persistent cart reminder — shown when items were added this session */}
-        {sessionCartCount > 0 && (
-          <div className="mx-6 mb-1">
-            <button
-              onClick={() => setShowCartDrawer(true)}
-              className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-surface)] hover:bg-[var(--color-bg)] transition-colors group"
+        {/* Inline cart panel — collapsible, shows session items without leaving chat */}
+        <AnimatePresence>
+          {sessionCartItems.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              className="mx-6 mb-2 rounded-xl border border-[var(--color-primary)]/40 bg-[var(--color-surface)] overflow-hidden"
             >
-              <div className="flex items-center gap-2 text-sm text-[var(--color-primary)] font-medium">
-                <ShoppingCart size={15} />
-                <span>{sessionCartCount} item{sessionCartCount !== 1 ? "s" : ""} added this chat</span>
-                {cartCount > sessionCartCount && (
-                  <span className="text-xs text-[var(--color-text-muted)] font-normal">· {cartCount} in cart total</span>
+              {/* Header — always visible */}
+              <button
+                onClick={() => setCartPanelOpen((v) => !v)}
+                className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[var(--color-bg)] transition-colors"
+              >
+                <div className="flex items-center gap-2 text-sm text-[var(--color-primary)] font-semibold">
+                  <ShoppingCart size={15} />
+                  <span>{sessionCartItems.length} item{sessionCartItems.length !== 1 ? "s" : ""} in your cart</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[var(--color-text-muted)]">
+                    ${sessionCartItems.reduce((s, i) => s + i.price * i.quantity, 0).toFixed(2)}
+                  </span>
+                  {cartPanelOpen ? <ChevronUp size={14} className="text-[var(--color-primary)]" /> : <ChevronDown size={14} className="text-[var(--color-primary)]" />}
+                </div>
+              </button>
+
+              {/* Expanded item list */}
+              <AnimatePresence>
+                {cartPanelOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-4 pb-3 flex flex-col gap-2 border-t border-[var(--color-border)]">
+                      {sessionCartItems.map((item) => {
+                        const visual = getProductVisual(item.title, item.category);
+                        const ItemIcon = visual.icon;
+                        return (
+                          <div key={item.cart_item_id} className="flex items-center gap-3 pt-2">
+                            <div className={`w-9 h-9 rounded-lg grid place-items-center shrink-0 ${visual.bg}`}>
+                              <ItemIcon size={16} className={visual.fg} strokeWidth={1.5} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-[var(--color-text)] line-clamp-1">{item.title}</p>
+                              <p className="text-[10px] text-[var(--color-text-muted)]">${item.price.toFixed(2)} · qty {item.quantity}</p>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await removeFromCart(item.cart_item_id);
+                                  setSessionCartItems((prev) => prev.filter((i) => i.cart_item_id !== item.cart_item_id));
+                                  setSessionCartIds((prev) => { const s = new Set(prev); s.delete(item.cart_item_id); return s; });
+                                  setSessionCartCount((n) => Math.max(0, n - 1));
+                                  getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                                } catch { /* noop */ }
+                              }}
+                              className="text-[var(--color-text-muted)] hover:text-rose-500 transition-colors p-1 shrink-0"
+                              title="Remove"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      <button
+                        onClick={() => {
+                          setCartPanelOpen(false);
+                          const item = sessionCartItems[0];
+                          const product: ProductData = {
+                            product_id: item.product_id,
+                            merchant_id: item.merchant_id,
+                            merchant_name: item.merchant_name,
+                            title: item.title,
+                            brand: item.brand,
+                            category: item.category,
+                            price: item.price,
+                            currency: item.currency,
+                            size: item.size,
+                            color: item.color,
+                            available: true,
+                            inventory: 1,
+                            delivery_days: item.delivery_days,
+                            rating: item.rating,
+                            review_count: 0,
+                            shipping_cost: 0,
+                            rank_score: 0,
+                            source: "cart",
+                            image_url: item.image_url,
+                            weight_grams: null,
+                            cushioning: null,
+                          };
+                          doCheckoutSummaryRef.current?.("Checkout from cart", product);
+                        }}
+                        className="mt-1 w-full py-2 rounded-lg bg-[var(--color-primary)] text-white text-xs font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <ShoppingCart size={13} /> Checkout in Chat
+                      </button>
+                    </div>
+                  </motion.div>
                 )}
-              </div>
-              <span className="flex items-center gap-1 text-xs text-[var(--color-primary)] font-semibold group-hover:gap-2 transition-all">
-                View Cart <ArrowRight size={13} />
-              </span>
-            </button>
-          </div>
-        )}
+              </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Floating multi-select bar */}
         {selectedProducts.size > 0 && (
