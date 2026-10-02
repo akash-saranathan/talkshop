@@ -1335,7 +1335,7 @@ export default function Chat() {
                         }}
                         className="mt-1 w-full py-2 rounded-lg bg-[var(--color-primary)] text-white text-xs font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <ShoppingCart size={13} /> Checkout in Chat
+                        <ShoppingCart size={13} /> Checkout
                       </button>
                     </div>
                   </motion.div>
