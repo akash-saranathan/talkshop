@@ -286,14 +286,17 @@ async def answer_product_question(question: str, products: list[dict]) -> str:
         f"{i + 1}. {p['title']} — ${p['price']} | Rating: {p['rating']}/5 | {p.get('merchant_name', '')}"
         for i, p in enumerate(top)
     )
-    prompt = f"""The user was just shown these products (ranked best first):
+    prompt = f"""The user was shown these products (ranked best first). Product #1 is the one you specifically recommended:
 {products_summary}
 
 User's question: "{question}"
 
-Answer naturally and helpfully in 1-3 sentences. Reference specific products by name or number as relevant.
-"The first one" or "product #1" always means the top-ranked pick above.
-Do NOT suggest a new search. Do NOT make up facts — use only what is listed above."""
+Rules:
+- Pronouns "this", "it", "that", "this one" without a number = product #1 (the recommended pick)
+- "first one" / "#1" / "top one" = product #1
+- Answer naturally in 1-3 sentences using only the facts listed above
+- If the question cannot be answered from the listed data (e.g. trail suitability when only road specs are shown), say so briefly and suggest the user ask for a new search
+- Do NOT suggest other products unprompted. Do NOT invent specs or reviews."""
 
     try:
         llm = get_llm(temperature=0.3)
