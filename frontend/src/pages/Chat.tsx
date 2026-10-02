@@ -222,6 +222,9 @@ export default function Chat() {
   const handleSendRef = useRef<(() => void) | null>(null);
   // Same pattern for doCheckoutSummary — avoids TDZ when handleSend references it.
   const doCheckoutSummaryRef = useRef<((userText: string, product: ProductData) => void) | null>(null);
+  // Tracks the last agent-recommended product so "yes/ok" can trigger checkout
+  // without relying on the selected-products visual state.
+  const lastRecommendedProductRef = useRef<ProductData | null>(null);
   // sessionIdRef is the source of truth read inside async streaming
   // callbacks (avoids stale-closure bugs); currentSessionId mirrors it so
   // the sidebar can reactively highlight the active thread.
@@ -379,9 +382,10 @@ export default function Chat() {
     if (!msg || loading) return;
 
     // ── Inline checkout intercepts ──────────────────────────────────────────
-    // User said "yes" with a product selected → bypass LangGraph, do checkout
-    if (isAffirmativeInput(msg) && selectedProducts.size > 0) {
-      doCheckoutSummaryRef.current?.(msg, [...selectedProducts.values()][0]);
+    // User said "yes" after agent recommended a product → bypass LangGraph, start checkout
+    if (isAffirmativeInput(msg) && lastRecommendedProductRef.current) {
+      doCheckoutSummaryRef.current?.(msg, lastRecommendedProductRef.current);
+      lastRecommendedProductRef.current = null;
       return;
     }
 
@@ -452,10 +456,9 @@ export default function Chat() {
         setTurns((prev) => prev.map((t) =>
           t.id === capturedId ? { ...t, products: prods } : t
         ));
-        // Auto-select the top-ranked product so the user sees it highlighted
-        // and can just say "yes" / "add to cart" to proceed.
+        // Remember the top-ranked product so affirmative replies ("yes", "ok") can trigger checkout.
         if (prods.length > 0) {
-          setSelectedProducts(new Map([[prods[0].product_id, prods[0]]]));
+          lastRecommendedProductRef.current = prods[0];
         }
         // Stream recommendation text word-by-word (ChatGPT-style)
         const words = text.split(" ");
@@ -494,7 +497,7 @@ export default function Chat() {
     });
 
     closeStream.current = close;
-  }, [input, loading, pastedImage, updateActiveTurn, selectedProducts]);
+  }, [input, loading, pastedImage, updateActiveTurn]);
 
   // Keep the ref always pointing at the current handleSend so recognition
   // callbacks can fire it without stale-closure issues.
@@ -583,8 +586,9 @@ export default function Chat() {
     } finally {
       setLoading(false);
     }
-    doCheckoutSummaryRef.current = doCheckoutSummary;
   }, []);
+  // Keep the ref current on every render so callers never see a stale closure.
+  doCheckoutSummaryRef.current = doCheckoutSummary;
 
   // Step 2: user clicked "Confirm & Pay" → run DPAT + payment inline
   const doPayment = useCallback(async (
@@ -1360,7 +1364,7 @@ export default function Chat() {
             <div className="flex items-center gap-3">
               <ShoppingCart size={16} />
               <span className="text-sm font-medium">
-                {selectedProducts.size} item{selectedProducts.size > 1 ? "s" : ""} selected
+                {selectedProducts.size} item{selectedProducts.size > 1 ? "s" : ""} ready to buy
               </span>
               <span className="text-sm text-white/70">
                 · ${Array.from(selectedProducts.values()).reduce((s, p) => s + p.price, 0).toFixed(2)}
@@ -1386,7 +1390,7 @@ export default function Chat() {
                 disabled={addingToCheckout}
                 className="text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors disabled:opacity-60"
               >
-                {addingToCheckout ? "Adding..." : "Buy Selected"}
+                {addingToCheckout ? "Processing..." : "Buy Now"}
               </button>
             </div>
           </motion.div>
