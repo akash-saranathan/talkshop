@@ -174,7 +174,8 @@ function SecurePaymentModal({
           </button>
         </div>
 
-        {/* Body */}
+        {/* Body + footer wrapped in form so Enter submits */}
+        <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
         <div className="px-5 py-4 space-y-3">
           <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] mb-1">
             <Lock size={11} />
@@ -258,18 +259,20 @@ function SecurePaymentModal({
         {/* Footer */}
         <div className="px-5 py-4 border-t border-[var(--color-border)] flex gap-2.5">
           <button
+            type="button"
             onClick={onClose}
             className="flex-1 py-2.5 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
           >
             Cancel
           </button>
           <button
-            onClick={handleSubmit}
+            type="submit"
             className="flex-[2] py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2"
           >
             <Lock size={13} /> Pay ${total.toFixed(2)}
           </button>
         </div>
+        </form>
       </motion.div>
     </div>,
     document.body

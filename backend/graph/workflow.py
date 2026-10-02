@@ -173,8 +173,9 @@ async def rank_products_node(state: CommerceState) -> CommerceState:
             seen_keys.add(key)
             deduped.append(p)
     top5 = deduped[:5]
-    # Persist so follow-up questions ("is the first one good?") can reference them
-    session_state.save_ranked_products(state["session_id"], [p.model_dump() for p in top5])
+    top10 = deduped[:10]
+    # Persist up to 10 so "show more" requests can surface products 6-10 without a new search
+    session_state.save_ranked_products(state["session_id"], [p.model_dump() for p in top10])
     await _emit(state, "step_done", f"SneakPeek — top {len(top5)} picks ready for you", [p.model_dump() for p in top5])
     return {**state, "ranked_products": top5}
 
@@ -218,14 +219,18 @@ async def generate_recommendation(state: CommerceState) -> CommerceState:
     if state.get("blocked"):
         return state
     if state.get("chitchat"):
-        text = vibecheck.generate_greeting_reply()
-        await _emit(state, "recommendation", text, [])
+        text = await vibecheck.answer_general_message(state["user_message"])
+        await _emit(state, "recommendation", text, {"products": [], "action": None})
         return {**state, "recommendation_text": text}
     if state.get("product_followup"):
-        products = session_state.get_ranked_products(state["session_id"])
-        text = await vibecheck.answer_product_question(state["user_message"], products)
-        # Pass empty product list — follow-up answers are plain text, no card re-display
-        await _emit(state, "recommendation", text, [])
+        all_products = session_state.get_ranked_products(state["session_id"])
+        text, action = await vibecheck.answer_product_question_with_action(state["user_message"], all_products[:5])
+        if action and action.get("type") == "show_more":
+            # Return products 6-10 (or all if fewer than 6 stored)
+            extra = all_products[5:] if len(all_products) > 5 else all_products
+            await _emit(state, "recommendation", text, {"products": extra, "action": action})
+        else:
+            await _emit(state, "recommendation", text, {"products": [], "action": action})
         return {**state, "recommendation_text": text}
     if state.get("awaiting_followup"):
         text = vibecheck.generate_followup_question(state["intent"])

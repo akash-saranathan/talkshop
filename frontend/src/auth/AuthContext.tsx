@@ -86,20 +86,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (regRes.ok) {
       data = await regRes.json();
-    } else {
-      // Email taken — fall back to resetting password so we can log in
+    } else if (regRes.status === 409) {
+      // Email already has an account — reset its password so we can log in as guest.
+      // This lets a returning guest (or someone who forgot they registered) continue
+      // without needing their old password.
       const resetRes = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, new_password: guestPassword }),
       });
-      if (!resetRes.ok) throw new Error("Could not start guest session");
+      if (!resetRes.ok) {
+        const d = await resetRes.json().catch(() => ({}));
+        throw new Error(d.detail || "Could not start guest session");
+      }
       const loginRes = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password: guestPassword }),
       });
       data = await parseAuthResponse(loginRes);
+    } else {
+      // Any other registration error (server error, validation, etc.)
+      const d = await regRes.json().catch(() => ({}));
+      throw new Error(d.detail || "Could not start guest session. Please try again.");
     }
     setToken(data.access_token);
     setUser(data.user);

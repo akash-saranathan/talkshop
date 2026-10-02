@@ -1,5 +1,5 @@
 """
-VibeCheck — Orchestrator Agent (Agent 1).
+VibeCheck -- Orchestrator Agent (Agent 1).
 Receives raw user text, extracts a structured ShoppingIntent via LLM,
 validates output with Guardrails AI, runs NeMo input rails.
 LLM only touches intent extraction and prose explanations.
@@ -17,7 +17,7 @@ from backend.models.intent import ShoppingIntent
 
 def _content_text(content: Any) -> str:
     """
-    LangChain message content is typed as str | list[str | dict] — some
+    LangChain message content is typed as str | list[str | dict] -- some
     Gemini responses come back as a list of content parts rather than a
     plain string. Normalize to plain text either way.
     """
@@ -40,11 +40,11 @@ Your ONLY job: convert a user's natural-language shopping request into a structu
 Output ONLY valid JSON. No markdown, no explanation, no preamble.
 The JSON must match this schema exactly:
 {
-  "category": string,          // required — e.g. "running_shoes", "electronics", "accessories"
+  "category": string,          // required -- e.g. "running_shoes", "electronics", "accessories"
   "brand": string | null,      // e.g. "Nike"
   "size": string | null,       // e.g. "10", "M", "15-inch"
   "color": string | null,
-  "max_price": number | null,  // USD, numeric only — NEVER a string
+  "max_price": number | null,  // USD, numeric only -- NEVER a string
   "delivery_days": number | null,
   "preferences": [string],     // e.g. ["lightweight", "high cushioning"]
   "use_case": string | null,   // e.g. "road running", "office work"
@@ -71,11 +71,11 @@ Rules:
     "headphones", "earbuds", "speaker" → "electronics"
 - Use "chitchat" when the message is a greeting, thanks, or anything else that
   isn't actually a product request (e.g. "hi", "hello", "thanks", "how are you")
-  — leave every other field null in that case
+  -- leave every other field null in that case
 - If you are uncertain about a field, use null
-- Never invent product facts, prices, or inventory — that is done by other agents
+- Never invent product facts, prices, or inventory -- that is done by other agents
 - The user may attach a photo of the kind of product they want. Use it only
-  to infer visual attributes already in the schema (category, color) —
+  to infer visual attributes already in the schema (category, color) --
   never invent a brand, price, or model name just because it looks similar
   to one you recognize
 """
@@ -90,12 +90,12 @@ async def extract_intent(
     Run NeMo input guard → LLM extraction → Guardrails AI validation.
     Returns (intent, error_message). error_message is non-None if blocked.
 
-    prior_intent, when given, is merged with — not replaced by — the new
+    prior_intent, when given, is merged with -- not replaced by -- the new
     message, so a follow-up answer ("size 10, under $100") completes the
     same intent instead of starting a fresh, under-specified one.
 
     image_base64, when given, is a photo the user pasted of the kind of
-    product they want — passed to the LLM as a second content part
+    product they want -- passed to the LLM as a second content part
     (Gemini is multimodal) purely to help infer visual attributes.
     """
     from backend.guardrails.nemo import check_input
@@ -112,11 +112,11 @@ async def extract_intent(
             f"First decide: is the new message a REFINEMENT of the same product search "
             f"(a size, color, budget, or brand for the same kind of item), or does it ask "
             f"for a DIFFERENT kind of product entirely (a new category)?\n"
-            f"- Refinement: merge the new message into the previous info — keep fields "
+            f"- Refinement: merge the new message into the previous info -- keep fields "
             f"already known unless the new message changes them.\n"
             f"- Different product: this is a fresh search. Use only what the new message "
             f"says. Reset brand, size, color, max_price, preferences, and use_case to null "
-            f"— a size/color/budget that applied to the old category (e.g. a bag) almost "
+            f"-- a size/color/budget that applied to the old category (e.g. a bag) almost "
             f"never applies to the new one (e.g. shoes), so do not carry them over unless "
             f"the new message states them again."
         )
@@ -164,7 +164,7 @@ _AFFIRMATIVE = {
 
 def is_affirmative(message: str) -> bool:
     """
-    Deterministic check for a bare "yes"-style reply — used to apply a
+    Deterministic check for a bare "yes"-style reply -- used to apply a
     pending suggestion (e.g. a budget raise) without asking the LLM to
     guess what a one-word message is agreeing to.
     """
@@ -176,7 +176,7 @@ _DISTINGUISHING_FIELDS = ("brand", "size", "color", "max_price")
 
 def needs_followup(intent: ShoppingIntent) -> bool:
     """
-    True when we know the product category but nothing else distinguishing —
+    True when we know the product category but nothing else distinguishing --
     exactly the case where a real shopkeeper would ask before suggesting
     anything, rather than guessing from one vague word.
 
@@ -192,10 +192,10 @@ def needs_followup(intent: ShoppingIntent) -> bool:
 
 
 def generate_followup_question(intent: ShoppingIntent) -> str:
-    """Deterministic, category-aware — no LLM call needed for one clarifying question."""
+    """Deterministic, category-aware -- no LLM call needed for one clarifying question."""
     label = intent.category.replace("_", " ")
     return (
-        f"Got it, {label}! To find the best options — "
+        f"Got it, {label}! To find the best options -- "
         f"do you have a preferred size, color, brand, or budget in mind?"
     )
 
@@ -213,18 +213,23 @@ _NEW_SEARCH_KEYWORDS = {
     "dress", "pants", "sunglasses", "backpack", "camera",
 }
 
-# Phrases that indicate checkout/purchase intent for the CURRENT session product —
+# Phrases that indicate checkout/purchase intent for the CURRENT session product --
 # fast-path so the LLM never sees these when context products exist.
 _CHECKOUT_HINTS = {
     "add it", "add to cart", "buy it", "purchase it", "checkout",
     "make payment", "proceed to pay", "proceed to checkout", "place order",
     "complete purchase", "ready to pay", "move on to buy", "let's buy", "lets buy",
+    # These reach the backend only when frontend intercepts miss them -- treat as
+    # product_followup so the pipeline skips a new product search.
+    "show cart", "show the cart", "view cart", "view my cart", "open cart",
+    "proceed", "ok proceed", "yes proceed", "buy now", "yes buy it", "ok buy it",
+    "add first", "add second", "add third", "buy first", "buy second", "buy third",
 }
 
 
 def _fast_classify(message: str) -> Optional[str]:
     """
-    Deterministic fast-path — no LLM call.
+    Deterministic fast-path -- no LLM call.
     Returns a classification only for clear-cut cases; None means ambiguous
     and the LLM classifier should decide.
     """
@@ -239,7 +244,7 @@ def _fast_classify(message: str) -> Optional[str]:
     # Explicit search phrasing or clear product category mention
     if any(kw in m for kw in _NEW_SEARCH_KEYWORDS):
         return "new_search"
-    return None  # ambiguous — let the LLM decide
+    return None  # ambiguous -- let the LLM decide
 
 
 async def classify_message_intent(
@@ -249,20 +254,20 @@ async def classify_message_intent(
     """
     When the session already has shown products, ask the LLM to classify the
     new message as one of three intents:
-      - "product_followup"  — question/comment about the products already shown
-      - "new_search"        — request for a different/new product
-      - "chitchat"          — greeting, thanks, or unrelated remark
+      - "product_followup"  -- question/comment about the products already shown
+      - "new_search"        -- request for a different/new product
+      - "chitchat"          -- greeting, thanks, or unrelated remark
 
     Returns "new_search" on any error so the pipeline always continues safely.
     Only called when session_products is non-empty.
     """
-    # Try deterministic fast-path first — avoids an LLM call for obvious cases
+    # Try deterministic fast-path first -- avoids an LLM call for obvious cases
     fast = _fast_classify(message)
     if fast is not None:
         return fast
 
     products_summary = "\n".join(
-        f"{i + 1}. {p['title']} — ${p['price']}"
+        f"{i + 1}. {p['title']} -- ${p['price']}"
         for i, p in enumerate(session_products[:5])
     )
     prompt = f"""The user was just shown these products:
@@ -271,9 +276,11 @@ async def classify_message_intent(
 New message: "{message}"
 
 Classify this message as exactly one of:
-- "product_followup" — any question or comment about the products already shown above (e.g. "is the first one good?", "which is cheapest?", "tell me more about #2", "are they waterproof?", "which would you recommend?", "what do you think of the top one?", "can you compare them?")
-- "new_search" — a request to find new or different products (e.g. "show me Nike shoes", "I want something under $50", "find me a laptop", "what about blue ones?")
-- "chitchat" — a greeting, thanks, or completely unrelated remark (e.g. "hi", "thanks", "okay")
+- "product_followup" -- ANY question, comment, or action about the products already shown above. This includes: comparing products ("compare first and third", "which is better?"), asking about quality or features ("is the first one good?", "are they waterproof?"), buying/cart actions ("add first one to cart", "buy the top one", "add it to cart", "proceed to buy", "how do I buy this?"), or asking for a recommendation ("which one should I get?").
+- "new_search" -- a request for a DIFFERENT or NEW kind of product (e.g. "show me Nike shoes", "find me a laptop", "what about blue ones?", "I want something under $50 instead").
+- "chitchat" -- a completely unrelated greeting or remark (e.g. "hi", "thanks", "how are you"). NOT buying/cart phrases.
+
+When in doubt between product_followup and new_search, choose product_followup.
 
 Reply with exactly one word: product_followup, new_search, or chitchat."""
 
@@ -288,52 +295,109 @@ Reply with exactly one word: product_followup, new_search, or chitchat."""
         return "new_search"
 
 
-async def answer_product_question(question: str, products: list[dict]) -> str:
+async def answer_product_question_with_action(
+    question: str, products: list[dict]
+) -> tuple[str, Optional[dict]]:
     """
-    Answer a conversational follow-up about products already shown this session.
-    Products are the ranked list; #1 = top pick.
+    Answer a follow-up about the shown products AND return an optional frontend
+    action: {"type": "show_cart"}, {"type": "checkout", "product_idx": N}, or None.
     """
     top = products[:5]
     products_summary = "\n".join(
-        f"{i + 1}. {p['title']} — ${p['price']} | Rating: {p['rating']}/5 | {p.get('merchant_name', '')}"
+        f"{i + 1}. {p['title']} -- ${p['price']} | Rating: {p['rating']}/5 | {p.get('merchant_name', '')}"
         for i, p in enumerate(top)
     )
-    prompt = f"""The user was shown these products (ranked best first). Product #1 is the one you specifically recommended:
+    prompt = f"""You are a helpful shopping assistant. The user was shown these products (best first). Product #1 is the top pick.
+
+Products:
 {products_summary}
 
-User's question: "{question}"
+User message: "{question}"
 
-Rules:
-- Pronouns "this", "it", "that", "this one" without a number = product #1 (the recommended pick)
-- "first one" / "#1" / "top one" = product #1
-- Answer naturally in 1-3 sentences using only the facts listed above
-- If the question cannot be answered from the listed data (e.g. trail suitability when only road specs are shown), say so briefly and suggest the user ask for a new search
-- Do NOT suggest other products unprompted. Do NOT invent specs or reviews."""
+Respond with raw JSON only (no markdown, no code fences):
+{{"text": "..your reply..", "action": null}}
+
+If the user wants an action, set action to one of:
+  {{"type": "show_cart"}}
+  {{"type": "add_to_cart", "product_idx": 0}}
+  {{"type": "checkout", "product_idx": 0}}
+  {{"type": "remove_from_cart", "product_idx": 0}}
+  {{"type": "show_more"}}
+
+Rules for text:
+- "this"/"it"/"that"/"this one" without a number = product #1
+- "first one"/"top one"/"#1" = product #1 (index 0), "second" = index 1, etc.
+- Answer in 1-3 natural sentences using only the listed facts
+- For add_to_cart: "Added the [product name] to your cart!"
+- For checkout/proceed: "Taking you to checkout for [product name]!"
+- For remove from cart: "Removing the [product name] from your cart."
+- For show_cart: "Here's your cart!"
+- For show_more: "Here are more options for you!"
+- Do NOT invent specs. Do NOT say you cannot do things -- you CAN via the action field.
+
+Rules for action (IMPORTANT -- add_to_cart and checkout are DIFFERENT):
+- "show cart", "view cart", "open cart", "what's in my cart" -> show_cart
+- "add [it/this/first/...] to cart", "add it", "add this", "I want to add it",
+  "can you add", "add the first/second/...", "add it to my cart" -> add_to_cart with product_idx
+- "buy [it/this/...]", "buy now", "checkout", "proceed to checkout", "proceed to payment",
+  "pay now", "place order", "yes buy it", "ok proceed", "confirm purchase" -> checkout with product_idx
+- "remove [it/this/first/...] from cart", "delete from cart", "take it out",
+  "remove it", "remove this" -> remove_from_cart with product_idx
+- "show more", "see more", "more options", "what else", "show others",
+  "any more?", "other options" -> show_more
+- "it"/"this"/"that"/"first one" = product_idx 0; "second" = 1; "third" = 2
+- Pure questions (specs, comparisons, recommendations) -> action: null
+"""
 
     try:
-        llm = get_llm(temperature=0.3)
+        llm = get_llm(temperature=0.2)
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        raw = _content_text(response.content).strip()
+        # Strip code fences if LLM wrapped despite instructions
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        data = json.loads(raw)
+        text = str(data.get("text", "")).strip()
+        action = data.get("action")
+        if not text:
+            raise ValueError("empty text")
+        _valid_actions = ("show_cart", "add_to_cart", "checkout", "remove_from_cart", "show_more")
+        if action is not None:
+            if not isinstance(action, dict) or action.get("type") not in _valid_actions:
+                action = None
+        return text, action
+    except Exception:
+        p = top[0] if top else None
+        fallback = (
+            f"The top pick is **{p['title']}** at ${p['price']} with a {p['rating']}/5 rating "
+            f"from {p.get('merchant_name', 'the store')}."
+            if p else "Could you ask me more specifically? I'm happy to help compare or explain any of the products."
+        )
+        return fallback, None
+
+
+async def answer_general_message(message: str) -> str:
+    """
+    LLM-powered reply for any message that isn't a product search or follow-up:
+    greetings, general questions, small talk, anything. Acts like a real AI
+    assistant while naturally guiding shopping conversations toward searches.
+    """
+    prompt = f"""You are TalkShop, a friendly and knowledgeable AI shopping assistant powered by AI.
+You can answer ANY question the user asks -- general knowledge, advice, chitchat, or shopping help.
+Be natural, warm, and conversational (1-3 sentences). If it's a greeting, greet back warmly.
+If the user asks a general knowledge question, answer it. If it's shopping-related, help them.
+Never say you "cannot" answer something you actually can answer.
+
+User: {message}"""
+    try:
+        llm = get_llm(temperature=0.7)
         response = await llm.ainvoke([HumanMessage(content=prompt)])
         return _content_text(response.content).strip()
     except Exception:
-        p = top[0] if top else None
-        if p:
-            return (
-                f"The top pick is **{p['title']}** at ${p['price']} with a {p['rating']}/5 rating "
-                f"from {p.get('merchant_name', 'the store')}."
-            )
-        return "Could you ask me more specifically? I'm happy to help compare or explain any of the products."
-
-
-def generate_greeting_reply() -> str:
-    """
-    Deterministic friendly reply for non-shopping chitchat (greetings, thanks,
-    etc.) — no LLM call needed for something this simple, and it keeps the
-    tone consistent every time instead of leaving it to chance.
-    """
-    return (
-        "Hi! I'm your shopping assistant — tell me what you're looking for "
-        "(a product, brand, size, or budget) and I'll find the best options for you."
-    )
+        return "Hey! I'm TalkShop, your AI shopping assistant. What can I help you find today?"
 
 
 async def generate_recommendation_text(
@@ -343,11 +407,11 @@ async def generate_recommendation_text(
 ) -> tuple[str, Optional[dict]]:
     """
     LLM writes a human-readable recommendation explanation.
-    All factual values (prices, ratings) come from the products list — LLM only writes prose.
+    All factual values (prices, ratings) come from the products list -- LLM only writes prose.
 
     Returns (text, pending_suggestion). pending_suggestion is only set for the
     one relaxation that has a concrete, reapplicable value (raising the
-    budget) — enough for a bare "yes" on the next turn to apply it directly,
+    budget) -- enough for a bare "yes" on the next turn to apply it directly,
     see vibecheck.is_affirmative(). The other hints ("try a different color")
     don't have a single value to auto-apply, so they're prose-only.
     """
@@ -376,7 +440,7 @@ async def generate_recommendation_text(
             hints.append("remove the brand filter")
         if intent.size:
             hints.append("check if a similar style comes in that size")
-        hint = (" — " + hints[0].capitalize() + "?") if hints else ""
+        hint = (" -- " + hints[0].capitalize() + "?") if hints else ""
         return f"No {what} found right now{hint} Try broadening your search.", suggestion
 
     top = products[:3]
@@ -392,7 +456,7 @@ async def generate_recommendation_text(
             f"{h['title']} ({h['category']})" + (f" by {h['brand']}" if h.get("brand") else "")
             for h in order_history
         )
-        history_context = f"\nThis customer previously bought: {lines}. Factor this in if relevant — mention a brand match or suggest it fits their taste, in ONE extra phrase at most."
+        history_context = f"\nThis customer previously bought: {lines}. Factor this in if relevant -- mention a brand match or suggest it fits their taste, in ONE extra phrase at most."
 
     prompt = f"""The user asked: "{intent.raw_query}"
 
@@ -411,9 +475,9 @@ Do NOT mention the other options. Do not invent any facts not listed above."""
         response = await llm.ainvoke([HumanMessage(content=prompt)])
         return _content_text(response.content).strip(), None
     except Exception:
-        # LLM is prose-only here — fall back to a deterministic CTA built
+        # LLM is prose-only here -- fall back to a deterministic CTA built
         # from data already in `products` rather than losing the search results.
         return (
-            f"Top pick: **{best['title']}** — ${best['price']} at {best['merchant_name']} "
+            f"Top pick: **{best['title']}** -- ${best['price']} at {best['merchant_name']} "
             f"(rated {best['rating']}/5).\n\nWant me to add the **{best['title']}** to your cart?"
         ), None

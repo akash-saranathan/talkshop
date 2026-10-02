@@ -30,13 +30,16 @@ export default function CartDrawer({ open, onClose, sessionCartIds, onCheckout }
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    Promise.all([
-      getCart(),
-      authFetch("/api/wallet").then((r) => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([cartItems, w]) => {
-      setItems(cartItems);
-      setWallet(w);
-    }).catch(() => {}).finally(() => setLoading(false));
+    // Cart and wallet load independently — a slow/missing wallet row never
+    // blocks the cart items from appearing.
+    getCart()
+      .then((cartItems) => setItems(cartItems))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+    authFetch("/api/wallet")
+      .then((r) => r.ok ? r.json() : null)
+      .then((w) => { if (w) setWallet(w); })
+      .catch(() => {});
   }, [open]);
 
   const handleRemove = async (id: string) => {

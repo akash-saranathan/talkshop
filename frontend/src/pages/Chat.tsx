@@ -1,8 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
-import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2, CheckCircle2, ShoppingBag } from "lucide-react";
+import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord, type ChatAction } from "../api/chat";
 import { getCart, addToCart, removeFromCart, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
 import ProductCard from "../components/ProductCard";
@@ -95,6 +95,8 @@ interface Turn {
   blocked: string | null;
   intent: SimpleIntent;
   checkout?: InlineCheckoutData;
+  cartAdded?: { product: ProductData };
+  showCartInline?: boolean;
 }
 
 function renderWithBold(text: string): React.ReactNode {
@@ -106,7 +108,7 @@ function renderWithBold(text: string): React.ReactNode {
 
 function isAffirmativeInput(text: string): boolean {
   const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
-  return /^(yes|yeah|yep|sure|ok|okay|confirm|add to cart|proceed|pay|go ahead|do it|sounds good|add it|let's do it|lets do it|add)$/.test(t);
+  return /^(yes|yeah|yep|sure|ok|okay|confirm|proceed|pay|go ahead|do it|sounds good|let's do it|lets do it|buy|buy it|buy now|ok proceed|yes proceed|yes please|yes buy it|ok buy it|continue|let's go|lets go|pay now|ok pay|yes pay)$/.test(t);
 }
 
 // Broader checkout intent — catches multi-word phrases like "add it to my cart",
@@ -115,6 +117,179 @@ function isAffirmativeInput(text: string): boolean {
 function isCheckoutIntent(text: string): boolean {
   const t = text.trim().toLowerCase();
   return /\b(add\s+it|add\s+to\s+(my\s+)?cart|buy\s+it|purchase\s+it|place\s+order|proceed\s+to\s+(checkout|pay)|make\s+payment|complete\s+purchase|checkout|let'?s\s+buy|move\s+on\s+to\s+buy|go\s+ahead\s+and\s+(buy|pay)|ready\s+to\s+pay|want\s+to\s+buy)\b/.test(t);
+}
+
+// Explicit checkout phrases used when there's no active product ref — avoids
+// triggering checkout on bare "ok"/"sure" which could be follow-up acks.
+function isExplicitCheckoutPhrase(text: string): boolean {
+  const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
+  return /^(proceed|ok proceed|yes proceed|buy it|buy now|checkout now|pay now|yes buy it|ok buy it|place order|let'?s\s+(buy|checkout|pay))$/.test(t)
+    || isCheckoutIntent(text);
+}
+
+// Intercept "show cart" / "view cart" style messages so we never send them to
+// the LangGraph backend (which has no way to fetch or display cart contents).
+function isShowCartIntent(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  // Standalone "cart" or "my cart"
+  if (t === "cart" || t === "my cart") return true;
+  // Message has a "view/show/open/check" word AND the word "cart"
+  if (/\bcart\b/.test(t) && /\b(show|view|open|see|display|check|look at)\b/.test(t)) return true;
+  // "what's in my cart" style
+  if (/\bcart\b/.test(t) && /\b(what|whats)\b/.test(t)) return true;
+  return false;
+}
+
+// "add it", "add to cart", "add this" → add-to-cart (not checkout).
+function isAddToCartPhrase(text: string): boolean {
+  const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
+  if (/^(add to cart|add it|add this|add it to cart|add this to cart|add it to my cart|add this to my cart)$/.test(t)) return true;
+  if (/\badd\s+(it|this|that)\s+(to\s+(my\s+)?cart)\b/.test(t)) return true;
+  return false;
+}
+
+// Inline cart card — shown in chat after add-to-cart or when user asks to view cart.
+function InlineCartCard({
+  addedProduct,
+  cartItems,
+  onViewCart,
+  onCheckout,
+}: {
+  addedProduct?: ProductData;
+  cartItems: import("../api/cart").CartItemData[];
+  onViewCart: () => void;
+  onCheckout: (product: ProductData) => void;
+}) {
+  const visual = addedProduct ? getProductVisual(addedProduct.title, addedProduct.category) : null;
+  const VisualIcon = visual?.icon;
+  const total = cartItems.reduce((sum, item) => sum + item.price, 0);
+  const checkoutProduct = addedProduct ?? (cartItems[0] ? {
+    product_id: cartItems[0].product_id,
+    merchant_id: cartItems[0].merchant_id,
+    merchant_name: cartItems[0].merchant_name,
+    title: cartItems[0].title,
+    brand: cartItems[0].brand,
+    category: cartItems[0].category,
+    price: cartItems[0].price,
+    currency: cartItems[0].currency,
+    size: cartItems[0].size,
+    color: cartItems[0].color,
+    available: true,
+    inventory: 1,
+    delivery_days: cartItems[0].delivery_days,
+    rating: cartItems[0].rating,
+    review_count: 0,
+    shipping_cost: 0,
+    rank_score: 0,
+    source: "cart",
+    image_url: cartItems[0].image_url,
+    weight_grams: null,
+    cushioning: null,
+  } as ProductData : null);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-xl border border-[var(--color-border)] overflow-hidden max-w-sm"
+      style={{ boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}
+    >
+      {addedProduct && (
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--color-border)]"
+          style={{ background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)" }}>
+          <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+          <p className="text-sm font-semibold text-emerald-700">Added to cart!</p>
+        </div>
+      )}
+      {!addedProduct && (
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--color-border)]"
+          style={{ background: "linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%)" }}>
+          <ShoppingBag size={14} className="text-blue-600 shrink-0" />
+          <p className="text-sm font-semibold text-blue-700">Your Cart</p>
+        </div>
+      )}
+
+      {addedProduct && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
+          {addedProduct.image_url ? (
+            <img src={addedProduct.image_url} alt={addedProduct.title}
+              className="w-11 h-11 rounded-lg object-cover shrink-0"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+          ) : (VisualIcon && visual) ? (
+            <div className={`w-11 h-11 rounded-lg grid place-items-center shrink-0 ${visual.bg}`}>
+              <VisualIcon size={16} className={visual.fg} strokeWidth={1.5} />
+            </div>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[var(--color-text)] truncate">{addedProduct.title}</p>
+            <p className="text-xs text-[var(--color-text-muted)]">{addedProduct.merchant_name} · ${addedProduct.price.toFixed(2)}</p>
+          </div>
+        </div>
+      )}
+
+      {cartItems.length > 0 && (
+        <div className="bg-[var(--color-bg)]">
+          <div className="flex items-center justify-between px-4 pt-2.5 pb-1">
+            <span className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide">
+              Cart · {cartItems.length} {cartItems.length === 1 ? "item" : "items"}
+            </span>
+            <span className="text-xs font-bold text-[var(--color-text)]">${total.toFixed(2)}</span>
+          </div>
+          {cartItems.slice(0, 4).map((item) => (
+            <div key={item.cart_item_id}
+              className="flex items-center justify-between px-4 py-1.5 border-t border-[var(--color-border)]/60">
+              <span className="text-xs text-[var(--color-text)] truncate flex-1 mr-2">{item.title}</span>
+              <span className="text-xs font-semibold text-[var(--color-text)] shrink-0">${item.price.toFixed(2)}</span>
+            </div>
+          ))}
+          {cartItems.length > 4 && (
+            <p className="text-xs text-[var(--color-text-muted)] px-4 py-1.5 border-t border-[var(--color-border)]/60">
+              +{cartItems.length - 4} more item{cartItems.length - 4 > 1 ? "s" : ""}
+            </p>
+          )}
+        </div>
+      )}
+
+      {cartItems.length === 0 && !addedProduct && (
+        <p className="px-4 py-3 text-sm text-[var(--color-text-muted)] bg-[var(--color-bg)]">Your cart is empty.</p>
+      )}
+
+      <div className="flex gap-2 px-4 py-3 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+        <button onClick={onViewCart}
+          className="flex-1 py-2 text-xs font-semibold rounded-lg border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-bg)] transition-colors">
+          View Cart
+        </button>
+        {checkoutProduct && (
+          <button onClick={() => onCheckout(checkoutProduct)}
+            className="flex-1 py-2 text-xs font-bold rounded-lg text-white transition-opacity hover:opacity-90"
+            style={{ background: "linear-gradient(135deg, #2563eb, #7c3aed)" }}>
+            Proceed to Checkout →
+          </button>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function _parseOrdinalWord(w: string): number {
+  const map: Record<string, number> = {
+    first: 0, "1st": 0, "1": 0,
+    second: 1, "2nd": 1, "2": 1,
+    third: 2, "3rd": 2, "3": 2,
+    fourth: 3, "4th": 3, "4": 3,
+    fifth: 4, "5th": 4, "5": 4,
+  };
+  return map[w] ?? 0;
+}
+
+// Returns 0-based product index when the message contains an action word ("add",
+// "buy", etc.) AND an ordinal — e.g. "add first one to cart" → 0.
+function getOrdinalCheckoutTarget(text: string): number | null {
+  const t = text.trim().toLowerCase();
+  if (!/\b(add|buy|purchase|checkout|order|get)\b/.test(t)) return null;
+  const m = t.match(/\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|[1-5])\b/);
+  return m ? _parseOrdinalWord(m[1]) : null;
 }
 
 // Pasted screenshots can be huge — downscale before it ever leaves the
@@ -225,7 +400,7 @@ export default function Chat() {
   const [leftCollapsed, setLeftCollapsed] = useState(true);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftWidth, setLeftWidth] = useState(256);
-  const [rightWidth, setRightWidth] = useState(390);
+  const [rightWidth, setRightWidth] = useState(() => Math.round((window.innerWidth - 48) * 0.40));
   const resizingRef = useRef<"left" | "right" | null>(null);
   const [recording, setRecording] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -246,6 +421,9 @@ export default function Chat() {
   const handleSendRef = useRef<(() => void) | null>(null);
   // Same pattern for doCheckoutSummary — avoids TDZ when handleSend references it.
   const doCheckoutSummaryRef = useRef<((userText: string, product: ProductData) => void) | null>(null);
+  const attachCheckoutToActiveTurnRef = useRef<((turnId: string, product: ProductData) => void) | null>(null);
+  const doAddToCartRef = useRef<((userText: string, product: ProductData) => void) | null>(null);
+  const attachAddToCartToActiveTurnRef = useRef<((turnId: string, product: ProductData) => void) | null>(null);
   // Tracks the last agent-recommended product so "yes/ok" can trigger checkout
   // without relying on the selected-products visual state.
   const lastRecommendedProductRef = useRef<ProductData | null>(null);
@@ -290,7 +468,7 @@ export default function Chat() {
 
   useEffect(() => {
     const MIN_WIDTH = 200;
-    const MAX_WIDTH = 420;
+    const MAX_WIDTH = 700;
     const clamp = (v: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, v));
 
     const onMouseMove = (e: MouseEvent) => {
@@ -364,12 +542,74 @@ export default function Chat() {
     switchToSession(id);
     try {
       const messages = await getSessionMessages(id);
-      setTurns(messagesToTurns(messages));
+      const rawTurns = messagesToTurns(messages);
+
+      // Restore confirmed order or in-progress checkout saved before navigation
+      try {
+        const orderSaved   = JSON.parse(sessionStorage.getItem(`talkshop_order_${id}`) ?? "null");
+        const checkoutSaved = JSON.parse(sessionStorage.getItem(`talkshop_checkout_${id}`) ?? "null");
+        const guestCardSaved = JSON.parse(sessionStorage.getItem(`talkshop_guestcard_${id}`) ?? "null");
+
+        if (orderSaved?.orderId && orderSaved.product) {
+          // Hide the search-results products for the ordered product
+          for (const t of rawTurns) {
+            if (t.products.some((p) => p.product_id === orderSaved.product.product_id)) {
+              t.products = [];
+              break;
+            }
+          }
+          rawTurns.push({
+            id: crypto.randomUUID(),
+            userMessage: "Checkout",
+            steps: [
+              { id: "ca1",   message: "CartUp — checkout session ready",        status: "done" as const },
+              { id: "pay-0", message: "GreenLight — authorization approved",     status: "done" as const },
+              { id: "pay-1", message: "GreenLight — DPAT token issued",          status: "done" as const },
+              { id: "pay-2", message: "PayIt — payment processed",               status: "done" as const },
+              { id: "pay-3", message: "TrackIt — order recorded",                status: "done" as const },
+            ],
+            products: [],
+            recommendation: "",
+            blocked: null,
+            intent: {},
+            checkout: {
+              phase: "confirmed" as const,
+              product: orderSaved.product,
+              selectedCard: orderSaved.selectedCard ?? SAVED_CARDS[0].id,
+              orderId: orderSaved.orderId,
+              confirmedTotal: orderSaved.amount,
+              pointsEarned: orderSaved.pointsEarned,
+              loyaltyBalance: orderSaved.loyaltyBalance,
+            },
+          });
+        } else if (checkoutSaved?.checkoutData && checkoutSaved.product) {
+          // Restore in-progress checkout summary
+          rawTurns.push({
+            id: crypto.randomUUID(),
+            userMessage: "Checkout",
+            steps: [{ id: "ca1", message: "CartUp — checkout session ready", status: "done" as const }],
+            products: [],
+            recommendation: "",
+            blocked: null,
+            intent: {},
+            checkout: {
+              phase: "summary" as const,
+              product: checkoutSaved.product,
+              checkoutData: checkoutSaved.checkoutData,
+              selectedCard: checkoutSaved.selectedCard ?? SAVED_CARDS[0].id,
+              isGuest,
+              guestCard: guestCardSaved ?? (isGuest ? { number: "", expiry: "", cvc: "", name: "" } : undefined),
+            },
+          });
+        }
+      } catch { /* noop — always show at least the DB messages */ }
+
+      setTurns(rawTurns);
     } catch {
       switchToSession(crypto.randomUUID());
       setTurns([]);
     }
-  }, [switchToSession]);
+  }, [switchToSession, isGuest]);
 
   const handleSelectSession = useCallback(async (clickedId: string) => {
     if (clickedId === sessionIdRef.current) return;
@@ -405,6 +645,13 @@ export default function Chat() {
     const msg = input.trim();
     if (!msg || loading) return;
 
+    // ── Add-to-cart intercept — "add it/this/to cart" → show cart card, not checkout ──
+    if (isAddToCartPhrase(msg) && lastRecommendedProductRef.current) {
+      doAddToCartRef.current?.(msg, lastRecommendedProductRef.current);
+      // Keep lastRecommendedProductRef so the cart-added card's "Proceed to Checkout" still works
+      return;
+    }
+
     // ── Inline checkout intercepts ──────────────────────────────────────────
     // User said "yes"/checkout phrase after agent recommended a product → bypass LangGraph, start checkout
     if ((isAffirmativeInput(msg) || isCheckoutIntent(msg)) && lastRecommendedProductRef.current) {
@@ -413,6 +660,80 @@ export default function Chat() {
       setPendingCheckoutProduct(null);
       return;
     }
+
+    // ── Show-cart intercept — open drawer directly, no backend call ────────
+    if (isShowCartIntent(msg)) {
+      setInput("");
+      const cartTurnId = crypto.randomUUID();
+      setTurns((prev) => [...prev, {
+        id: cartTurnId,
+        userMessage: msg,
+        steps: [],
+        products: [],
+        recommendation: "Here's your cart!",
+        blocked: null,
+        intent: {},
+      }]);
+      setShowCartDrawer(true);
+      return;
+    }
+
+    // ── Ordinal add/buy: "add first one to cart", "buy the second" ─────────
+    const ordinalIdx = getOrdinalCheckoutTarget(msg);
+    if (ordinalIdx !== null) {
+      const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
+      const targetProduct = lastTurnWithProducts?.products[ordinalIdx];
+      if (targetProduct) {
+        setInput("");
+        doCheckoutSummaryRef.current?.(msg, targetProduct);
+        lastRecommendedProductRef.current = null;
+        setPendingCheckoutProduct(null);
+        return;
+      }
+    }
+
+    // ── Checkout fallback: explicit buy/proceed with no active product ref ──
+    // Falls back to session cart items, then last shown products, so "buy it"
+    // and "ok proceed" still work after a compare/follow-up question cleared
+    // the product ref.
+    if (isExplicitCheckoutPhrase(msg) && !lastRecommendedProductRef.current) {
+      if (sessionCartItems.length > 0) {
+        const cartItem = sessionCartItems[0];
+        const cartProduct: ProductData = {
+          product_id: cartItem.product_id,
+          merchant_id: cartItem.merchant_id,
+          merchant_name: cartItem.merchant_name,
+          title: cartItem.title,
+          brand: cartItem.brand,
+          category: cartItem.category,
+          price: cartItem.price,
+          currency: cartItem.currency,
+          size: cartItem.size,
+          color: cartItem.color,
+          available: true,
+          inventory: 1,
+          delivery_days: cartItem.delivery_days,
+          rating: cartItem.rating,
+          review_count: 0,
+          shipping_cost: 0,
+          rank_score: 0,
+          source: "cart",
+          image_url: cartItem.image_url,
+          weight_grams: null,
+          cushioning: null,
+        };
+        setInput("");
+        doCheckoutSummaryRef.current?.(msg, cartProduct);
+        return;
+      }
+      const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
+      if (lastTurnWithProducts?.products[0]) {
+        setInput("");
+        doCheckoutSummaryRef.current?.(msg, lastTurnWithProducts.products[0]);
+        return;
+      }
+    }
+
     // Starting a new search — clear any pending cart CTA
     setPendingCheckoutProduct(null);
     lastRecommendedProductRef.current = null;
@@ -478,7 +799,7 @@ export default function Chat() {
           return turn;
         });
       },
-      onRecommendation: (text, prods) => {
+      onRecommendation: (text, prods, action) => {
         const capturedId = activeTurnId.current;
         // Set products immediately
         setTurns((prev) => prev.map((t) =>
@@ -489,6 +810,38 @@ export default function Chat() {
           lastRecommendedProductRef.current = prods[0];
           setPendingCheckoutProduct(prods[0]);
         }
+
+        // For follow-up answers, prods is [] — resolve target product from turn history.
+        const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
+        const resolveProduct = (idx: number): ProductData | undefined => {
+          if (prods.length > idx) return prods[idx];
+          return lastTurnWithProducts?.products[idx] ?? lastTurnWithProducts?.products[0];
+        };
+
+        // Open cart drawer + show inline if LLM said to view cart
+        if (action?.type === "show_cart") {
+          setShowCartDrawer(true);
+          setTurns((prev) => prev.map((t) => t.id === capturedId ? { ...t, showCartInline: true } : t));
+        }
+
+        // Remove from cart: find matching cart item by product_id and remove it
+        if (action?.type === "remove_from_cart") {
+          const target = resolveProduct(action.product_idx ?? 0);
+          if (target) {
+            const cartItem = sessionCartItems.find((i) => i.product_id === target.product_id);
+            if (cartItem) {
+              removeFromCart(cartItem.cart_item_id)
+                .then(() => {
+                  setSessionCartItems((prev) => prev.filter((i) => i.cart_item_id !== cartItem.cart_item_id));
+                  setSessionCartIds((prev) => { const s = new Set(prev); s.delete(cartItem.cart_item_id); return s; });
+                  setSessionCartCount((n) => Math.max(0, n - 1));
+                  getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                })
+                .catch(() => {});
+            }
+          }
+        }
+
         // Stream recommendation text word-by-word (ChatGPT-style)
         const words = text.split(" ");
         words.forEach((_, i) => {
@@ -502,6 +855,26 @@ export default function Chat() {
             ));
           }, i * 40);
         });
+
+        // Add to cart (no checkout summary) — shows inline cart card
+        if (action?.type === "add_to_cart") {
+          const actionProduct = resolveProduct(action.product_idx ?? 0);
+          if (actionProduct) {
+            setTimeout(() => {
+              attachAddToCartToActiveTurnRef.current?.(capturedId!, actionProduct!);
+            }, words.length * 40 + 200);
+          }
+        }
+
+        // Trigger checkout after text finishes streaming
+        if (action?.type === "checkout") {
+          const actionProduct = resolveProduct(action.product_idx ?? 0);
+          if (actionProduct) {
+            setTimeout(() => {
+              attachCheckoutToActiveTurnRef.current?.(capturedId!, actionProduct!);
+            }, words.length * 40 + 200);
+          }
+        }
       },
       onBlocked: (message) => {
         updateActiveTurn((turn) => ({ ...turn, blocked: message }));
@@ -526,7 +899,7 @@ export default function Chat() {
     });
 
     closeStream.current = close;
-  }, [input, loading, pastedImage, updateActiveTurn]);
+  }, [input, loading, pastedImage, updateActiveTurn, turns, sessionCartItems]);
 
   // Keep the ref always pointing at the current handleSend so recognition
   // callbacks can fire it without stale-closure issues.
@@ -551,7 +924,7 @@ export default function Chat() {
       {
         id: turnId,
         userMessage: userText,
-        steps: [{ id: "c1", message: "Preparing your order...", status: "running" as const }],
+        steps: [{ id: "c1", message: "CartUp — preparing your order...", status: "running" as const }],
         products: [],
         recommendation: "",
         blocked: null,
@@ -579,12 +952,19 @@ export default function Chat() {
       if (!res.ok) throw new Error("Checkout creation failed");
       const checkoutData: InlineCheckoutDataShape = await res.json();
 
+      // Persist so coming back from /cart restores this checkout without losing state
+      try {
+        sessionStorage.setItem(`talkshop_checkout_${sessionIdRef.current}`, JSON.stringify({
+          product, checkoutData, selectedCard: SAVED_CARDS[0].id,
+        }));
+      } catch { /* noop */ }
+
       setTurns((prev) =>
         prev.map((t) =>
           t.id === turnId
             ? {
                 ...t,
-                steps: [{ id: "c1", message: "Order ready", status: "done" as const }],
+                steps: [{ id: "c1", message: "CartUp — checkout session ready", status: "done" as const }],
                 checkout: {
                   phase: "summary" as const,
                   product,
@@ -621,6 +1001,132 @@ export default function Chat() {
   // Keep the ref current on every render so callers never see a stale closure.
   doCheckoutSummaryRef.current = doCheckoutSummary;
 
+  // LLM-driven checkout: attaches checkout UI to the currently streaming turn
+  // instead of creating a new turn, so one user message = one visual block.
+  const attachCheckoutToActiveTurn = useCallback(async (turnId: string, product: ProductData) => {
+    setLoading(true);
+    setSelectedProducts(new Map());
+    setPendingCheckoutProduct(null);
+    lastRecommendedProductRef.current = null;
+
+    setTurns((prev) => prev.map((t) => t.id === turnId ? {
+      ...t,
+      steps: [...t.steps, { id: "ca1", message: "CartUp — preparing your order...", status: "running" as const }],
+    } : t));
+
+    try {
+      await addToCart(product);
+      const res = await authFetch("/api/checkout/create", {
+        method: "POST",
+        body: JSON.stringify({ product_id: product.product_id, merchant_id: product.merchant_id, quantity: 1 }),
+      });
+      if (!res.ok) throw new Error("Checkout creation failed");
+      const checkoutData: InlineCheckoutDataShape = await res.json();
+      setCartCount((n) => n + 1);
+
+      try {
+        sessionStorage.setItem(`talkshop_checkout_${sessionIdRef.current}`, JSON.stringify({
+          product, checkoutData, selectedCard: SAVED_CARDS[0].id,
+        }));
+      } catch { /* noop */ }
+
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: t.steps.filter((s) => s.id !== "ca1").concat({ id: "ca1", message: "CartUp — checkout session ready", status: "done" as const }),
+        checkout: {
+          phase: "summary" as const, product, checkoutData,
+          selectedCard: SAVED_CARDS[0].id, isGuest,
+          guestCard: isGuest ? (sessionGuestCardRef.current ?? { number: "", expiry: "", cvc: "", name: "" }) : undefined,
+        },
+      } : t));
+    } catch {
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: t.steps.filter((s) => s.id !== "ca1"),
+        checkout: {
+          phase: "failed" as const, product, selectedCard: SAVED_CARDS[0].id,
+          error: "Could not prepare your order. Please try again.",
+        },
+      } : t));
+    } finally {
+      setLoading(false);
+    }
+  }, [isGuest]);
+  attachCheckoutToActiveTurnRef.current = attachCheckoutToActiveTurn;
+
+  // Add to cart (frontend intercept — creates a new turn with a cart-added card)
+  const doAddToCart = useCallback(async (userText: string, product: ProductData) => {
+    setInput("");
+    setLoading(true);
+    const turnId = crypto.randomUUID();
+    activeTurnId.current = turnId;
+    setTurns((prev) => [...prev, {
+      id: turnId,
+      userMessage: userText,
+      steps: [{ id: "ca1", message: "CartUp — adding to cart...", status: "running" as const }],
+      products: [],
+      recommendation: "",
+      blocked: null,
+      intent: {},
+    }]);
+    try {
+      await addToCart(product);
+      const cartItems = await getCart();
+      setCartCount(cartItems.length);
+      const newItem = cartItems.find((i) => i.product_id === product.product_id);
+      if (newItem) {
+        setSessionCartCount((n) => n + 1);
+        setSessionCartIds((prev) => new Set(prev).add(newItem.cart_item_id));
+        setSessionCartItems(cartItems);
+      }
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: [{ id: "ca1", message: "CartUp — item added to cart", status: "done" as const }],
+        recommendation: `Added **${product.title}** to your cart!`,
+        cartAdded: { product },
+      } : t));
+    } catch {
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: [],
+        recommendation: "Sorry, couldn't add that to your cart. Please try again.",
+      } : t));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  doAddToCartRef.current = doAddToCart;
+
+  // Add to cart (LLM action — attaches cart-added card to the currently streaming turn)
+  const attachAddToCartToActiveTurn = useCallback(async (turnId: string, product: ProductData) => {
+    setTurns((prev) => prev.map((t) => t.id === turnId ? {
+      ...t,
+      steps: [...t.steps, { id: "ca1", message: "CartUp — adding to cart...", status: "running" as const }],
+    } : t));
+    try {
+      await addToCart(product);
+      const cartItems = await getCart();
+      setCartCount(cartItems.length);
+      const newItem = cartItems.find((i) => i.product_id === product.product_id);
+      if (newItem) {
+        setSessionCartCount((n) => n + 1);
+        setSessionCartIds((prev) => new Set(prev).add(newItem.cart_item_id));
+        setSessionCartItems(cartItems);
+      }
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: t.steps.filter((s) => s.id !== "ca1").concat({ id: "ca1", message: "CartUp — item added to cart", status: "done" as const }),
+        cartAdded: { product },
+      } : t));
+    } catch {
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: t.steps.filter((s) => s.id !== "ca1"),
+      } : t));
+    }
+  }, []);
+  attachAddToCartToActiveTurnRef.current = attachAddToCartToActiveTurn;
+
   // Step 2: user clicked "Confirm & Pay" → run DPAT + payment inline
   const doPayment = useCallback(async (
     turnId: string,
@@ -628,21 +1134,25 @@ export default function Chat() {
     selectedCard: string,
     product: ProductData,
   ) => {
+    // Make this the active turn so the panel tracks payment steps
+    activeTurnId.current = turnId;
+
+    const initPS = [
+      { label: "GreenLight — requesting DPAT authorization…", status: "running" as const },
+      { label: "GreenLight — DPAT token ready", status: "pending" as const },
+      { label: "PayIt — executing payment…", status: "pending" as const },
+      { label: "TrackIt — recording your order…", status: "pending" as const },
+    ];
     setTurns((prev) =>
       prev.map((t) =>
         t.id === turnId
           ? {
               ...t,
-              checkout: {
-                ...t.checkout!,
-                phase: "processing" as const,
-                processingSteps: [
-                  { label: "GreenLight issuing DPAT authorization…", status: "running" as const },
-                  { label: "DPAT token ready", status: "pending" as const },
-                  { label: "PayIt executing payment…", status: "pending" as const },
-                  { label: "TrackIt recording your order…", status: "pending" as const },
-                ],
-              },
+              steps: [
+                ...t.steps.filter((s) => s.id === "c1" || s.id === "ca1"),
+                { id: "pay-0", message: "GreenLight — requesting DPAT authorization…", status: "running" as const },
+              ],
+              checkout: { ...t.checkout!, phase: "processing" as const, processingSteps: initPS },
             }
           : t
       )
@@ -651,9 +1161,17 @@ export default function Chat() {
 
     const updateSteps = (steps: Array<{ label: string; status: "pending" | "running" | "done" | "error" }>) => {
       setTurns((prev) =>
-        prev.map((t) =>
-          t.id === turnId ? { ...t, checkout: { ...t.checkout!, processingSteps: steps } } : t
-        )
+        prev.map((t) => {
+          if (t.id !== turnId) return t;
+          const agentSteps = steps
+            .filter((s) => s.status !== "pending")
+            .map((s, i) => ({ id: `pay-${i}`, message: s.label, status: s.status as "running" | "done" | "error" }));
+          return {
+            ...t,
+            steps: [...t.steps.filter((s) => s.id === "c1" || s.id === "ca1"), ...agentSteps],
+            checkout: { ...t.checkout!, processingSteps: steps },
+          };
+        })
       );
     };
 
@@ -680,9 +1198,9 @@ export default function Chat() {
 
       updateSteps([
         { label: "GreenLight — authorization approved", status: "done" },
-        { label: "DPAT token issued", status: "done" },
-        { label: "PayIt executing payment…", status: "running" },
-        { label: "TrackIt recording your order…", status: "pending" },
+        { label: "GreenLight — DPAT token issued", status: "done" },
+        { label: "PayIt — executing payment…", status: "running" },
+        { label: "TrackIt — recording your order…", status: "pending" },
       ]);
 
       // PayIt: execute payment
@@ -709,13 +1227,26 @@ export default function Chat() {
 
       updateSteps([
         { label: "GreenLight — authorization approved", status: "done" },
-        { label: "DPAT token issued", status: "done" },
-        { label: "Payment processed successfully", status: "done" },
+        { label: "GreenLight — DPAT token issued", status: "done" },
+        { label: "PayIt — payment processed", status: "done" },
         { label: "TrackIt — order recorded", status: "done" },
       ]);
 
       // Small delay so the user sees all steps green before flipping to confirmed
       await new Promise((r) => setTimeout(r, 600));
+
+      // Persist confirmed order so session restore shows confirmation, not product cards
+      try {
+        sessionStorage.setItem(`talkshop_order_${sessionIdRef.current}`, JSON.stringify({
+          orderId: execData.order_id,
+          amount: execData.amount,
+          product,
+          selectedCard,
+          pointsEarned: execData.points_earned ?? null,
+          loyaltyBalance: execData.loyalty_balance ?? null,
+        }));
+        sessionStorage.removeItem(`talkshop_checkout_${sessionIdRef.current}`);
+      } catch { /* noop */ }
 
       setTurns((prev) =>
         prev.map((t) =>
@@ -765,6 +1296,7 @@ export default function Chat() {
 
   // Cancel inline checkout — marks the turn as cancelled
   const cancelCheckout = useCallback((turnId: string) => {
+    try { sessionStorage.removeItem(`talkshop_checkout_${sessionIdRef.current}`); } catch { /* noop */ }
     setTurns((prev) =>
       prev.map((t) =>
         t.id === turnId
@@ -786,6 +1318,7 @@ export default function Chat() {
   // Update guest card fields and remember for the rest of the session
   const updateGuestCard = useCallback((turnId: string, card: NonNullable<InlineCheckoutData["guestCard"]>) => {
     sessionGuestCardRef.current = card;
+    try { sessionStorage.setItem(`talkshop_guestcard_${sessionIdRef.current}`, JSON.stringify(card)); } catch { /* noop */ }
     setTurns((prev) =>
       prev.map((t) =>
         t.id === turnId ? { ...t, checkout: { ...t.checkout!, guestCard: card } } : t
@@ -1149,7 +1682,8 @@ export default function Chat() {
                       >
                         <button
                           onClick={() => {
-                            doCheckoutSummaryRef.current?.("yes", pendingCheckoutProduct);
+                            doAddToCartRef.current?.("yes, add to cart", pendingCheckoutProduct);
+                            setPendingCheckoutProduct(null);
                           }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--color-primary)] text-white text-xs font-semibold hover:bg-[var(--color-primary-dark)] transition-colors shadow-sm"
                         >
@@ -1165,6 +1699,21 @@ export default function Chat() {
                           No thanks
                         </button>
                       </motion.div>
+                    )}
+
+                    {/* Inline cart card — shown after add-to-cart or "show cart" */}
+                    {(turn.cartAdded || turn.showCartInline) && (
+                      <InlineCartCard
+                        addedProduct={turn.cartAdded?.product}
+                        cartItems={sessionCartItems}
+                        onViewCart={() => setShowCartDrawer(true)}
+                        onCheckout={(product) => {
+                          doCheckoutSummaryRef.current?.("proceed to checkout", product);
+                          // Clear pending so the CTA chips disappear
+                          setPendingCheckoutProduct(null);
+                          lastRecommendedProductRef.current = null;
+                        }}
+                      />
                     )}
 
                     {/* Inline checkout card — shown when user confirmed a product */}
@@ -1611,16 +2160,30 @@ export default function Chat() {
           className="w-1 shrink-0 cursor-col-resize hover:bg-[var(--color-primary)] transition-colors"
         />
       )}
-      <AgentTrailPanel
-        collapsed={rightCollapsed}
-        onToggleCollapse={() => setRightCollapsed((c) => !c)}
-        width={rightWidth}
-        activeTurnSteps={turns.find((t) => t.id === activeTurnId.current)?.steps ?? []}
-        activeLoading={loading}
-        activeProducts={turns.find((t) => t.id === activeTurnId.current)?.products}
-        activeIntent={turns.find((t) => t.id === activeTurnId.current)?.intent}
-        activeRecommendation={turns.find((t) => t.id === activeTurnId.current)?.recommendation}
-      />
+      {(() => {
+        // Accumulate steps from ALL turns so the panel shows the complete pipeline
+        // even after payment (payment steps live in checkout turn, search steps in prior turn).
+        // When a search is loading, prefer the live active turn so in-progress steps animate.
+        const activeTurn = turns.find((t) => t.id === activeTurnId.current);
+        const sessionSteps = turns.flatMap((t) => t.steps);
+        const displaySteps = loading
+          ? (activeTurn?.steps.length ? activeTurn.steps : sessionSteps)
+          : sessionSteps;
+        const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
+        const lastTurnWithIntent   = [...turns].reverse().find((t) => Object.keys(t.intent).length > 0);
+        return (
+          <AgentTrailPanel
+            collapsed={rightCollapsed}
+            onToggleCollapse={() => setRightCollapsed((c) => !c)}
+            width={rightWidth}
+            activeTurnSteps={displaySteps}
+            activeLoading={loading}
+            activeProducts={lastTurnWithProducts?.products}
+            activeIntent={lastTurnWithIntent?.intent}
+            activeRecommendation={activeTurn?.recommendation}
+          />
+        );
+      })()}
     </div>
   );
 }

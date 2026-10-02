@@ -1,28 +1,37 @@
 @import "tailwindcss";
 
+/* ── Light mode — white + Chase blue ──────────────────────────────── */
 :root {
-  --color-primary: #0f2557;
-  --color-primary-light: #1a3a7a;
-  --color-success: #10b981;
-  --color-blocked: #f43f5e;
-  --color-warning: #f59e0b;
-  --color-bg: #ffffff;
-  --color-surface: #f8fafc;
-  --color-border: #e2e8f0;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
+  --color-primary:      #117ACA;   /* Chase blue */
+  --color-primary-light:#1A8EE0;   /* hover state */
+  --color-primary-dark: #0D5FA3;   /* pressed / nav header */
+  --color-primary-bg:   #EAF4FB;   /* light tint for badges, highlights */
+  --color-success:      #1E7E34;
+  --color-blocked:      #C0392B;
+  --color-warning:      #D97706;
+  --color-bg:           #FFFFFF;   /* pure white */
+  --color-surface:      #F5FAFF;   /* very light blue-white */
+  --color-surface-2:    #EAF4FB;
+  --color-border:       #D0E6F5;
+  --color-text:         #0F1923;
+  --color-text-muted:   #5A6A7A;
 }
 
+/* ── Dark mode — black + Chase blue visible ───────────────────────── */
 :root[data-theme="dark"] {
-  --color-primary: #60a5fa;
-  --color-primary-light: #93c5fd;
-  --color-bg: #0d1117;
-  --color-surface: #161b22;
-  --color-border: #30363d;
-  --color-text: #e6edf3;
-  --color-text-muted: #8b949e;
-  --color-success: #34d399;
-  --color-blocked: #fb7185;
+  --color-primary:      #117ACA;   /* same Chase blue — readable on black */
+  --color-primary-light:#1A8EE0;
+  --color-primary-dark: #0D5FA3;
+  --color-primary-bg:   #0D2A40;
+  --color-success:      #34D399;
+  --color-blocked:      #FB7185;
+  --color-warning:      #FBBF24;
+  --color-bg:           #000000;   /* pure black */
+  --color-surface:      #111111;
+  --color-surface-2:    #1A1A1A;
+  --color-border:       #222222;
+  --color-text:         #F0F0F0;
+  --color-text-muted:   #8A9AAA;
 }
 
 * {
