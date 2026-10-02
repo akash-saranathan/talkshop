@@ -9,6 +9,7 @@ Endpoints:
   GET  /api/orders/{order_id}  — single order detail
 """
 import json
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,7 +19,7 @@ from sqlalchemy import update
 from backend.agents import payit, trackit
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.config.agents import PAYIT, TRACKIT
-from backend.db.schema import AuditEvent, CartItem, DelegatedToken, Merchant, Order, PaymentAuthorization, Product, Wallet
+from backend.db.schema import AuditEvent, CartItem, DelegatedToken, LoyaltyPoints, LoyaltyTransaction, Merchant, Order, PaymentAuthorization, Product, Wallet
 from backend.db.session_utils import get_session, now_utc, write_audit_event
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import PaymentRequest
@@ -54,6 +55,8 @@ class ExecutePaymentResponse(BaseModel):
     transaction_id: Optional[str] = None
     blocked_reason: Optional[str] = None
     wallet_balance: Optional[float] = None
+    points_earned: Optional[int] = None
+    loyalty_balance: Optional[int] = None
 
 
 def _insert_order_if_absent(session, fields: dict):
@@ -227,13 +230,32 @@ async def execute_payment_endpoint(
             write_audit_event(session, "ORDER_CONFIRMED", user_id=current_user.user_id,
                                agent_id=TRACKIT.agent_id, order_id=req.checkout_id,
                                metadata={"transaction_id": result.transaction_id})
+
+            # Award 1 loyalty point per $1 spent (rounded down)
+            points_earned = int(result.amount)
+            lp = session.query(LoyaltyPoints).filter(LoyaltyPoints.user_id == current_user.user_id).first()
+            if not lp:
+                lp = LoyaltyPoints(user_id=current_user.user_id, balance=points_earned, lifetime_points=points_earned)
+                session.add(lp)
+            else:
+                lp.balance += points_earned
+                lp.lifetime_points += points_earned
+            session.add(LoyaltyTransaction(
+                transaction_id=uuid.uuid4().hex,
+                user_id=current_user.user_id,
+                order_id=req.checkout_id,
+                points_earned=points_earned,
+                reason="purchase",
+            ))
             session.commit()
 
             return ExecutePaymentResponse(
                 status="success", order_id=req.checkout_id, amount=result.amount,
                 merchant=req.merchant_name, transaction_id=result.transaction_id,
                 summary=trackit.summarize_order(checkout, result),
-                wallet_balance=wallet.balance,
+                wallet_balance=wallet.balance if wallet else None,
+                points_earned=points_earned,
+                loyalty_balance=lp.balance,
             )
 
 
