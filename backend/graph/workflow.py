@@ -214,12 +214,10 @@ async def generate_recommendation(state: CommerceState) -> CommerceState:
         return {**state, "recommendation_text": text}
     if state.get("product_followup"):
         products = session_state.get_ranked_products(state["session_id"])
-        await _emit(state, "step_start", "Answering your question about these products...")
         text = await vibecheck.answer_product_question(state["user_message"], products)
-        await _emit(state, "recommendation", text, products)
-        return {**state, "recommendation_text": text, "ranked_products": [
-            NormalizedProduct.model_validate(p) for p in products
-        ]}
+        # Pass empty product list — follow-up answers are plain text, no card re-display
+        await _emit(state, "recommendation", text, [])
+        return {**state, "recommendation_text": text}
     if state.get("awaiting_followup"):
         text = vibecheck.generate_followup_question(state["intent"])
         await _emit(state, "recommendation", text, [])
