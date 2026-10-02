@@ -40,13 +40,15 @@ Single-page conversational interface with split-screen agent trace panel.
 - [x] Voice recording delay fixed — `interimResults=true` resets 1.5s timer on each word, fires ~1.5s after last spoken word (was 5-10s)
 - [x] Agent recommendation focuses on #1 pick with "Want me to add to cart?" CTA
 - [x] Top-ranked product auto-selected when results arrive
+- [x] **Single-page conversational flow** — all of discovery → cart → payment → order confirmation → tracker happens in the chat (no page navigation)
+- [x] InlineCheckout component: order summary card, animated DPAT processing steps, order confirmed with collapsible tracker
+- [x] handleSend intercepts affirmative replies ("yes", "ok", "confirm"…) when product selected — bypasses LangGraph, starts inline checkout
+- [x] Known Customer vs Guest landing page — two-CTA redesign
+- [x] Guest card input form (number/expiry/CVC) vs saved card tiles for known users
 
 ### In Progress
-- [ ] Single-page flow (remove multi-page navigation, everything stays in chat)
-- [ ] Known vs Guest customer auth landing (two-CTA screen)
 - [ ] Loyalty points system (DB tables + agent awareness)
 - [ ] History-based recommendations (reads past orders on login)
-- [ ] Isolated card form for guest customers (iframe + CSP)
 
 ### Not Started
 - [ ] Login page redesign (two CTAs: Known Customer / Guest)
