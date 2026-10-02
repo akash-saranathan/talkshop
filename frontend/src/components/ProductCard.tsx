@@ -170,25 +170,11 @@ export default function ProductCard({ product, index, selected = false, onToggle
         )}
       </div>
 
-      {/* Merchant badge + trust tier */}
+      {/* Merchant badge */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
-            {product.merchant_name}
-          </span>
-          {trust && (
-            <span
-              title={`${trust.ships} · ${trust.returns}`}
-              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 cursor-help ${
-                trust.tier === "Premium"
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-green-100 text-green-700"
-              }`}
-            >
-              ✓ {trust.tier}
-            </span>
-          )}
-        </div>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
+          {product.merchant_name}
+        </span>
         {product.shipping_cost === 0 && (
           <span className="text-xs text-[var(--color-success)] font-medium">Free shipping</span>
         )}
