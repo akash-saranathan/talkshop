@@ -9,8 +9,9 @@
  *   failed     → error message
  */
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, ChevronDown, ChevronUp, CreditCard, Package, Truck, MapPin, Loader } from "lucide-react";
+import { CheckCircle, ChevronDown, ChevronUp, CreditCard, Package, Truck, MapPin, Loader, Lock, X, ShieldCheck } from "lucide-react";
 import type { ProductData } from "../api/chat";
 import { getProductVisual, type ProductVisual } from "../utils/productVisual";
 
@@ -99,50 +100,152 @@ function SetupCard() {
   );
 }
 
-function GuestCardForm({ card, onChange }: { card: GuestCardInput; onChange: (c: GuestCardInput) => void }) {
-  const inputCls = "w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]";
-  return (
-    <div className="space-y-2">
-      <input
-        type="text"
-        maxLength={19}
-        placeholder="Card number (e.g. 4242 4242 4242 4242)"
-        value={card.number}
-        onChange={(e) => onChange({ ...card, number: e.target.value.replace(/[^\d ]/g, "") })}
-        className={inputCls}
-      />
-      <div className="flex gap-2">
-        <input
-          type="text"
-          maxLength={5}
-          placeholder="MM/YY"
-          value={card.expiry}
-          onChange={(e) => onChange({ ...card, expiry: e.target.value })}
-          className={inputCls}
-        />
-        <input
-          type="text"
-          maxLength={4}
-          placeholder="CVC"
-          value={card.cvc}
-          onChange={(e) => onChange({ ...card, cvc: e.target.value.replace(/\D/g, "") })}
-          className={inputCls}
-        />
-      </div>
-      <input
-        type="text"
-        placeholder="Name on card"
-        value={card.name}
-        onChange={(e) => onChange({ ...card, name: e.target.value })}
-        className={inputCls}
-      />
-    </div>
+function formatCardNumber(raw: string): string {
+  return raw.replace(/\D/g, "").slice(0, 16).replace(/(.{4})/g, "$1 ").trim();
+}
+
+function formatExpiry(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length > 2) return digits.slice(0, 2) + "/" + digits.slice(2);
+  return digits;
+}
+
+function SecurePaymentModal({
+  total, onClose, onConfirm,
+}: {
+  total: number;
+  onClose: () => void;
+  onConfirm: (card: GuestCardInput) => void;
+}) {
+  const [card, setCard] = useState<GuestCardInput>({ number: "", expiry: "", cvc: "", name: "" });
+  const [error, setError] = useState<string | null>(null);
+
+  const inputCls = "w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-2.5 text-sm outline-none focus:border-[var(--color-primary)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]";
+
+  const handleSubmit = () => {
+    const digits = card.number.replace(/\s/g, "");
+    if (digits.length < 13) { setError("Please enter a valid card number."); return; }
+    if (!/^\d{2}\/\d{2}$/.test(card.expiry)) { setError("Expiry must be MM/YY."); return; }
+    if (card.cvc.length < 3) { setError("CVC must be 3 or 4 digits."); return; }
+    if (!card.name.trim()) { setError("Please enter the name on your card."); return; }
+    setError(null);
+    onConfirm(card);
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Modal */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 10 }}
+        className="relative w-full max-w-sm bg-[var(--color-surface)] rounded-2xl shadow-2xl border border-[var(--color-border)] overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={18} className="text-[var(--color-primary)]" />
+            <span className="font-semibold text-sm text-[var(--color-text)]">Secure Payment</span>
+          </div>
+          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-3">
+          <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] mb-1">
+            <Lock size={11} />
+            <span>Your card details are encrypted and never stored in chat</span>
+          </div>
+
+          <div className="space-y-2.5">
+            <div>
+              <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">Card number</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={19}
+                placeholder="4242 4242 4242 4242"
+                value={card.number}
+                onChange={(e) => setCard({ ...card, number: formatCardNumber(e.target.value) })}
+                className={inputCls}
+                autoComplete="cc-number"
+              />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">Expiry</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={5}
+                  placeholder="MM/YY"
+                  value={card.expiry}
+                  onChange={(e) => setCard({ ...card, expiry: formatExpiry(e.target.value) })}
+                  className={inputCls}
+                  autoComplete="cc-exp"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">CVC</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="···"
+                  value={card.cvc}
+                  onChange={(e) => setCard({ ...card, cvc: e.target.value.replace(/\D/g, "") })}
+                  className={inputCls}
+                  autoComplete="cc-csc"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">Name on card</label>
+              <input
+                type="text"
+                placeholder="Jane Smith"
+                value={card.name}
+                onChange={(e) => setCard({ ...card, name: e.target.value })}
+                className={inputCls}
+                autoComplete="cc-name"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <p className="text-xs text-rose-500 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-[var(--color-border)] flex gap-2.5">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="flex-[2] py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2"
+          >
+            <Lock size={13} /> Pay ${total.toFixed(2)}
+          </button>
+        </div>
+      </motion.div>
+    </div>,
+    document.body
   );
 }
 
 function SummaryCard({
   product, checkoutData, selectedCard, onCardChange, onConfirm, onCancel,
-  isGuest, guestCard, onGuestCardChange,
+  isGuest, onGuestCardChange,
 }: {
   product: ProductData;
   checkoutData: CheckoutData;
@@ -151,123 +254,151 @@ function SummaryCard({
   onConfirm: () => void;
   onCancel: () => void;
   isGuest?: boolean;
-  guestCard?: GuestCardInput;
   onGuestCardChange?: (c: GuestCardInput) => void;
 }) {
   const visual: ProductVisual = getProductVisual(product.title, product.category);
   const ProductIcon = visual.icon;
   const freeShipping = checkoutData.shipping === 0;
+  const [showPayModal, setShowPayModal] = useState(false);
+
+  const handleGuestPay = (card: GuestCardInput) => {
+    setShowPayModal(false);
+    onGuestCardChange?.(card);
+    onConfirm();
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden max-w-sm w-full"
-    >
-      {/* Header */}
-      <div className="px-4 py-3 bg-[var(--color-primary)] text-white flex items-center gap-2">
-        <Package size={16} />
-        <span className="text-sm font-semibold">Order Summary</span>
-      </div>
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden max-w-sm w-full"
+      >
+        {/* Header */}
+        <div className="px-4 py-3 bg-[var(--color-primary)] text-white flex items-center gap-2">
+          <Package size={16} />
+          <span className="text-sm font-semibold">Order Summary</span>
+        </div>
 
-      {/* Product row */}
-      <div className="flex items-start gap-3 px-4 py-3 border-b border-[var(--color-border)]">
-        <div className={`w-12 h-12 rounded-lg ${visual.bg} flex items-center justify-center shrink-0`}>
-          <ProductIcon size={22} className={visual.fg} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[var(--color-text)] leading-snug line-clamp-2">
-            {product.title}
-          </p>
-          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-            {[product.brand, product.size, product.color].filter((v): v is string => v != null).join(" · ")}
-          </p>
-          <p className="text-xs text-[var(--color-text-muted)]">
-            {product.merchant_name} · ⭐ {product.rating} · {product.delivery_days}d delivery
-          </p>
-        </div>
-      </div>
-
-      {/* Price breakdown */}
-      <div className="px-4 py-3 space-y-1.5 border-b border-[var(--color-border)]">
-        <div className="flex justify-between text-sm text-[var(--color-text-muted)]">
-          <span>Subtotal</span>
-          <span>${checkoutData.subtotal.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm text-[var(--color-text-muted)]">
-          <span>Shipping</span>
-          <span className={freeShipping ? "text-[var(--color-success)] font-medium" : ""}>
-            {freeShipping ? "FREE" : `$${checkoutData.shipping.toFixed(2)}`}
-          </span>
-        </div>
-        <div className="flex justify-between text-sm text-[var(--color-text-muted)]">
-          <span>Tax</span>
-          <span>${checkoutData.tax.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm font-bold text-[var(--color-text)] pt-1 border-t border-[var(--color-border)]">
-          <span>Total</span>
-          <span>${checkoutData.total.toFixed(2)}</span>
-        </div>
-      </div>
-
-      {/* Card picker / guest card form */}
-      <div className="px-4 py-3 border-b border-[var(--color-border)]">
-        <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
-          {isGuest ? "Enter card details" : "Pay with"}
-        </p>
-        {isGuest ? (
-          <GuestCardForm
-            card={guestCard ?? { number: "", expiry: "", cvc: "", name: "" }}
-            onChange={(c) => onGuestCardChange?.(c)}
-          />
-        ) : (
-          <div className="space-y-1.5">
-            {SAVED_CARDS.map((card) => (
-              <button
-                key={card.id}
-                onClick={() => onCardChange(card.id)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm transition-colors ${
-                  selectedCard === card.id
-                    ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-text)]"
-                    : "border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/50"
-                }`}
-              >
-                <span>{cardNetworkIcon(card.network)}</span>
-                <span className="flex-1 text-left">
-                  {card.network} ···· {card.last4}
-                </span>
-                <span className="text-xs text-[var(--color-text-muted)]">{card.expiry}</span>
-                {card.isDefault && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">Default</span>
-                )}
-                {selectedCard === card.id && (
-                  <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] grid place-items-center shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                  </span>
-                )}
-              </button>
-            ))}
+        {/* Product row */}
+        <div className="flex items-start gap-3 px-4 py-3 border-b border-[var(--color-border)]">
+          <div className={`w-12 h-12 rounded-lg ${visual.bg} flex items-center justify-center shrink-0`}>
+            <ProductIcon size={22} className={visual.fg} />
           </div>
-        )}
-      </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--color-text)] leading-snug line-clamp-2">
+              {product.title}
+            </p>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+              {[product.brand, product.size, product.color].filter((v): v is string => v != null).join(" · ")}
+            </p>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              {product.merchant_name} · ⭐ {product.rating} · {product.delivery_days}d delivery
+            </p>
+          </div>
+        </div>
 
-      {/* Actions */}
-      <div className="px-4 py-3 flex gap-2.5">
-        <button
-          onClick={onCancel}
-          className="flex-1 py-2 rounded-lg border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/40 hover:text-[var(--color-text)] transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={onConfirm}
-          className="flex-[2] py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2"
-        >
-          <CreditCard size={14} />
-          Confirm & Pay ${checkoutData.total.toFixed(2)}
-        </button>
-      </div>
-    </motion.div>
+        {/* Price breakdown */}
+        <div className="px-4 py-3 space-y-1.5 border-b border-[var(--color-border)]">
+          <div className="flex justify-between text-sm text-[var(--color-text-muted)]">
+            <span>Subtotal</span>
+            <span>${checkoutData.subtotal.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-sm text-[var(--color-text-muted)]">
+            <span>Shipping</span>
+            <span className={freeShipping ? "text-[var(--color-success)] font-medium" : ""}>
+              {freeShipping ? "FREE" : `$${checkoutData.shipping.toFixed(2)}`}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm text-[var(--color-text-muted)]">
+            <span>Tax</span>
+            <span>${checkoutData.tax.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-sm font-bold text-[var(--color-text)] pt-1 border-t border-[var(--color-border)]">
+            <span>Total</span>
+            <span>${checkoutData.total.toFixed(2)}</span>
+          </div>
+        </div>
+
+        {/* Card picker (known customer) OR secure payment button (guest) */}
+        <div className="px-4 py-3 border-b border-[var(--color-border)]">
+          {isGuest ? (
+            <button
+              onClick={() => setShowPayModal(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-[var(--color-primary)]/40 text-sm text-[var(--color-primary)] font-medium hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-colors"
+            >
+              <Lock size={14} /> Enter card details securely
+            </button>
+          ) : (
+            <>
+              <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Pay with</p>
+              <div className="space-y-1.5">
+                {SAVED_CARDS.map((card) => (
+                  <button
+                    key={card.id}
+                    onClick={() => onCardChange(card.id)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                      selectedCard === card.id
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-text)]"
+                        : "border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/50"
+                    }`}
+                  >
+                    <span>{cardNetworkIcon(card.network)}</span>
+                    <span className="flex-1 text-left">{card.network} ···· {card.last4}</span>
+                    <span className="text-xs text-[var(--color-text-muted)]">{card.expiry}</span>
+                    {card.isDefault && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">Default</span>
+                    )}
+                    {selectedCard === card.id && (
+                      <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] grid place-items-center shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="px-4 py-3 flex gap-2.5">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2 rounded-lg border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/40 hover:text-[var(--color-text)] transition-colors"
+          >
+            Cancel
+          </button>
+          {isGuest ? (
+            <button
+              onClick={() => setShowPayModal(true)}
+              className="flex-[2] py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2"
+            >
+              <Lock size={14} /> Secure Payment
+            </button>
+          ) : (
+            <button
+              onClick={onConfirm}
+              className="flex-[2] py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2"
+            >
+              <CreditCard size={14} />
+              Confirm & Pay ${checkoutData.total.toFixed(2)}
+            </button>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Secure payment modal — rendered outside the chat via portal */}
+      <AnimatePresence>
+        {showPayModal && (
+          <SecurePaymentModal
+            total={checkoutData.total}
+            onClose={() => setShowPayModal(false)}
+            onConfirm={handleGuestPay}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -427,7 +558,6 @@ export default function InlineCheckout(props: Props) {
         onConfirm={onConfirm}
         onCancel={onCancel}
         isGuest={isGuest}
-        guestCard={guestCard}
         onGuestCardChange={onGuestCardChange}
       />
     );
