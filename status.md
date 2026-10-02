@@ -51,10 +51,10 @@ Single-page conversational interface with split-screen agent trace panel.
 - [x] ProductCard qty resets to "Add to Cart" after payment (React key flip via `productCardResetKey`)
 - [x] Compare bar (2–4 products selected) — no more competing "Buy Now" / cart panel dual-CTA
 
-### In Progress / Next
-- [ ] Loyalty points system (DB tables + agent awareness)
-- [ ] History-based recommendations (reads past orders on login)
-- [ ] Post-purchase loyalty award + balance display in chat
+### Completed (continued)
+- [x] Loyalty points system — `LoyaltyPoints` + `LoyaltyTransaction` tables, `GET /api/loyalty` + `GET /api/loyalty/history` endpoints, 1 pt per $1 awarded on every successful payment
+- [x] History-based recommendations — last 3 confirmed orders passed to VibeCheck's recommendation prompt; agent personalizes picks based on purchase history (no ML, pure prompt context)
+- [x] Post-purchase loyalty award + balance display — `ConfirmedCard` shows "+N pts earned · Total: X pts · Chase Rewards" badge after every payment
 
 ---
 
