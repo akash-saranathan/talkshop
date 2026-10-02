@@ -45,6 +45,7 @@ class CommerceState(TypedDict):
     blocked: bool
     chitchat: bool  # greeting/thanks/etc — skip search, reply with a friendly prompt
     awaiting_followup: bool  # category known but under-specified — ask before searching
+    product_followup: bool  # question about already-shown products — skip search, answer contextually
     sse_queue: Optional[asyncio.Queue]  # injected per request, not serialized
 
 
@@ -94,7 +95,13 @@ async def extract_intent(state: CommerceState) -> CommerceState:
     if error or not intent:
         await _emit(state, "error", f"Could not understand request: {error}")
         return {**state, "error": error or "intent_extraction_failed", "blocked": True}
-    if intent.category == "chitchat":
+    if intent.category in ("chitchat", "general"):
+        # Before treating as pure chitchat, check if this looks like a follow-up
+        # question about products already shown this session (e.g. "is the first one good?")
+        session_products = session_state.get_ranked_products(session_id)
+        if session_products and vibecheck.is_product_followup(state["user_message"], bool(session_products)):
+            await _emit(state, "step_done", "VibeCheck — follow-up question about shown products")
+            return {**state, "intent": intent, "product_followup": True}
         await _emit(state, "step_done", "VibeCheck — just a greeting, no products needed")
         return {**state, "intent": intent, "chitchat": True}
 
@@ -112,7 +119,7 @@ async def extract_intent(state: CommerceState) -> CommerceState:
 
 
 async def mcp_product_search(state: CommerceState) -> CommerceState:
-    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup") or state.get("product_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "SneakPeek is searching stores for your product...")
@@ -125,7 +132,7 @@ async def mcp_product_search(state: CommerceState) -> CommerceState:
 
 
 async def normalize_products(state: CommerceState) -> CommerceState:
-    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup") or state.get("product_followup"):
         return state
     products = [NormalizedProduct.model_validate(p) for p in state["raw_products"]]
     await _emit(state, "step_done", f"SneakPeek — catalogued {len(products)} products")
@@ -133,7 +140,7 @@ async def normalize_products(state: CommerceState) -> CommerceState:
 
 
 async def deterministic_filter(state: CommerceState) -> CommerceState:
-    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup") or state.get("product_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "SneakPeek is applying your filters (size, price, availability)...")
@@ -143,12 +150,14 @@ async def deterministic_filter(state: CommerceState) -> CommerceState:
 
 
 async def rank_products_node(state: CommerceState) -> CommerceState:
-    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup") or state.get("product_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "SneakPeek is ranking the best options for you...")
     ranked = sneakpeek.rank_products(state["filtered_products"], intent)
     top5 = ranked[:5]
+    # Persist so follow-up questions ("is the first one good?") can reference them
+    session_state.save_ranked_products(state["session_id"], [p.model_dump() for p in top5])
     await _emit(state, "step_done", f"SneakPeek — top {len(top5)} picks ready for you", [p.model_dump() for p in top5])
     return {**state, "ranked_products": top5}
 
@@ -195,6 +204,14 @@ async def generate_recommendation(state: CommerceState) -> CommerceState:
         text = vibecheck.generate_greeting_reply()
         await _emit(state, "recommendation", text, [])
         return {**state, "recommendation_text": text}
+    if state.get("product_followup"):
+        products = session_state.get_ranked_products(state["session_id"])
+        await _emit(state, "step_start", "Answering your question about these products...")
+        text = await vibecheck.answer_product_question(state["user_message"], products)
+        await _emit(state, "recommendation", text, products)
+        return {**state, "recommendation_text": text, "ranked_products": [
+            NormalizedProduct.model_validate(p) for p in products
+        ]}
     if state.get("awaiting_followup"):
         text = vibecheck.generate_followup_question(state["intent"])
         await _emit(state, "recommendation", text, [])
@@ -277,6 +294,7 @@ async def run_discovery(
         "blocked": False,
         "chitchat": False,
         "awaiting_followup": False,
+        "product_followup": False,
         "sse_queue": sse_queue,
     }
     try:

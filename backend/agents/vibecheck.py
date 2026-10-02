@@ -200,6 +200,61 @@ def generate_followup_question(intent: ShoppingIntent) -> str:
     )
 
 
+_FOLLOWUP_HINTS = {
+    "first", "second", "third", "1st", "2nd", "3rd", "top", "that", "it",
+    "this", "those", "one", "good", "bad", "worth", "recommend", "better",
+    "worse", "difference", "which", "compare", "pros", "cons", "review",
+    "reliable", "quality", "durable", "comfortable", "tell me", "think",
+    "should i", "is it", "are they", "how is", "how are", "any good",
+    "pick", "choose", "between", "cheaper", "expensive", "fast",
+}
+
+
+def is_product_followup(message: str, has_session_products: bool) -> bool:
+    """
+    True when a message is likely a question about already-shown products
+    rather than a new search — triggers contextual Q&A instead of a fresh
+    LangGraph product search.
+    """
+    if not has_session_products:
+        return False
+    m = message.lower()
+    return any(hint in m for hint in _FOLLOWUP_HINTS)
+
+
+async def answer_product_question(question: str, products: list[dict]) -> str:
+    """
+    Answer a conversational follow-up about products already shown this session.
+    Products are the ranked list; #1 = top pick.
+    """
+    top = products[:5]
+    products_summary = "\n".join(
+        f"{i + 1}. {p['title']} — ${p['price']} | Rating: {p['rating']}/5 | {p.get('merchant_name', '')}"
+        for i, p in enumerate(top)
+    )
+    prompt = f"""The user was just shown these products (ranked best first):
+{products_summary}
+
+User's question: "{question}"
+
+Answer naturally and helpfully in 1-3 sentences. Reference specific products by name or number as relevant.
+"The first one" or "product #1" always means the top-ranked pick above.
+Do NOT suggest a new search. Do NOT make up facts — use only what is listed above."""
+
+    try:
+        llm = get_llm(temperature=0.3)
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        return _content_text(response.content).strip()
+    except Exception:
+        p = top[0] if top else None
+        if p:
+            return (
+                f"The top pick is **{p['title']}** at ${p['price']} with a {p['rating']}/5 rating "
+                f"from {p.get('merchant_name', 'the store')}."
+            )
+        return "Could you ask me more specifically? I'm happy to help compare or explain any of the products."
+
+
 def generate_greeting_reply() -> str:
     """
     Deterministic friendly reply for non-shopping chitchat (greetings, thanks,

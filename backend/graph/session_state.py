@@ -25,6 +25,10 @@ class SessionState(TypedDict):
 
 _sessions: dict[str, SessionState] = {}
 
+# Last products shown to the user — enables contextual follow-up Q&A like
+# "is the first one good?" without triggering a full new search.
+_ranked_products: dict[str, list[dict]] = {}
+
 # Pasted images live in a separate map, keyed by session_id: they're attached
 # via their own endpoint just before the SSE stream starts (EventSource can
 # only do GET, so the image can't ride along in that request), then popped
@@ -73,5 +77,14 @@ def get_pending_suggestion(session_id: str) -> Optional[dict]:
     return state.get("pending_suggestion") if state else None
 
 
+def save_ranked_products(session_id: str, products: list[dict]) -> None:
+    _ranked_products[session_id] = products
+
+
+def get_ranked_products(session_id: str) -> list[dict]:
+    return _ranked_products.get(session_id, [])
+
+
 def clear(session_id: str) -> None:
     _sessions.pop(session_id, None)
+    _ranked_products.pop(session_id, None)
