@@ -39,22 +39,22 @@ Single-page conversational interface with split-screen agent trace panel.
 ### Completed (continued)
 - [x] Voice recording delay fixed — `interimResults=true` resets 1.5s timer on each word, fires ~1.5s after last spoken word (was 5-10s)
 - [x] Agent recommendation focuses on #1 pick with "Want me to add to cart?" CTA
-- [x] Top-ranked product auto-selected when results arrive
-- [x] **Single-page conversational flow** — all of discovery → cart → payment → order confirmation → tracker happens in the chat (no page navigation)
+- [x] **Single-page conversational flow** — discovery → cart → payment → confirmation → tracker all in chat, zero page navigation
 - [x] InlineCheckout component: order summary card, animated DPAT processing steps, order confirmed with collapsible tracker
-- [x] handleSend intercepts affirmative replies ("yes", "ok", "confirm"…) when product selected — bypasses LangGraph, starts inline checkout
+- [x] Affirmative reply intercept ("yes", "ok", "sure"…) triggers inline checkout via `lastRecommendedProductRef` — no product needs to be visually selected
 - [x] Known Customer vs Guest landing page — two-CTA redesign
-- [x] Guest card input form (number/expiry/CVC) vs saved card tiles for known users
+- [x] Guest card entry via **secure modal popup** — card details never appear in the chat bubble, never exposed to the agent
+- [x] Card modal validation: expiry must be future date, name letters-only, min-length checks
+- [x] Guest login validation: name format + email regex
+- [x] Session card memory — guest card pre-filled on repeat checkout within the same session, "Use different card" link to change
+- [x] Inline cart panel (collapsible, above input) — shows session items with remove button and Checkout CTA
+- [x] ProductCard qty resets to "Add to Cart" after payment (React key flip via `productCardResetKey`)
+- [x] Compare bar (2–4 products selected) — no more competing "Buy Now" / cart panel dual-CTA
 
-### In Progress
+### In Progress / Next
 - [ ] Loyalty points system (DB tables + agent awareness)
 - [ ] History-based recommendations (reads past orders on login)
-
-### Not Started
-- [ ] Login page redesign (two CTAs: Known Customer / Guest)
-- [ ] Loyalty points DB schema + backend service
 - [ ] Post-purchase loyalty award + balance display in chat
-- [ ] `status.md` updates after each feature (ongoing)
 
 ---
 
