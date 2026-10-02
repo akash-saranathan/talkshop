@@ -34,6 +34,7 @@ from backend.models.product import NormalizedProduct
 class CommerceState(TypedDict):
     user_message: str
     session_id: str
+    user_id: Optional[str]  # injected per request for order-history personalization
     intent: Optional[ShoppingIntent]
     raw_products: list[dict]
     filtered_products: list[NormalizedProduct]
@@ -44,6 +45,7 @@ class CommerceState(TypedDict):
     blocked: bool
     chitchat: bool  # greeting/thanks/etc — skip search, reply with a friendly prompt
     awaiting_followup: bool  # category known but under-specified — ask before searching
+    product_followup: bool  # question about already-shown products — skip search, answer contextually
     sse_queue: Optional[asyncio.Queue]  # injected per request, not serialized
 
 
@@ -89,11 +91,25 @@ async def extract_intent(state: CommerceState) -> CommerceState:
         await _emit(state, "step_done", f"VibeCheck — got it, updated {pending['field'].replace('_', ' ')}", {"intent": intent.model_dump()})
         return {**state, "intent": intent}
 
+    # If the session already has products, let the LLM classify whether this is
+    # a follow-up question about those products, a new search, or chitchat —
+    # before running full intent extraction. This handles any phrasing naturally.
+    session_products = session_state.get_ranked_products(session_id)
+    if session_products and not image:
+        classification = await vibecheck.classify_message_intent(state["user_message"], session_products)
+        if classification == "product_followup":
+            await _emit(state, "step_done", "VibeCheck — answering your question about these products")
+            return {**state, "product_followup": True}
+        if classification == "chitchat":
+            await _emit(state, "step_done", "VibeCheck — just a greeting, no products needed")
+            return {**state, "chitchat": True}
+        # "new_search" — fall through to full intent extraction below
+
     intent, error = await vibecheck.extract_intent(state["user_message"], prior_intent=prior, image_base64=image)
     if error or not intent:
         await _emit(state, "error", f"Could not understand request: {error}")
         return {**state, "error": error or "intent_extraction_failed", "blocked": True}
-    if intent.category == "chitchat":
+    if intent.category in ("chitchat", "general"):
         await _emit(state, "step_done", "VibeCheck — just a greeting, no products needed")
         return {**state, "intent": intent, "chitchat": True}
 
@@ -111,7 +127,7 @@ async def extract_intent(state: CommerceState) -> CommerceState:
 
 
 async def mcp_product_search(state: CommerceState) -> CommerceState:
-    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup") or state.get("product_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "SneakPeek is searching stores for your product...")
@@ -124,7 +140,7 @@ async def mcp_product_search(state: CommerceState) -> CommerceState:
 
 
 async def normalize_products(state: CommerceState) -> CommerceState:
-    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup") or state.get("product_followup"):
         return state
     products = [NormalizedProduct.model_validate(p) for p in state["raw_products"]]
     await _emit(state, "step_done", f"SneakPeek — catalogued {len(products)} products")
@@ -132,7 +148,7 @@ async def normalize_products(state: CommerceState) -> CommerceState:
 
 
 async def deterministic_filter(state: CommerceState) -> CommerceState:
-    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup") or state.get("product_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "SneakPeek is applying your filters (size, price, availability)...")
@@ -142,31 +158,90 @@ async def deterministic_filter(state: CommerceState) -> CommerceState:
 
 
 async def rank_products_node(state: CommerceState) -> CommerceState:
-    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup"):
+    if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup") or state.get("product_followup"):
         return state
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "SneakPeek is ranking the best options for you...")
     ranked = sneakpeek.rank_products(state["filtered_products"], intent)
-    top5 = ranked[:5]
+    # Deduplicate by (title, merchant_id) — same model in multiple sizes shows up as
+    # one entry (highest-scored variant wins since ranked is already sorted desc).
+    seen_keys: set[tuple[str, str]] = set()
+    deduped: list = []
+    for p in ranked:
+        key = (p.title.lower(), p.merchant_id)
+        if key not in seen_keys:
+            seen_keys.add(key)
+            deduped.append(p)
+    top5 = deduped[:5]
+    top10 = deduped[:10]
+    # Persist up to 10 so "show more" requests can surface products 6-10 without a new search
+    session_state.save_ranked_products(state["session_id"], [p.model_dump() for p in top10])
     await _emit(state, "step_done", f"SneakPeek — top {len(top5)} picks ready for you", [p.model_dump() for p in top5])
     return {**state, "ranked_products": top5}
+
+
+def _get_order_history(user_id: Optional[str]) -> list[dict]:
+    """Fetch last 3 confirmed orders for personalization context. Returns [] on any error."""
+    if not user_id:
+        return []
+    try:
+        from backend.db.schema import Order, CartItem
+        from backend.db.session_utils import get_session
+        with get_session() as session:
+            rows = (
+                session.query(Order)
+                .filter(Order.user_id == user_id, Order.status == "confirmed")
+                .order_by(Order.created_at.desc())
+                .limit(3)
+                .all()
+            )
+            history = []
+            for order in rows:
+                cart = (
+                    session.query(CartItem)
+                    .filter(CartItem.product_id == order.product_id, CartItem.user_id == user_id)
+                    .order_by(CartItem.added_at.desc())
+                    .first()
+                )
+                history.append({
+                    "product_id": order.product_id,
+                    "title": cart.title if cart else order.product_id,
+                    "category": cart.category if cart else "unknown",
+                    "brand": cart.brand if cart else None,
+                    "amount": order.amount,
+                })
+            return history
+    except Exception:
+        return []
 
 
 async def generate_recommendation(state: CommerceState) -> CommerceState:
     if state.get("blocked"):
         return state
     if state.get("chitchat"):
-        text = vibecheck.generate_greeting_reply()
-        await _emit(state, "recommendation", text, [])
+        text = await vibecheck.answer_general_message(state["user_message"])
+        await _emit(state, "recommendation", text, {"products": [], "action": None})
+        return {**state, "recommendation_text": text}
+    if state.get("product_followup"):
+        all_products = session_state.get_ranked_products(state["session_id"])
+        text, action = await vibecheck.answer_product_question_with_action(state["user_message"], all_products[:5])
+        if action and action.get("type") == "show_more":
+            # Return products 6-10 (or all if fewer than 6 stored)
+            extra = all_products[5:] if len(all_products) > 5 else all_products
+            await _emit(state, "recommendation", text, {"products": extra, "action": action})
+        else:
+            await _emit(state, "recommendation", text, {"products": [], "action": action})
         return {**state, "recommendation_text": text}
     if state.get("awaiting_followup"):
         text = vibecheck.generate_followup_question(state["intent"])
         await _emit(state, "recommendation", text, [])
         return {**state, "recommendation_text": text}
     await _emit(state, "step_start", "VibeCheck is writing your personalized recommendation...")
+    order_history = _get_order_history(state.get("user_id"))
     text, pending_suggestion = await vibecheck.generate_recommendation_text(
         state["intent"],
         [p.model_dump() for p in state["ranked_products"]],
+        order_history=order_history,
     )
     if pending_suggestion:
         # So a bare "yes" on the next turn can apply this suggestion
@@ -222,11 +297,13 @@ async def run_discovery(
     user_message: str,
     session_id: str,
     sse_queue: asyncio.Queue,
+    user_id: Optional[str] = None,
 ) -> CommerceState:
     """Run the Phase 2 discovery graph and stream events via sse_queue."""
     initial_state: CommerceState = {
         "user_message": user_message,
         "session_id": session_id,
+        "user_id": user_id,
         "intent": None,
         "raw_products": [],
         "filtered_products": [],
@@ -237,6 +314,7 @@ async def run_discovery(
         "blocked": False,
         "chitchat": False,
         "awaiting_followup": False,
+        "product_followup": False,
         "sse_queue": sse_queue,
     }
     try:

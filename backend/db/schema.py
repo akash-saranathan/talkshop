@@ -182,6 +182,28 @@ class CartItem(Base):
     added_at = Column(DateTime, server_default=func.now())
 
 
+class LoyaltyPoints(Base):
+    __tablename__ = "loyalty_points"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(50), unique=True, nullable=False)
+    balance = Column(Integer, nullable=False, default=0)
+    lifetime_points = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class LoyaltyTransaction(Base):
+    __tablename__ = "loyalty_transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    transaction_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False)
+    order_id = Column(String(50))
+    points_earned = Column(Integer, nullable=False, default=0)
+    reason = Column(String(100), nullable=False, default="purchase")
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 

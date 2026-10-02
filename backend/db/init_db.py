@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth.security import hash_password
 from backend.config.agents import ALL_AGENTS
-from backend.db.schema import Base, Agent, Merchant, Product, User, Wallet
+from backend.db.schema import Base, Agent, LoyaltyPoints, Merchant, Product, User, Wallet
 
 DB_PATH = Path(__file__).parent / "commerce.db"
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
@@ -83,6 +83,13 @@ def seed_demo_wallet(session: Session):
     session.commit()
 
 
+def seed_demo_loyalty(session: Session):
+    exists = session.query(LoyaltyPoints).filter_by(user_id="USR001").first()
+    if not exists:
+        session.add(LoyaltyPoints(user_id="USR001", balance=0, lifetime_points=0))
+    session.commit()
+
+
 def seed_merchants(session: Session):
     merchants_file = DATA_DIR / "merchants.json"
     if not merchants_file.exists():
@@ -120,6 +127,7 @@ def run():
         seed_agents(session)
         seed_demo_user(session)
         seed_demo_wallet(session)
+        seed_demo_loyalty(session)
         seed_merchants(session)
         seed_products(session)
     print(f"Database initialized at {DB_PATH}")

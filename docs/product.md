@@ -1,18 +1,59 @@
-# Talkshop — Product Document
+# TalkShop — Product Document
 
-> **Conversational AI commerce.** You describe what you want. A multi-agent pipeline finds it, secures the payment, and tracks the order — all from a single chat window.
+> **Conversational AI commerce.** You describe what you want — or just ask anything. A multi-agent pipeline finds it, secures the payment, and tracks the order, all without leaving the chat window.
 
 ---
 
 ## Is it demo-ready?
 
-**Yes.** The full purchase flow works end-to-end today:
+**Yes.** The full purchase flow works end-to-end today, entirely in one chat window:
 
 ```
-Chat → Search → Results → Add to Cart → Cart Review → Checkout → Order Confirmation → Order Tracker
+Ask anything → Search → Results → "Add to cart" → Inline cart review →
+"Proceed to checkout" → DPAT authorization → Payment → Order confirmation
 ```
 
-All filters (color, size, brand, price, delivery date) work. Wallet and card payments both work. The AI recommendation, compare mode, and streaming responses are live. Three merchants, 137 products, 11 categories.
+No page navigation required. All natural language. Filters, voice input, image search, and guest checkout all work. Three merchants, 137 products, 11 categories. Works for both registered and guest users.
+
+---
+
+## Version 2 Highlights (current)
+
+Version 2 transformed TalkShop from a multi-page app into a fully conversational single-screen experience.
+
+### LLM-Driven Everything
+
+Every interaction — not just product searches — is now handled by the LLM:
+
+- **Any question answered** — ask about general knowledge, advice, or shopping help. The agent replies naturally, not with a scripted fallback.
+- **Follow-up questions** — "which one is better for trail running?", "is the first one waterproof?", "compare the top two" — all answered with real product facts from the current session.
+- **Cart operations by voice or text** — "add the first one to cart", "remove it", "show me my cart", "add the Nike ones" — the LLM understands what you mean and executes the right action.
+- **"Show more"** — "what else do you have?", "show me more options" — returns products 6–10 from the original search without a new query.
+
+### Inline Commerce — Zero Page Navigation
+
+The entire purchase flow happens inside the chat:
+
+1. Agent recommends a product and asks "Want me to add it to your cart?"
+2. Say "yes" or "add it" → inline cart card appears showing the added product, all cart items, total, and action buttons
+3. Click "Proceed to Checkout →" → order summary card appears in chat with product details, tax, shipping
+4. Click "Confirm & Pay" → live payment pipeline streams: GreenLight authorization → PayIt execution → TrackIt confirmation
+5. Order confirmed card shows in chat with order ID, amount, loyalty points
+
+### Live Agent Pipeline Panel
+
+The right panel shows a real-time execution trace of the 6-agent pipeline:
+
+- Horizontal flowchart: VibeCheck → SneakPeek → CartUp → GreenLight → PayIt → TrackIt
+- Each node animates live: idle → running (amber pulse) → done (green) → error (red)
+- Click any agent to see its detailed output: what it found, what it decided, what it produced
+- Panel persists the full history of the session — search steps AND payment steps in one view
+
+### Session Persistence
+
+- Navigate to /cart or /dashboard and come back — the conversation is exactly where you left it
+- Mid-checkout: the order summary card re-appears on return, card details pre-filled
+- Post-payment: the order confirmation shows, not the product cards
 
 ---
 
@@ -25,7 +66,6 @@ All filters (color, size, brand, price, delivery date) work. Wallet and card pay
 | Unique brands | 73 |
 | Merchants | 3 |
 | Price range | $14.99 – $1,399.00 |
-| Average price | $173.92 |
 
 ### Categories
 
@@ -55,66 +95,79 @@ All filters (color, size, brand, price, delivery date) work. Wallet and card pay
 
 ## How It Works
 
-### End-to-end flow
+### End-to-end flow (v2)
 
 ```
-User types (or speaks) a shopping request
+User types or speaks any message
           │
           ▼
- VibeCheck (Agent 1) — extracts structured intent from free text
-   • color, size, brand, price ceiling, delivery deadline, occasion
-   • asks a clarifying question if intent is too vague
-   • NeMo Guardrails block harmful / off-topic requests
-          │
+ VibeCheck (Agent 1) — LLM orchestrator
+   • classify_message_intent() — is this a product search, follow-up, or chitchat?
+   • If chitchat/general: answer_general_message() — LLM answers any question naturally
+   • If product follow-up: answer_product_question_with_action() — answers + returns action
+   • If new search: extract_intent() → structured ShoppingIntent (color, size, brand, price...)
+   • Asks one clarifying question if intent is too vague
+   • NeMo Guardrails blocks harmful / off-topic requests
+          │  (only for new searches)
           ▼
  SneakPeek (Agent 2) — multi-store product search
-   • fans out to 3 merchant adapters in parallel
-   • deterministic filter: size, price, color, category, delivery
-   • deterministic ranking score: budget fit, brand match, rating, speed
-   • returns top 5 results ranked by relevance
+   • Fans out to 3 merchant adapters in parallel
+   • Deterministic filter: size, price, color, category, delivery
+   • Deterministic ranking score: budget fit, brand match, rating, speed
+   • Deduplicates same-model products (highest-scored variant kept)
+   • Stores top 10; emits top 5 to UI; remainder surfaced on "show more"
           │
           ▼
  Chat UI streams results — skeleton cards → real cards with match tags
+ Right panel flowchart lights up node by node
           │
           ▼
- User adds to cart → CartUp (Agent 3) assembles order
+ User adds to cart (via LLM action or affirmative reply)
           │
           ▼
- Cart page — session vs. previous split, wallet or card selection
+ CartUp (Agent 3) — inline in chat
+   • Calls addToCart() API
+   • Creates checkout session (subtotal, tax, shipping, tamper hash)
+   • Inline cart card appears in chat: added product + all cart items + total
+   • "Proceed to Checkout →" button triggers payment flow
           │
           ▼
- GreenLight (Agent 4) — issues DPAT (Delegated Payment Auth Token)
-   • scoped: bound to this merchant, this amount, this checkout hash
-   • single-use, 15-minute TTL
-   • 12 deterministic guardrail checks before any token is issued
+ GreenLight (Agent 4) — issues DPAT token
+   • Scoped: one merchant, one amount, one checkout hash
+   • Single-use, 15-minute TTL
+   • 12 deterministic guardrail checks
+   • Step appears live in chat AND in right panel
           │
           ▼
- PayIt (Agent 5) — validates token, executes mock payment
-   • wallet: checks and deducts balance
-   • card: mock processor approves, no balance check
+ PayIt (Agent 5) — validates token, executes payment
+   • Independently re-runs guardrail checks (does not trust GreenLight's issuance)
+   • Mock processor approves; step appears live in both panels
           │
           ▼
- TrackIt (Agent 6) — records order, updates Order Tracker
-          │
-          ▼
- Order Tracker — live delivery status, purchase history, spend summary
+ TrackIt (Agent 6) — confirms order
+   • Writes to order table, updates loyalty balance
+   • "Order Confirmed" card appears in chat turn
+   • Right panel shows full 6/6 pipeline complete
 ```
 
 ### What the LLM does vs. what is deterministic
 
 | Concern | Handled by |
 |---|---|
-| Understanding natural language | LLM (VibeCheck) |
+| Classifying message intent | LLM (VibeCheck) |
+| Answering any general question | LLM (VibeCheck — `answer_general_message`) |
+| Answering follow-ups about products | LLM (VibeCheck — `answer_product_question_with_action`) |
+| Extracting structured shopping intent | LLM (VibeCheck) |
+| Deciding which cart action to take | LLM (returns `{text, action}`) |
 | Writing recommendation text | LLM (VibeCheck) |
-| Answering "which one should I buy?" | LLM (Compare endpoint) |
 | Product search and filtering | Deterministic (SneakPeek) |
 | Ranking score | Deterministic (SneakPeek) |
 | Price, inventory, delivery data | Merchant DB — never LLM |
 | DPAT token issuance | Deterministic service |
-| Payment guardrail checks | Deterministic (12 checks) |
+| Payment guardrail checks (12 checks) | Deterministic (GreenLight) |
 | Payment execution | Mock processor (deterministic) |
 
-**The LLM never touches financial values.** It only writes prose.
+**The LLM never touches financial values.** It only classifies intent, routes actions, and writes prose.
 
 ---
 
@@ -130,6 +183,7 @@ User types (or speaks) a shopping request
 | Icons | Lucide React | Consistent, tree-shakeable |
 | State | useState / useCallback / useRef | No external store needed at this scale |
 | Streaming | EventSource (SSE) | Real-time agent step updates without WebSocket overhead |
+| Session persistence | sessionStorage | Survives tab navigation, clears on new tab |
 
 ### Backend
 | Layer | Technology | Why |
@@ -154,81 +208,85 @@ User types (or speaks) a shopping request
 
 ---
 
-## Features Built
+## Full Feature List
 
-### Conversation & search
-- **Natural language intent extraction** — "blue Nike size 10 under $100" → structured `ShoppingIntent` with color, brand, size, price fields
-- **Composite category aliases** — "shoes" correctly searches running_shoes + sneakers + boots in one query
-- **Color fallback** — if no blue sneakers found, expands to all footwear before returning zero results
-- **Smart no-results message** — names exactly what failed ("No blue running shoes under $80") and suggests the most actionable fix ("Try raising budget to $104?")
-- **Follow-up clarification** — asks one question when intent is too vague, then proceeds
-- **Context merging** — "make it Nike" updates the previous intent without restarting the search
-- **Streaming response text** — recommendation appears word by word at 40 ms/word with a live cursor
+### Conversation & intelligence
+- **LLM message classification** — every message classified as `product_followup`, `new_search`, or `chitchat` before pipeline routes it
+- **Any question answered** — LLM replies naturally to general knowledge, advice, greetings, or anything else
+- **Natural language intent extraction** — "blue Nike size 10 under $100" → structured `ShoppingIntent`
+- **Product follow-up understanding** — "which one is better for trail running?", "is the first one waterproof?" answered from session context
+- **Cart operations by text** — "add the first one to cart", "remove it", "show me my cart"
+- **Affirmative intent** — "yes", "ok", "sure" after the agent's CTA triggers the correct action
+- **Context merging** — "make it Nike" updates the previous search without restarting
+- **Follow-up clarification** — asks one focused question when intent is too vague
+- **Streaming text** — recommendation appears word by word at 40 ms/word with a live cursor
+- **History-based personalization** — last 3 orders passed to recommendation prompt for personal relevance
 
 ### Product display
-- **Match checkmarks** — every card shows `✓ blue  ✓ size 10  ✓ under $100` — the exact constraints the AI verified
-- **Match tag tooltips** — hover a checkmark to see why that constraint was matched for that product
-- **Sort bar** — Best Match · ↓ Price · Top Rated · Fastest re-sorts cards client-side, no new query
-- **Horizontal scroll row** — cards scroll sideways, always visible without vertical crowding
-- **Skeleton cards** — three ghost cards pulse while the search pipeline runs
-- **Delivery urgency** — `⚡ Arrives tomorrow` or `📦 Arrives Oct 5` computed from today's date; fast deliveries glow green
-- **Image lightbox** — click a product image → full-screen overlay with spring animation and zoom-in cursor
-- **Merchant trust badges** — Verified / Premium badge, ships-in time, return policy on every card
+- **Top 5 shown, top 10 stored** — "show me more" surfaces products 6–10 without a new search
+- **Match checkmarks** — every card shows which constraints were verified (✓ blue ✓ size 10 ✓ under $100)
+- **Sort bar** — Best Match · ↓ Price · Top Rated · Fastest — client-side re-sort per turn
+- **Follow-up chips** — auto-generated smart chips after each result set
+- **Skeleton cards** — ghost cards pulse during search (not during follow-ups)
+- **Same-model deduplication** — highest-scored variant shown when multiple sizes/colors match
+- **Delivery urgency** — `⚡ Arrives tomorrow` computed from today's date
+- **Merchant trust badges** — Verified / Premium tier, ships-in time, return policy
 
 ### Compare mode
-- Select 2–4 products → **Compare** button appears in the floating bar
-- Side-by-side spec table: price, rating, reviews, color, size, arrival, shipping, merchant
-- Best price in green, top rating in amber, fastest delivery in green
-- **AI Recommendation panel** — LLM analyses the products and explains which wins overall, with 2–3 sentence reasoning citing actual numbers and one trade-off bullet per other product
-- **Best Pick** badge and column highlight on the AI winner
-- Each column has an Add to Cart button
+- Select 2–4 products → Compare button in floating bar
+- Side-by-side spec table with best price / top rating / fastest delivery highlighted
+- AI Recommendation panel — LLM picks winner with numbered reasoning and trade-off bullets
 
-### Cart & checkout
-- **Cart drawer** — slides in over the chat; no navigation away. Shows session vs. previous items, qty controls, remove, wallet balance
-- **Session-aware cart split** — items added in the current chat are shown separately from older items
-- **Wallet / card picker** — choose payment method in the cart page; card bypasses wallet balance
-- **Insufficient balance guard** — wallet payments are greyed out with an amber warning if balance is too low
-- **Checkout page** — read-only order summary, "Paying with…" line, approve button, security footer
-- **Multi-item checkout** — all cart items process in sequence; each shows a status badge (Queued → Authorizing → Paid / Blocked)
-- **Retry on error** — individual items can be retried without re-running the whole cart
+### Cart & checkout (inline)
+- **Inline cart card** — product + all cart items + total + View Cart / Proceed to Checkout buttons
+- **Inline order summary** — product, subtotal, tax, shipping, card selection, Confirm & Pay button
+- **Animated payment pipeline** — live step-by-step GreenLight → PayIt → TrackIt progress in chat
+- **Inline order confirmation** — Order ID, amount, loyalty points, collapsible order tracker
+- **Guest checkout** — secure card entry modal (card details never appear in chat)
+- **Session card memory** — guest card pre-filled on repeat checkout within the same session
+- **Enter key in modal** — submits card details form
 
 ### Payment security (DPAT model)
-- DPAT token is scoped to one merchant, one amount, one checkout hash, one use, 15-minute TTL
+- DPAT token scoped to one merchant, one amount, one checkout hash, one use, 15-minute TTL
 - Agent holds only the token ID — card number and CVV never enter the AI pipeline
-- **12 deterministic guardrail checks**: token exists, not expired, not consumed, agent match, merchant match, order match, currency match, amount ≤ authorized, amount == checkout total, hash match, consent record exists, balance (wallet only)
+- 12 deterministic guardrail checks before payment executes
 - Any check failure → PAYMENT_BLOCKED with reason code, logged to audit trail
 
-### Order tracker (Dashboard)
-- Metric cards: total sessions, approved orders, blocked transactions, total spend
-- Sortable order table: sort by purchase date or arrival date ascending/descending
-- Date range filter: narrow orders to any custom date window
-- Arrival dates displayed as real dates ("Arrives Oct 5"), not "in X days"
-- Order status: paid / blocked, with reason code on blocked rows
+### Session & persistence
+- **Full conversation history** — ChatGPT-style session sidebar, resumable
+- **Cross-navigation restore** — returning from /cart or /dashboard shows the exact same chat state
+- **Checkout persistence** — in-progress checkout survives navigation; no card re-entry
+- **Order confirmation persistence** — completed payment shows confirmation card, not product cards
 
-### Voice input
-- Hold-to-speak microphone with real audio waveform level meter (32-bar visualizer)
-- Continuous recognition — pauses don't end the session
-- Works in Chrome and Edge; graceful error message on unsupported browsers
+### Agent pipeline panel (right)
+- **6-agent flowchart** — horizontal pipeline with animated arrows and status nodes
+- **Per-agent detail** — click any agent to see its output table and step timeline
+- **All agents visible** — idle agents shown with descriptions, not hidden
+- **Session accumulation** — full history of all steps (search + payment) in one view
+- **Pipeline progress bar** — N / 6 with gradient fill
 
-### Image search
-- Paste a screenshot of a product → AI infers category and visual attributes to find similar items
-- Image is resized client-side before upload (max 768px, 70% quality) to keep requests fast
+### Voice & image
+- Real audio waveform level meter (32-bar visualizer) while mic is active
+- Image paste — AI infers category and visual attributes to find similar items
+- Graceful browser fallback message for unsupported browsers
 
-### Session management
-- Full conversation history across sessions; sidebar mirrors the ChatGPT thread pattern
-- Sessions restored on tab return from Cart / Dashboard
-- New session clears the cart strip and session-item tracking
+### Auth & identity
+- Known Customer / Guest two-CTA landing page
+- JWT + bcrypt registered accounts
+- Guest checkout with session-scoped card memory
+- Loyalty points: 1 pt per $1 on every confirmed order; balance shown after payment
 
 ---
 
 ## Security & Trust Model
 
 ```
-User sees:       Natural language request → product cards → approve button
+User sees:       Natural language → product cards → confirm button
 
 AI pipeline:     VibeCheck → SneakPeek → CartUp → GreenLight → PayIt → TrackIt
 
-What AI can do:  Understand intent, search products, explain recommendations
+What AI can do:  Understand intent, search products, write recommendations,
+                 answer any question, route cart actions
 
 What AI cannot:  Read card numbers or CVV, modify prices, change merchant ID,
                  create or consume DPAT tokens, override guardrail decisions
@@ -259,52 +317,11 @@ LLM priority order at startup:
 2. Ollama + Llama 3.2 — if Ollama is running at `localhost:11434`
 3. Hard stop with setup instructions
 
----
-
-## Future Scope
-
-### Near-term (days)
-
-| # | Feature | Effort | Value |
-|---|---|---|---|
-| 1 | **Voice as hero CTA** — large hold-to-speak button, primary interaction pattern | 2–3 h | High |
-| 9 | **One-tap reorder** — Reorder button in Order Tracker re-runs the same purchase | 2–3 h | Medium |
-| 13 | **Budget tracking** — today's spend and monthly spend summary on Order Tracker | 3–4 h | Medium |
-| 16 | **Order confirmation email** — fires when PayIt confirms; uses email already in DB | 2–3 h | High |
-| 17 | **Order status update emails** — simulated shipped / delivered progression | half-day | Medium |
-
-### Medium-term (weeks)
-
-| # | Feature | Effort | Notes |
-|---|---|---|---|
-| 4 | **Preference learning** — notices patterns (always Nike, always size 10) and pre-fills them | 1–2 days | Needs user_preferences DB table |
-| 18 | **Real shipping tracking** | 1 day | EasyPost free sandbox; real tracking numbers |
-| 19 | **WhatsApp notifications** | 1–2 days | Twilio; needs phone field on user profile |
-| 11 | **Price drop alerts** | 1–2 days | Background watcher job per saved intent |
-
-### ML recommendation system (future)
-
-The current ranking is deterministic (price fit, rating, delivery speed, brand match). A machine learning layer would make it adaptive:
-
-| Model | What it learns | Input signals | Output |
-|---|---|---|---|
-| **Collaborative filtering** (user-based) | Users with similar purchase history tend to like similar products | Order history, cart additions, session patterns | "Users like you also bought..." |
-| **Content-based filtering** | Map product attributes to user preference vectors | Category, brand, color, price tier, delivery preference | Personalized ranking overlay on SneakPeek results |
-| **Session-based recommendation** (RNN / transformer) | What a user adds to cart mid-session predicts what else they want | Current session actions in sequence | "You might also like" after Add to Cart |
-| **Price elasticity model** | Each user has a price sensitivity per category | Historical max_price vs. actual purchase price | Smarter budget suggestions in no-results messages |
-| **CTR / conversion model** | Which card position and attributes drive Add to Cart | Card index, match tags shown, sort mode, image presence | Re-rank cards to maximise conversion |
-| **LLM fine-tune on product corpus** | Domain-specific intent extraction | Talkshop order + query history | Better attribute extraction for niche queries ("wide toe box", "waterproof") |
-
-**Recommended starting point:** A lightweight collaborative filtering model trained on the order history table — even with 50–100 orders it produces meaningful signals. Can be implemented in scikit-learn, served as a `/api/recommendations` endpoint, and blended into SneakPeek's ranking score with a configurable weight.
-
-### Larger scope
-
-| # | Feature | Notes |
-|---|---|---|
-| 12 | **Collaborative shopping** — share session link, vote on products | Multi-user real-time |
-| 14 | **Proactive recommendations** — "You bought running shoes 6 months ago" | Cron job over order history |
-| 15 | **Live merchant integrations** — real Shopify / BestBuy inventory | API credentials needed |
-| 20 | **Price drop alert emails** | Extends item 11; watcher job per intent |
+Demo login:
+```
+email:    demo@talkshop.io
+password: demo1234
+```
 
 ---
 
@@ -318,3 +335,76 @@ The current ranking is deterministic (price fit, rating, delivery speed, brand m
 | "Human-in-the-loop purchase approval" | "The agent has access to the user's card" |
 | "Local mock payment processor" | "This is a live bank integration" |
 | "AI-powered product ranking" | "This uses deep learning" (it's deterministic today) |
+
+---
+
+## Future Scope (v3)
+
+All features below are free to run locally — no paid APIs or cloud services required.
+
+### ML & Intelligence
+
+| Feature | Library / Approach |
+|---|---|
+| **Semantic product search** | `sentence-transformers` (all-MiniLM-L6-v2) — embed products at seed time, cosine similarity at query time via FAISS |
+| **Visual similarity search** | OpenCLIP (`ViT-B-32`) — match user-pasted images to catalog; zero-cost, runs on CPU |
+| **Collaborative filtering** | `LightFM` or `Implicit` on order history — "users like you also bought" |
+| **Local intent classifier** | Fine-tuned `distilbert-base-uncased` — replaces Gemini for the classify step when offline |
+| **Sentiment-aware ranking** | `transformers` sentiment pipeline on product reviews — negative-review penalty in score |
+| **Fraud signal scoring** | Isolation Forest on order features — score surfaced in audit trail |
+| **Price forecasting** | Meta `Prophet` — forecast price trends, "likely to drop next week" badge |
+| **Personalised re-ranking** | ε-greedy bandit on click/add/buy events — improves with every session, stored in SQLite |
+| **Bundle detection** | Apriori association rules (`mlxtend`) on order history — "frequently bought together" chips |
+
+### Notifications & Comms
+
+| Feature | Library / Approach |
+|---|---|
+| **Order confirmation email** | `smtplib` + Gmail free tier, or local Mailhog dev SMTP — HTML email with product thumbnail and order ID |
+| **Price drop alerts** | Celery beat task every hour — emails user when a saved-intent product drops >10% |
+| **Abandoned cart email** | Fires 30 min after non-empty cart with no order — "you left something behind" |
+| **Shipment milestone emails** | TrackIt writes delivery stages; email sent on dispatched, out-for-delivery, and delivered |
+| **WhatsApp order updates** | Twilio free sandbox — message on order confirmed and on delivery |
+| **Web push notifications** | `pywebpush` + browser Push API — "Your order shipped" push, no third-party cost |
+
+### Real-time & Infrastructure
+
+| Feature | Library / Approach |
+|---|---|
+| **Redis session cache** | `redis-py` — LangGraph state survives backend restarts; session shared across workers |
+| **Celery task queue** | Celery + Redis broker — email, price watchers, fraud scoring off the request thread |
+| **WebSocket chat** | `fastapi-websockets` — replaces SSE; typing indicators, live cart sync across tabs |
+| **Meilisearch full-text** | Self-hosted Meilisearch (Docker, free) — typo-tolerant fallback when embedding search misses |
+| **Real-time inventory** | Background task polls stock every 60 s; "Only 2 left" badge updates live via WebSocket push |
+| **Observability stack** | Arize Phoenix (already wired) + Grafana + Prometheus (Docker, free) — latency, errors, LLM token usage |
+
+### Commerce Features
+
+| Feature | Notes |
+|---|---|
+| **Order cancellation & refund** | Cancel within 15-min window; DPAT token voided, wallet refunded |
+| **Returns flow** | "Return this item" → RMA number, EasyPost sandbox shipping label (free tier) |
+| **Discount / promo codes** | `promo_codes` table; CartUp applies discount before DPAT token is minted |
+| **Multi-item checkout** | Single DPAT token covers entire cart; guardrail checks on combined amount |
+| **One-tap reorder** | Re-runs the exact product + checkout from order history without new search |
+| **Saved addresses** | Address book; "ship to my home" resolved by VibeCheck to stored default |
+| **Cross-merchant loyalty** | Unified points ledger across all 3 merchants — earn and redeem anywhere |
+| **Real shipping tracking** | EasyPost free sandbox — real tracking numbers and delivery milestones |
+
+### UX & Accessibility
+
+| Feature | Notes |
+|---|---|
+| **Wake word detection** | `openWakeWord` (free, local) — "Hey TalkShop" activates mic without button |
+| **Receipt OCR** | `pytesseract` + `Pillow` — scan a receipt image, find the same item cheaper |
+| **Multi-language** | `deep-translator` + self-hosted LibreTranslate — UI and LLM prompts in user's language |
+| **Facial recognition login** | `face_recognition` (dlib, free, local) — webcam login for registered users |
+
+### Agentic Protocols
+
+| Feature | Notes |
+|---|---|
+| **UCP merchant discovery** | Universal Commerce Protocol — real-time merchant catalog discovery |
+| **ACP agent-to-bank token handshake** | Stripe ACP / Visa Agentic Token integration |
+| **X402 micropayments** | HTTP 402 machine-to-machine payment protocol |
+| **APGP payment protocol** | Google Agent Payments Protocol (AP2) |

@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown, GitCompare } from "lucide-react";
-import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
-import { getCart, addToCart } from "../api/cart";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2, CheckCircle2, ShoppingBag } from "lucide-react";
+import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord, type ChatAction } from "../api/chat";
+import { getCart, addToCart, removeFromCart, type CartItemData } from "../api/cart";
+import { authFetch } from "../api/client";
 import ProductCard from "../components/ProductCard";
 import SkeletonProductCard from "../components/SkeletonProductCard";
 import CompareModal from "../components/CompareModal";
@@ -11,7 +12,9 @@ import CartDrawer from "../components/CartDrawer";
 import ChatSidebar from "../components/ChatSidebar";
 import AgentTrailPanel from "../components/AgentTrailPanel";
 import ThemeToggle from "../components/ThemeToggle";
+import InlineCheckout, { SAVED_CARDS, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape } from "../components/InlineCheckout";
 import { useAuth } from "../auth/AuthContext";
+import { getProductVisual } from "../utils/productVisual";
 
 // ── Intent parsing ──────────────────────────────────────────────────────────
 
@@ -91,6 +94,202 @@ interface Turn {
   recommendation: string;
   blocked: string | null;
   intent: SimpleIntent;
+  checkout?: InlineCheckoutData;
+  cartAdded?: { product: ProductData };
+  showCartInline?: boolean;
+}
+
+function renderWithBold(text: string): React.ReactNode {
+  const parts = text.split(/\*\*(.+?)\*\*/g);
+  return parts.map((part, i) =>
+    i % 2 === 1 ? <strong key={i} className="font-semibold text-[var(--color-text)]">{part}</strong> : part
+  );
+}
+
+function isAffirmativeInput(text: string): boolean {
+  const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
+  return /^(yes|yeah|yep|sure|ok|okay|confirm|proceed|pay|go ahead|do it|sounds good|let's do it|lets do it|buy|buy it|buy now|ok proceed|yes proceed|yes please|yes buy it|ok buy it|continue|let's go|lets go|pay now|ok pay|yes pay)$/.test(t);
+}
+
+// Broader checkout intent — catches multi-word phrases like "add it to my cart",
+// "lets move on to buying it", "make payment", "proceed to checkout", etc.
+// Used in handleSend to intercept these before sending to the backend.
+function isCheckoutIntent(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return /\b(add\s+it|add\s+to\s+(my\s+)?cart|buy\s+it|purchase\s+it|place\s+order|proceed\s+to\s+(checkout|pay)|make\s+payment|complete\s+purchase|checkout|let'?s\s+buy|move\s+on\s+to\s+buy|go\s+ahead\s+and\s+(buy|pay)|ready\s+to\s+pay|want\s+to\s+buy)\b/.test(t);
+}
+
+// Explicit checkout phrases used when there's no active product ref — avoids
+// triggering checkout on bare "ok"/"sure" which could be follow-up acks.
+function isExplicitCheckoutPhrase(text: string): boolean {
+  const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
+  return /^(proceed|ok proceed|yes proceed|buy it|buy now|checkout now|pay now|yes buy it|ok buy it|place order|let'?s\s+(buy|checkout|pay))$/.test(t)
+    || isCheckoutIntent(text);
+}
+
+// Intercept "show cart" / "view cart" style messages so we never send them to
+// the LangGraph backend (which has no way to fetch or display cart contents).
+function isShowCartIntent(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  // Standalone "cart" or "my cart"
+  if (t === "cart" || t === "my cart") return true;
+  // Message has a "view/show/open/check" word AND the word "cart"
+  if (/\bcart\b/.test(t) && /\b(show|view|open|see|display|check|look at)\b/.test(t)) return true;
+  // "what's in my cart" style
+  if (/\bcart\b/.test(t) && /\b(what|whats)\b/.test(t)) return true;
+  return false;
+}
+
+// "add it", "add to cart", "add this" → add-to-cart (not checkout).
+function isAddToCartPhrase(text: string): boolean {
+  const t = text.trim().toLowerCase().replace(/[!?.]+$/, "");
+  if (/^(add to cart|add it|add this|add it to cart|add this to cart|add it to my cart|add this to my cart)$/.test(t)) return true;
+  if (/\badd\s+(it|this|that)\s+(to\s+(my\s+)?cart)\b/.test(t)) return true;
+  return false;
+}
+
+// Inline cart card — shown in chat after add-to-cart or when user asks to view cart.
+function InlineCartCard({
+  addedProduct,
+  cartItems,
+  onViewCart,
+  onCheckout,
+}: {
+  addedProduct?: ProductData;
+  cartItems: import("../api/cart").CartItemData[];
+  onViewCart: () => void;
+  onCheckout: (product: ProductData) => void;
+}) {
+  const visual = addedProduct ? getProductVisual(addedProduct.title, addedProduct.category) : null;
+  const VisualIcon = visual?.icon;
+  const total = cartItems.reduce((sum, item) => sum + item.price, 0);
+  const checkoutProduct = addedProduct ?? (cartItems[0] ? {
+    product_id: cartItems[0].product_id,
+    merchant_id: cartItems[0].merchant_id,
+    merchant_name: cartItems[0].merchant_name,
+    title: cartItems[0].title,
+    brand: cartItems[0].brand,
+    category: cartItems[0].category,
+    price: cartItems[0].price,
+    currency: cartItems[0].currency,
+    size: cartItems[0].size,
+    color: cartItems[0].color,
+    available: true,
+    inventory: 1,
+    delivery_days: cartItems[0].delivery_days,
+    rating: cartItems[0].rating,
+    review_count: 0,
+    shipping_cost: 0,
+    rank_score: 0,
+    source: "cart",
+    image_url: cartItems[0].image_url,
+    weight_grams: null,
+    cushioning: null,
+  } as ProductData : null);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-xl border border-[var(--color-border)] overflow-hidden max-w-sm"
+      style={{ boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}
+    >
+      {addedProduct && (
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--color-border)]"
+          style={{ background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)" }}>
+          <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+          <p className="text-sm font-semibold text-emerald-700">Added to cart!</p>
+        </div>
+      )}
+      {!addedProduct && (
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--color-border)]"
+          style={{ background: "linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%)" }}>
+          <ShoppingBag size={14} className="text-blue-600 shrink-0" />
+          <p className="text-sm font-semibold text-blue-700">Your Cart</p>
+        </div>
+      )}
+
+      {addedProduct && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
+          {addedProduct.image_url ? (
+            <img src={addedProduct.image_url} alt={addedProduct.title}
+              className="w-11 h-11 rounded-lg object-cover shrink-0"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+          ) : (VisualIcon && visual) ? (
+            <div className={`w-11 h-11 rounded-lg grid place-items-center shrink-0 ${visual.bg}`}>
+              <VisualIcon size={16} className={visual.fg} strokeWidth={1.5} />
+            </div>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[var(--color-text)] truncate">{addedProduct.title}</p>
+            <p className="text-xs text-[var(--color-text-muted)]">{addedProduct.merchant_name} · ${addedProduct.price.toFixed(2)}</p>
+          </div>
+        </div>
+      )}
+
+      {cartItems.length > 0 && (
+        <div className="bg-[var(--color-bg)]">
+          <div className="flex items-center justify-between px-4 pt-2.5 pb-1">
+            <span className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide">
+              Cart · {cartItems.length} {cartItems.length === 1 ? "item" : "items"}
+            </span>
+            <span className="text-xs font-bold text-[var(--color-text)]">${total.toFixed(2)}</span>
+          </div>
+          {cartItems.slice(0, 4).map((item) => (
+            <div key={item.cart_item_id}
+              className="flex items-center justify-between px-4 py-1.5 border-t border-[var(--color-border)]/60">
+              <span className="text-xs text-[var(--color-text)] truncate flex-1 mr-2">{item.title}</span>
+              <span className="text-xs font-semibold text-[var(--color-text)] shrink-0">${item.price.toFixed(2)}</span>
+            </div>
+          ))}
+          {cartItems.length > 4 && (
+            <p className="text-xs text-[var(--color-text-muted)] px-4 py-1.5 border-t border-[var(--color-border)]/60">
+              +{cartItems.length - 4} more item{cartItems.length - 4 > 1 ? "s" : ""}
+            </p>
+          )}
+        </div>
+      )}
+
+      {cartItems.length === 0 && !addedProduct && (
+        <p className="px-4 py-3 text-sm text-[var(--color-text-muted)] bg-[var(--color-bg)]">Your cart is empty.</p>
+      )}
+
+      <div className="flex gap-2 px-4 py-3 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+        <button onClick={onViewCart}
+          className="flex-1 py-2 text-xs font-semibold rounded-lg border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-bg)] transition-colors">
+          View Cart
+        </button>
+        {checkoutProduct && (
+          <button onClick={() => onCheckout(checkoutProduct)}
+            className="flex-1 py-2 text-xs font-bold rounded-lg text-white transition-opacity hover:opacity-90"
+            style={{ background: "linear-gradient(135deg, #2563eb, #7c3aed)" }}>
+            Proceed to Checkout →
+          </button>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function _parseOrdinalWord(w: string): number {
+  const map: Record<string, number> = {
+    first: 0, "1st": 0, "1": 0,
+    second: 1, "2nd": 1, "2": 1,
+    third: 2, "3rd": 2, "3": 2,
+    fourth: 3, "4th": 3, "4": 3,
+    fifth: 4, "5th": 4, "5": 4,
+  };
+  return map[w] ?? 0;
+}
+
+// Returns 0-based product index when the message contains an action word ("add",
+// "buy", etc.) AND an ordinal — e.g. "add first one to cart" → 0.
+function getOrdinalCheckoutTarget(text: string): number | null {
+  const t = text.trim().toLowerCase();
+  if (!/\b(add|buy|purchase|checkout|order|get)\b/.test(t)) return null;
+  const m = t.match(/\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|[1-5])\b/);
+  return m ? _parseOrdinalWord(m[1]) : null;
 }
 
 // Pasted screenshots can be huge — downscale before it ever leaves the
@@ -114,6 +313,9 @@ function humanizeStep(message: string): string | null {
 
   // Suppress zero-product noise
   if (/\b0 products?\b/.test(m) || /catalogued 0/.test(m) || /top 0 picks/.test(m)) return null;
+
+  // Suppress internal follow-up routing messages — right pane handles those
+  if (m.includes("answering your question") || m.includes("follow-up question")) return null;
 
   // VibeCheck
   if (m.includes("vibecheck")) {
@@ -173,32 +375,37 @@ function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
 
 export default function Chat() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, isGuest } = useAuth();
+  // Remembers the guest card entered during this session — never persisted to storage.
+  const sessionGuestCardRef = useRef<import("../components/InlineCheckout").GuestCardInput | null>(null);
   const [input, setInput] = useState("");
   const [pastedImage, setPastedImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
+  // Product the agent just recommended and asked "Want me to add to cart?" —
+  // drives the Add/Dismiss chips below the recommendation text.
+  const [pendingCheckoutProduct, setPendingCheckoutProduct] = useState<ProductData | null>(null);
   const [cartCount, setCartCount] = useState(0);
   const [sessionCartCount, setSessionCartCount] = useState(0);
+  // Incrementing this forces ProductCards to remount and reset their qty state after payment.
+  const [productCardResetKey, setProductCardResetKey] = useState(0);
   const [sessionCartIds, setSessionCartIds] = useState<Set<string>>(new Set());
+  const [sessionCartItems, setSessionCartItems] = useState<CartItemData[]>([]);
+  const [cartPanelOpen, setCartPanelOpen] = useState(false);
   const [turnSortModes, setTurnSortModes] = useState<Map<string, SortMode>>(new Map());
   const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
-  const [addingToCheckout, setAddingToCheckout] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(true);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftWidth, setLeftWidth] = useState(256);
-  const [rightWidth, setRightWidth] = useState(288);
+  const [rightWidth, setRightWidth] = useState(() => Math.round((window.innerWidth - 48) * 0.40));
   const resizingRef = useRef<"left" | "right" | null>(null);
   const [recording, setRecording] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(4));
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
-  const [autoCheckoutIn, setAutoCheckoutIn] = useState<number | null>(null);
-  const autoCheckoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastAddedItemRef = useRef<import("../api/cart").CartItemData | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -207,6 +414,19 @@ export default function Chat() {
   // pause — should silently resume so it feels continuous) from "the user
   // clicked Stop/Cancel" (should actually end).
   const stoppingRef = useRef(false);
+  const autoSendRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Always points to the latest handleSend — lets recognition callbacks call
+  // it directly without capturing a stale closure.
+  const handleSendRef = useRef<(() => void) | null>(null);
+  // Same pattern for doCheckoutSummary — avoids TDZ when handleSend references it.
+  const doCheckoutSummaryRef = useRef<((userText: string, product: ProductData) => void) | null>(null);
+  const attachCheckoutToActiveTurnRef = useRef<((turnId: string, product: ProductData) => void) | null>(null);
+  const doAddToCartRef = useRef<((userText: string, product: ProductData) => void) | null>(null);
+  const attachAddToCartToActiveTurnRef = useRef<((turnId: string, product: ProductData) => void) | null>(null);
+  // Tracks the last agent-recommended product so "yes/ok" can trigger checkout
+  // without relying on the selected-products visual state.
+  const lastRecommendedProductRef = useRef<ProductData | null>(null);
   // sessionIdRef is the source of truth read inside async streaming
   // callbacks (avoids stale-closure bugs); currentSessionId mirrors it so
   // the sidebar can reactively highlight the active thread.
@@ -224,6 +444,7 @@ export default function Chat() {
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
+
 
   // Refresh the cart badge on mount and whenever the tab regains focus —
   // covers coming back from Cart/Checkout after adding, removing, or buying.
@@ -247,7 +468,7 @@ export default function Chat() {
 
   useEffect(() => {
     const MIN_WIDTH = 200;
-    const MAX_WIDTH = 420;
+    const MAX_WIDTH = 700;
     const clamp = (v: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, v));
 
     const onMouseMove = (e: MouseEvent) => {
@@ -279,7 +500,7 @@ export default function Chat() {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     audioCtxRef.current?.close().catch(() => {});
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
-    if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   }, []);
 
   // Auto-scroll to the newest turn, matching standard chat UX.
@@ -309,6 +530,8 @@ export default function Chat() {
     setTurns([]);
     setSessionCartCount(0);
     setSessionCartIds(new Set());
+    setSessionCartItems([]);
+    setCartPanelOpen(false);
     try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
   }, [switchToSession]);
 
@@ -319,12 +542,74 @@ export default function Chat() {
     switchToSession(id);
     try {
       const messages = await getSessionMessages(id);
-      setTurns(messagesToTurns(messages));
+      const rawTurns = messagesToTurns(messages);
+
+      // Restore confirmed order or in-progress checkout saved before navigation
+      try {
+        const orderSaved   = JSON.parse(sessionStorage.getItem(`talkshop_order_${id}`) ?? "null");
+        const checkoutSaved = JSON.parse(sessionStorage.getItem(`talkshop_checkout_${id}`) ?? "null");
+        const guestCardSaved = JSON.parse(sessionStorage.getItem(`talkshop_guestcard_${id}`) ?? "null");
+
+        if (orderSaved?.orderId && orderSaved.product) {
+          // Hide the search-results products for the ordered product
+          for (const t of rawTurns) {
+            if (t.products.some((p) => p.product_id === orderSaved.product.product_id)) {
+              t.products = [];
+              break;
+            }
+          }
+          rawTurns.push({
+            id: crypto.randomUUID(),
+            userMessage: "Checkout",
+            steps: [
+              { id: "ca1",   message: "CartUp — checkout session ready",        status: "done" as const },
+              { id: "pay-0", message: "GreenLight — authorization approved",     status: "done" as const },
+              { id: "pay-1", message: "GreenLight — DPAT token issued",          status: "done" as const },
+              { id: "pay-2", message: "PayIt — payment processed",               status: "done" as const },
+              { id: "pay-3", message: "TrackIt — order recorded",                status: "done" as const },
+            ],
+            products: [],
+            recommendation: "",
+            blocked: null,
+            intent: {},
+            checkout: {
+              phase: "confirmed" as const,
+              product: orderSaved.product,
+              selectedCard: orderSaved.selectedCard ?? SAVED_CARDS[0].id,
+              orderId: orderSaved.orderId,
+              confirmedTotal: orderSaved.amount,
+              pointsEarned: orderSaved.pointsEarned,
+              loyaltyBalance: orderSaved.loyaltyBalance,
+            },
+          });
+        } else if (checkoutSaved?.checkoutData && checkoutSaved.product) {
+          // Restore in-progress checkout summary
+          rawTurns.push({
+            id: crypto.randomUUID(),
+            userMessage: "Checkout",
+            steps: [{ id: "ca1", message: "CartUp — checkout session ready", status: "done" as const }],
+            products: [],
+            recommendation: "",
+            blocked: null,
+            intent: {},
+            checkout: {
+              phase: "summary" as const,
+              product: checkoutSaved.product,
+              checkoutData: checkoutSaved.checkoutData,
+              selectedCard: checkoutSaved.selectedCard ?? SAVED_CARDS[0].id,
+              isGuest,
+              guestCard: guestCardSaved ?? (isGuest ? { number: "", expiry: "", cvc: "", name: "" } : undefined),
+            },
+          });
+        }
+      } catch { /* noop — always show at least the DB messages */ }
+
+      setTurns(rawTurns);
     } catch {
       switchToSession(crypto.randomUUID());
       setTurns([]);
     }
-  }, [switchToSession]);
+  }, [switchToSession, isGuest]);
 
   const handleSelectSession = useCallback(async (clickedId: string) => {
     if (clickedId === sessionIdRef.current) return;
@@ -333,6 +618,8 @@ export default function Chat() {
     activeTurnId.current = null;
     setSessionCartCount(0);
     setSessionCartIds(new Set());
+    setSessionCartItems([]);
+    setCartPanelOpen(false);
     try { sessionStorage.removeItem("talkshop_session_cart_ids"); } catch { /* noop */ }
     await loadSession(clickedId);
   }, [loadSession]);
@@ -348,28 +635,6 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const triggerCheckoutCountdown = useCallback((item?: import("../api/cart").CartItemData) => {
-    if (item) lastAddedItemRef.current = item;
-    if (autoCheckoutTimerRef.current) clearInterval(autoCheckoutTimerRef.current);
-    setAutoCheckoutIn(10);
-    let remaining = 10;
-    autoCheckoutTimerRef.current = setInterval(() => {
-      remaining -= 1;
-      setAutoCheckoutIn(remaining);
-      if (remaining <= 0) {
-        clearInterval(autoCheckoutTimerRef.current!);
-        autoCheckoutTimerRef.current = null;
-        setAutoCheckoutIn(null);
-        navigate("/cart");
-      }
-    }, 1000);
-  }, [navigate]);
-
-  const cancelCheckoutCountdown = useCallback(() => {
-    if (autoCheckoutTimerRef.current) { clearInterval(autoCheckoutTimerRef.current); autoCheckoutTimerRef.current = null; }
-    setAutoCheckoutIn(null);
-  }, []);
-
   const handleSessionDeleted = useCallback((deletedId: string) => {
     if (deletedId === sessionIdRef.current) {
       handleNewChat();
@@ -379,6 +644,99 @@ export default function Chat() {
   const handleSend = useCallback(async () => {
     const msg = input.trim();
     if (!msg || loading) return;
+
+    // ── Add-to-cart intercept — "add it/this/to cart" → show cart card, not checkout ──
+    if (isAddToCartPhrase(msg) && lastRecommendedProductRef.current) {
+      doAddToCartRef.current?.(msg, lastRecommendedProductRef.current);
+      // Keep lastRecommendedProductRef so the cart-added card's "Proceed to Checkout" still works
+      return;
+    }
+
+    // ── Inline checkout intercepts ──────────────────────────────────────────
+    // User said "yes"/checkout phrase after agent recommended a product → bypass LangGraph, start checkout
+    if ((isAffirmativeInput(msg) || isCheckoutIntent(msg)) && lastRecommendedProductRef.current) {
+      doCheckoutSummaryRef.current?.(msg, lastRecommendedProductRef.current);
+      lastRecommendedProductRef.current = null;
+      setPendingCheckoutProduct(null);
+      return;
+    }
+
+    // ── Show-cart intercept — open drawer directly, no backend call ────────
+    if (isShowCartIntent(msg)) {
+      setInput("");
+      const cartTurnId = crypto.randomUUID();
+      setTurns((prev) => [...prev, {
+        id: cartTurnId,
+        userMessage: msg,
+        steps: [],
+        products: [],
+        recommendation: "Here's your cart!",
+        blocked: null,
+        intent: {},
+      }]);
+      setShowCartDrawer(true);
+      return;
+    }
+
+    // ── Ordinal add/buy: "add first one to cart", "buy the second" ─────────
+    const ordinalIdx = getOrdinalCheckoutTarget(msg);
+    if (ordinalIdx !== null) {
+      const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
+      const targetProduct = lastTurnWithProducts?.products[ordinalIdx];
+      if (targetProduct) {
+        setInput("");
+        doCheckoutSummaryRef.current?.(msg, targetProduct);
+        lastRecommendedProductRef.current = null;
+        setPendingCheckoutProduct(null);
+        return;
+      }
+    }
+
+    // ── Checkout fallback: explicit buy/proceed with no active product ref ──
+    // Falls back to session cart items, then last shown products, so "buy it"
+    // and "ok proceed" still work after a compare/follow-up question cleared
+    // the product ref.
+    if (isExplicitCheckoutPhrase(msg) && !lastRecommendedProductRef.current) {
+      if (sessionCartItems.length > 0) {
+        const cartItem = sessionCartItems[0];
+        const cartProduct: ProductData = {
+          product_id: cartItem.product_id,
+          merchant_id: cartItem.merchant_id,
+          merchant_name: cartItem.merchant_name,
+          title: cartItem.title,
+          brand: cartItem.brand,
+          category: cartItem.category,
+          price: cartItem.price,
+          currency: cartItem.currency,
+          size: cartItem.size,
+          color: cartItem.color,
+          available: true,
+          inventory: 1,
+          delivery_days: cartItem.delivery_days,
+          rating: cartItem.rating,
+          review_count: 0,
+          shipping_cost: 0,
+          rank_score: 0,
+          source: "cart",
+          image_url: cartItem.image_url,
+          weight_grams: null,
+          cushioning: null,
+        };
+        setInput("");
+        doCheckoutSummaryRef.current?.(msg, cartProduct);
+        return;
+      }
+      const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
+      if (lastTurnWithProducts?.products[0]) {
+        setInput("");
+        doCheckoutSummaryRef.current?.(msg, lastTurnWithProducts.products[0]);
+        return;
+      }
+    }
+
+    // Starting a new search — clear any pending cart CTA
+    setPendingCheckoutProduct(null);
+    lastRecommendedProductRef.current = null;
 
     // Always persist the active session so returning from Dashboard/Cart
     // restores this chat, even if the user never clicked a sidebar session.
@@ -441,12 +799,49 @@ export default function Chat() {
           return turn;
         });
       },
-      onRecommendation: (text, prods) => {
+      onRecommendation: (text, prods, action) => {
         const capturedId = activeTurnId.current;
         // Set products immediately
         setTurns((prev) => prev.map((t) =>
           t.id === capturedId ? { ...t, products: prods } : t
         ));
+        // Remember the top-ranked product so affirmative replies ("yes", "ok") can trigger checkout.
+        if (prods.length > 0) {
+          lastRecommendedProductRef.current = prods[0];
+          setPendingCheckoutProduct(prods[0]);
+        }
+
+        // For follow-up answers, prods is [] — resolve target product from turn history.
+        const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
+        const resolveProduct = (idx: number): ProductData | undefined => {
+          if (prods.length > idx) return prods[idx];
+          return lastTurnWithProducts?.products[idx] ?? lastTurnWithProducts?.products[0];
+        };
+
+        // Open cart drawer + show inline if LLM said to view cart
+        if (action?.type === "show_cart") {
+          setShowCartDrawer(true);
+          setTurns((prev) => prev.map((t) => t.id === capturedId ? { ...t, showCartInline: true } : t));
+        }
+
+        // Remove from cart: find matching cart item by product_id and remove it
+        if (action?.type === "remove_from_cart") {
+          const target = resolveProduct(action.product_idx ?? 0);
+          if (target) {
+            const cartItem = sessionCartItems.find((i) => i.product_id === target.product_id);
+            if (cartItem) {
+              removeFromCart(cartItem.cart_item_id)
+                .then(() => {
+                  setSessionCartItems((prev) => prev.filter((i) => i.cart_item_id !== cartItem.cart_item_id));
+                  setSessionCartIds((prev) => { const s = new Set(prev); s.delete(cartItem.cart_item_id); return s; });
+                  setSessionCartCount((n) => Math.max(0, n - 1));
+                  getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                })
+                .catch(() => {});
+            }
+          }
+        }
+
         // Stream recommendation text word-by-word (ChatGPT-style)
         const words = text.split(" ");
         words.forEach((_, i) => {
@@ -460,6 +855,26 @@ export default function Chat() {
             ));
           }, i * 40);
         });
+
+        // Add to cart (no checkout summary) — shows inline cart card
+        if (action?.type === "add_to_cart") {
+          const actionProduct = resolveProduct(action.product_idx ?? 0);
+          if (actionProduct) {
+            setTimeout(() => {
+              attachAddToCartToActiveTurnRef.current?.(capturedId!, actionProduct!);
+            }, words.length * 40 + 200);
+          }
+        }
+
+        // Trigger checkout after text finishes streaming
+        if (action?.type === "checkout") {
+          const actionProduct = resolveProduct(action.product_idx ?? 0);
+          if (actionProduct) {
+            setTimeout(() => {
+              attachCheckoutToActiveTurnRef.current?.(capturedId!, actionProduct!);
+            }, words.length * 40 + 200);
+          }
+        }
       },
       onBlocked: (message) => {
         updateActiveTurn((turn) => ({ ...turn, blocked: message }));
@@ -484,7 +899,432 @@ export default function Chat() {
     });
 
     closeStream.current = close;
-  }, [input, loading, pastedImage, updateActiveTurn]);
+  }, [input, loading, pastedImage, updateActiveTurn, turns, sessionCartItems]);
+
+  // Keep the ref always pointing at the current handleSend so recognition
+  // callbacks can fire it without stale-closure issues.
+  handleSendRef.current = handleSend;
+
+  // ── Inline checkout flow ──────────────────────────────────────────────────
+
+  // Step 1: user said "yes" to agent's cart question → create checkout summary turn
+  const doCheckoutSummary = useCallback(async (userText: string, product: ProductData) => {
+    setInput("");
+    setPastedImage(null);
+    setLoading(true);
+    setSelectedProducts(new Map());
+    setPendingCheckoutProduct(null);
+    lastRecommendedProductRef.current = null;
+
+    const turnId = crypto.randomUUID();
+    activeTurnId.current = turnId;
+
+    setTurns((prev) => [
+      ...prev,
+      {
+        id: turnId,
+        userMessage: userText,
+        steps: [{ id: "c1", message: "CartUp — preparing your order...", status: "running" as const }],
+        products: [],
+        recommendation: "",
+        blocked: null,
+        intent: {},
+        checkout: {
+          phase: "setup" as const,
+          product,
+          selectedCard: SAVED_CARDS[0].id,
+          isGuest,
+          guestCard: isGuest ? (sessionGuestCardRef.current ?? { number: "", expiry: "", cvc: "", name: "" }) : undefined,
+        },
+      },
+    ]);
+
+    try {
+      await addToCart(product);
+      const res = await authFetch("/api/checkout/create", {
+        method: "POST",
+        body: JSON.stringify({
+          product_id: product.product_id,
+          merchant_id: product.merchant_id,
+          quantity: 1,
+        }),
+      });
+      if (!res.ok) throw new Error("Checkout creation failed");
+      const checkoutData: InlineCheckoutDataShape = await res.json();
+
+      // Persist so coming back from /cart restores this checkout without losing state
+      try {
+        sessionStorage.setItem(`talkshop_checkout_${sessionIdRef.current}`, JSON.stringify({
+          product, checkoutData, selectedCard: SAVED_CARDS[0].id,
+        }));
+      } catch { /* noop */ }
+
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                steps: [{ id: "c1", message: "CartUp — checkout session ready", status: "done" as const }],
+                checkout: {
+                  phase: "summary" as const,
+                  product,
+                  checkoutData,
+                  selectedCard: SAVED_CARDS[0].id,
+                  isGuest,
+                  guestCard: isGuest ? (sessionGuestCardRef.current ?? { number: "", expiry: "", cvc: "", name: "" }) : undefined,
+                },
+              }
+            : t
+        )
+      );
+    } catch {
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                steps: [],
+                checkout: {
+                  phase: "failed" as const,
+                  product,
+                  selectedCard: SAVED_CARDS[0].id,
+                  error: "Could not prepare your order. Please try again.",
+                },
+              }
+            : t
+        )
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  // Keep the ref current on every render so callers never see a stale closure.
+  doCheckoutSummaryRef.current = doCheckoutSummary;
+
+  // LLM-driven checkout: attaches checkout UI to the currently streaming turn
+  // instead of creating a new turn, so one user message = one visual block.
+  const attachCheckoutToActiveTurn = useCallback(async (turnId: string, product: ProductData) => {
+    setLoading(true);
+    setSelectedProducts(new Map());
+    setPendingCheckoutProduct(null);
+    lastRecommendedProductRef.current = null;
+
+    setTurns((prev) => prev.map((t) => t.id === turnId ? {
+      ...t,
+      steps: [...t.steps, { id: "ca1", message: "CartUp — preparing your order...", status: "running" as const }],
+    } : t));
+
+    try {
+      await addToCart(product);
+      const res = await authFetch("/api/checkout/create", {
+        method: "POST",
+        body: JSON.stringify({ product_id: product.product_id, merchant_id: product.merchant_id, quantity: 1 }),
+      });
+      if (!res.ok) throw new Error("Checkout creation failed");
+      const checkoutData: InlineCheckoutDataShape = await res.json();
+      setCartCount((n) => n + 1);
+
+      try {
+        sessionStorage.setItem(`talkshop_checkout_${sessionIdRef.current}`, JSON.stringify({
+          product, checkoutData, selectedCard: SAVED_CARDS[0].id,
+        }));
+      } catch { /* noop */ }
+
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: t.steps.filter((s) => s.id !== "ca1").concat({ id: "ca1", message: "CartUp — checkout session ready", status: "done" as const }),
+        checkout: {
+          phase: "summary" as const, product, checkoutData,
+          selectedCard: SAVED_CARDS[0].id, isGuest,
+          guestCard: isGuest ? (sessionGuestCardRef.current ?? { number: "", expiry: "", cvc: "", name: "" }) : undefined,
+        },
+      } : t));
+    } catch {
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: t.steps.filter((s) => s.id !== "ca1"),
+        checkout: {
+          phase: "failed" as const, product, selectedCard: SAVED_CARDS[0].id,
+          error: "Could not prepare your order. Please try again.",
+        },
+      } : t));
+    } finally {
+      setLoading(false);
+    }
+  }, [isGuest]);
+  attachCheckoutToActiveTurnRef.current = attachCheckoutToActiveTurn;
+
+  // Add to cart (frontend intercept — creates a new turn with a cart-added card)
+  const doAddToCart = useCallback(async (userText: string, product: ProductData) => {
+    setInput("");
+    setLoading(true);
+    const turnId = crypto.randomUUID();
+    activeTurnId.current = turnId;
+    setTurns((prev) => [...prev, {
+      id: turnId,
+      userMessage: userText,
+      steps: [{ id: "ca1", message: "CartUp — adding to cart...", status: "running" as const }],
+      products: [],
+      recommendation: "",
+      blocked: null,
+      intent: {},
+    }]);
+    try {
+      await addToCart(product);
+      const cartItems = await getCart();
+      setCartCount(cartItems.length);
+      const newItem = cartItems.find((i) => i.product_id === product.product_id);
+      if (newItem) {
+        setSessionCartCount((n) => n + 1);
+        setSessionCartIds((prev) => new Set(prev).add(newItem.cart_item_id));
+        setSessionCartItems(cartItems);
+      }
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: [{ id: "ca1", message: "CartUp — item added to cart", status: "done" as const }],
+        recommendation: `Added **${product.title}** to your cart!`,
+        cartAdded: { product },
+      } : t));
+    } catch {
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: [],
+        recommendation: "Sorry, couldn't add that to your cart. Please try again.",
+      } : t));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  doAddToCartRef.current = doAddToCart;
+
+  // Add to cart (LLM action — attaches cart-added card to the currently streaming turn)
+  const attachAddToCartToActiveTurn = useCallback(async (turnId: string, product: ProductData) => {
+    setTurns((prev) => prev.map((t) => t.id === turnId ? {
+      ...t,
+      steps: [...t.steps, { id: "ca1", message: "CartUp — adding to cart...", status: "running" as const }],
+    } : t));
+    try {
+      await addToCart(product);
+      const cartItems = await getCart();
+      setCartCount(cartItems.length);
+      const newItem = cartItems.find((i) => i.product_id === product.product_id);
+      if (newItem) {
+        setSessionCartCount((n) => n + 1);
+        setSessionCartIds((prev) => new Set(prev).add(newItem.cart_item_id));
+        setSessionCartItems(cartItems);
+      }
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: t.steps.filter((s) => s.id !== "ca1").concat({ id: "ca1", message: "CartUp — item added to cart", status: "done" as const }),
+        cartAdded: { product },
+      } : t));
+    } catch {
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: t.steps.filter((s) => s.id !== "ca1"),
+      } : t));
+    }
+  }, []);
+  attachAddToCartToActiveTurnRef.current = attachAddToCartToActiveTurn;
+
+  // Step 2: user clicked "Confirm & Pay" → run DPAT + payment inline
+  const doPayment = useCallback(async (
+    turnId: string,
+    checkoutData: InlineCheckoutDataShape,
+    selectedCard: string,
+    product: ProductData,
+  ) => {
+    // Make this the active turn so the panel tracks payment steps
+    activeTurnId.current = turnId;
+
+    const initPS = [
+      { label: "GreenLight — requesting DPAT authorization…", status: "running" as const },
+      { label: "GreenLight — DPAT token ready", status: "pending" as const },
+      { label: "PayIt — executing payment…", status: "pending" as const },
+      { label: "TrackIt — recording your order…", status: "pending" as const },
+    ];
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === turnId
+          ? {
+              ...t,
+              steps: [
+                ...t.steps.filter((s) => s.id === "c1" || s.id === "ca1"),
+                { id: "pay-0", message: "GreenLight — requesting DPAT authorization…", status: "running" as const },
+              ],
+              checkout: { ...t.checkout!, phase: "processing" as const, processingSteps: initPS },
+            }
+          : t
+      )
+    );
+    setLoading(true);
+
+    const updateSteps = (steps: Array<{ label: string; status: "pending" | "running" | "done" | "error" }>) => {
+      setTurns((prev) =>
+        prev.map((t) => {
+          if (t.id !== turnId) return t;
+          const agentSteps = steps
+            .filter((s) => s.status !== "pending")
+            .map((s, i) => ({ id: `pay-${i}`, message: s.label, status: s.status as "running" | "done" | "error" }));
+          return {
+            ...t,
+            steps: [...t.steps.filter((s) => s.id === "c1" || s.id === "ca1"), ...agentSteps],
+            checkout: { ...t.checkout!, processingSteps: steps },
+          };
+        })
+      );
+    };
+
+    try {
+      // GreenLight: approve authorization
+      const approveRes = await authFetch("/api/authorizations/approve", {
+        method: "POST",
+        body: JSON.stringify({
+          checkout_id: checkoutData.checkout_id,
+          checkout_hash: checkoutData.checkout_hash,
+          merchant_id: checkoutData.merchant_id,
+          total: checkoutData.total,
+          currency: checkoutData.currency,
+          product_id: checkoutData.product_id,
+          product_title: checkoutData.product_title,
+          merchant_name: checkoutData.merchant_name,
+          subtotal: checkoutData.subtotal,
+          tax: checkoutData.tax,
+          shipping: checkoutData.shipping,
+        }),
+      });
+      if (!approveRes.ok) throw new Error("Authorization failed");
+      const approveData = await approveRes.json();
+
+      updateSteps([
+        { label: "GreenLight — authorization approved", status: "done" },
+        { label: "GreenLight — DPAT token issued", status: "done" },
+        { label: "PayIt — executing payment…", status: "running" },
+        { label: "TrackIt — recording your order…", status: "pending" },
+      ]);
+
+      // PayIt: execute payment
+      const execRes = await authFetch("/api/payments/execute", {
+        method: "POST",
+        body: JSON.stringify({
+          token_id: approveData.token_id,
+          checkout_id: checkoutData.checkout_id,
+          checkout_hash: checkoutData.checkout_hash,
+          merchant_id: checkoutData.merchant_id,
+          merchant_name: checkoutData.merchant_name,
+          total: checkoutData.total,
+          currency: checkoutData.currency,
+          product_id: checkoutData.product_id,
+          product_title: checkoutData.product_title,
+          subtotal: checkoutData.subtotal,
+          tax: checkoutData.tax,
+          shipping: checkoutData.shipping,
+          payment_method: "card",
+        }),
+      });
+      if (!execRes.ok) throw new Error("Payment failed");
+      const execData = await execRes.json();
+
+      updateSteps([
+        { label: "GreenLight — authorization approved", status: "done" },
+        { label: "GreenLight — DPAT token issued", status: "done" },
+        { label: "PayIt — payment processed", status: "done" },
+        { label: "TrackIt — order recorded", status: "done" },
+      ]);
+
+      // Small delay so the user sees all steps green before flipping to confirmed
+      await new Promise((r) => setTimeout(r, 600));
+
+      // Persist confirmed order so session restore shows confirmation, not product cards
+      try {
+        sessionStorage.setItem(`talkshop_order_${sessionIdRef.current}`, JSON.stringify({
+          orderId: execData.order_id,
+          amount: execData.amount,
+          product,
+          selectedCard,
+          pointsEarned: execData.points_earned ?? null,
+          loyaltyBalance: execData.loyalty_balance ?? null,
+        }));
+        sessionStorage.removeItem(`talkshop_checkout_${sessionIdRef.current}`);
+      } catch { /* noop */ }
+
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                checkout: {
+                  phase: "confirmed" as const,
+                  product,
+                  selectedCard,
+                  orderId: execData.order_id,
+                  confirmedTotal: execData.amount,
+                  pointsEarned: execData.points_earned ?? undefined,
+                  loyaltyBalance: execData.loyalty_balance ?? undefined,
+                },
+              }
+            : t
+        )
+      );
+
+      // Clear session cart and reset all ProductCard qty states
+      setCartCount(0);
+      setSessionCartCount(0);
+      setSessionCartIds(new Set());
+      setSessionCartItems([]);
+      setCartPanelOpen(false);
+      setProductCardResetKey((k) => k + 1);
+    } catch (err) {
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turnId
+            ? {
+                ...t,
+                checkout: {
+                  ...t.checkout!,
+                  phase: "failed" as const,
+                  error: "Payment failed. Please check your card details and try again.",
+                },
+              }
+            : t
+        )
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Cancel inline checkout — marks the turn as cancelled
+  const cancelCheckout = useCallback((turnId: string) => {
+    try { sessionStorage.removeItem(`talkshop_checkout_${sessionIdRef.current}`); } catch { /* noop */ }
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === turnId
+          ? { ...t, checkout: { ...t.checkout!, phase: "cancelled" as const } }
+          : t
+      )
+    );
+  }, []);
+
+  // Update selected card within a checkout turn
+  const updateCheckoutCard = useCallback((turnId: string, cardId: string) => {
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === turnId ? { ...t, checkout: { ...t.checkout!, selectedCard: cardId } } : t
+      )
+    );
+  }, []);
+
+  // Update guest card fields and remember for the rest of the session
+  const updateGuestCard = useCallback((turnId: string, card: NonNullable<InlineCheckoutData["guestCard"]>) => {
+    sessionGuestCardRef.current = card;
+    try { sessionStorage.setItem(`talkshop_guestcard_${sessionIdRef.current}`, JSON.stringify(card)); } catch { /* noop */ }
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === turnId ? { ...t, checkout: { ...t.checkout!, guestCard: card } } : t
+      )
+    );
+  }, []);
 
   const BAR_COUNT = 32;
 
@@ -557,20 +1397,55 @@ export default function Chat() {
 
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
-    // Keep listening across natural pauses — only the Stop/Cancel buttons
-    // should end the session, not a moment of silence mid-sentence.
+    // Interim results fire as you speak (near real-time), so we can detect
+    // silence accurately: reset the 1.5s timer on every event.  Without this,
+    // Chrome with continuous=true waits 5-7 s before delivering a "final"
+    // result — the silence timer never even starts until then.
+    recognition.interimResults = true;
     recognition.continuous = true;
 
     recognition.onresult = (event) => {
       let newText = "";
+      let hasActivity = false;
       for (let i = event.resultIndex; i < event.results.length; i++) {
+        hasActivity = true;
         if (!event.results[i].isFinal) continue;
         const transcript = event.results[i][0].transcript.trim();
         if (transcript) newText += (newText ? " " : "") + transcript;
       }
+
+      // Accumulate only final text into the input field.
       if (newText) {
         setInput((prev) => (prev ? `${prev} ${newText}` : newText));
+      }
+
+      // Voice command routing on final results — instant send.
+      if (newText) {
+        const isCommand = /^(choose|select|pick)\s+(first|second|third|1st|2nd|3rd)/i.test(newText.trim()) ||
+          /^(yes|confirm|approve|proceed|go ahead)\.?$/i.test(newText.trim()) ||
+          /^(cancel|no|stop|go back)\.?$/i.test(newText.trim()) ||
+          /^track\s+(my\s+)?order/i.test(newText.trim());
+
+        if (isCommand) {
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          autoSendRef.current = true;
+          stoppingRef.current = true;
+          recognitionRef.current?.stop();
+          return;
+        }
+      }
+
+      // Reset the silence timer on ANY speech activity (interim = user still
+      // speaking).  The timer fires 1.5 s after the very last word, which is
+      // when interim events stop flowing.
+      if (hasActivity) {
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          silenceTimerRef.current = null;
+          autoSendRef.current = true;
+          stoppingRef.current = true;
+          recognitionRef.current?.stop();
+        }, 1500);
       }
     };
 
@@ -590,6 +1465,12 @@ export default function Chat() {
       if (stoppingRef.current) {
         stopLevelMeter();
         setRecording(false);
+        if (autoSendRef.current) {
+          autoSendRef.current = false;
+          // Small delay so React can flush the setInput call from onresult
+          // before handleSend reads the input value.
+          setTimeout(() => { handleSendRef.current?.(); }, 100);
+        }
         return;
       }
       // Chrome ended the session on its own (e.g. after a pause) even
@@ -607,14 +1488,21 @@ export default function Chat() {
     setRecording(true);
   };
 
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+  };
+
   // Stop = finalize whatever was heard so far (onresult still fires, then onend).
   const handleStopRecording = () => {
+    clearSilenceTimer();
     stoppingRef.current = true;
     recognitionRef.current?.stop();
   };
 
   // Cancel = discard the recording entirely, no transcript inserted.
   const handleCancelRecording = () => {
+    clearSilenceTimer();
+    autoSendRef.current = false;
     stoppingRef.current = true;
     setMicError(null);
     recognitionRef.current?.abort();
@@ -633,20 +1521,6 @@ export default function Chat() {
       return next;
     });
   }, []);
-
-  const handleBuySelected = useCallback(async () => {
-    if (addingToCheckout || selectedProducts.size === 0) return;
-    setAddingToCheckout(true);
-    try {
-      for (const product of selectedProducts.values()) {
-        await addToCart(product);
-      }
-      setSelectedProducts(new Map());
-      navigate("/cart");
-    } catch {
-      setAddingToCheckout(false);
-    }
-  }, [addingToCheckout, selectedProducts, navigate]);
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)]">
@@ -671,8 +1545,17 @@ export default function Chat() {
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
-        <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--color-border)] shrink-0">
-          <div className="flex items-center gap-2">
+        <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] grid place-items-center shrink-0">
+                <Sparkles size={13} className="text-white" />
+              </div>
+              <div className="leading-none">
+                <p className="text-sm font-bold text-[var(--color-text)] tracking-tight">TalkShop</p>
+                <p className="text-[10px] text-[var(--color-text-muted)] font-medium">Agentic Commerce Intelligence</p>
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <a href="/dashboard" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">
@@ -785,12 +1668,71 @@ export default function Chat() {
                         animate={{ opacity: 1, y: 0 }}
                         className="rounded-xl rounded-tl-sm bg-[var(--color-surface)] border border-[var(--color-border)] px-4 py-2.5 text-sm text-[var(--color-text)] max-w-[85%]"
                       >
-                        {turn.recommendation}
+                        {renderWithBold(turn.recommendation)}
                       </motion.div>
                     )}
 
-                    {/* Skeleton cards — shown while the active turn is loading */}
-                    {isActiveTurn && turn.products.length === 0 && turn.steps.length > 0 && (
+                    {/* Cart action chips — only on the last turn when agent asked "Want me to add to cart?" */}
+                    {turn.recommendation && pendingCheckoutProduct && !isActiveTurn && !turn.checkout &&
+                      turn.id === turns[turns.length - 1].id && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center gap-2"
+                      >
+                        <button
+                          onClick={() => {
+                            doAddToCartRef.current?.("yes, add to cart", pendingCheckoutProduct);
+                            setPendingCheckoutProduct(null);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--color-primary)] text-white text-xs font-semibold hover:bg-[var(--color-primary-dark)] transition-colors shadow-sm"
+                        >
+                          🛒 Yes, add to cart
+                        </button>
+                        <button
+                          onClick={() => {
+                            setPendingCheckoutProduct(null);
+                            lastRecommendedProductRef.current = null;
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--color-border)] text-xs text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+                        >
+                          No thanks
+                        </button>
+                      </motion.div>
+                    )}
+
+                    {/* Inline cart card — shown after add-to-cart or "show cart" */}
+                    {(turn.cartAdded || turn.showCartInline) && (
+                      <InlineCartCard
+                        addedProduct={turn.cartAdded?.product}
+                        cartItems={sessionCartItems}
+                        onViewCart={() => setShowCartDrawer(true)}
+                        onCheckout={(product) => {
+                          doCheckoutSummaryRef.current?.("proceed to checkout", product);
+                          // Clear pending so the CTA chips disappear
+                          setPendingCheckoutProduct(null);
+                          lastRecommendedProductRef.current = null;
+                        }}
+                      />
+                    )}
+
+                    {/* Inline checkout card — shown when user confirmed a product */}
+                    {turn.checkout && (
+                      <InlineCheckout
+                        {...turn.checkout}
+                        onConfirm={() => {
+                          if (turn.checkout?.checkoutData) {
+                            doPayment(turn.id, turn.checkout.checkoutData, turn.checkout.selectedCard, turn.checkout.product);
+                          }
+                        }}
+                        onCancel={() => cancelCheckout(turn.id)}
+                        onCardChange={(cardId) => updateCheckoutCard(turn.id, cardId)}
+                        onGuestCardChange={(card) => updateGuestCard(turn.id, card)}
+                      />
+                    )}
+
+                    {/* Skeleton cards — only while a product search is in progress (not for follow-up Q&A) */}
+                    {isActiveTurn && turn.products.length === 0 && turn.steps.some(s => s.message.toLowerCase().includes("sneakpeek") || s.message.toLowerCase().includes("searching")) && (
                       <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
                         {[0, 1, 2].map((i) => (
                           <div key={i} className="w-64 shrink-0"><SkeletonProductCard /></div>
@@ -841,7 +1783,7 @@ export default function Chat() {
                           {/* Cards — horizontal scroll row */}
                           <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
                             {sorted.map((p, i) => (
-                              <div key={p.product_id} className="w-64 shrink-0">
+                              <div key={`${p.product_id}-${productCardResetKey}`} className="w-64 shrink-0">
                                 <ProductCard
                                   product={p}
                                   index={i}
@@ -853,8 +1795,11 @@ export default function Chat() {
                                     if (cartItem) {
                                       setSessionCartCount((n) => n + 1);
                                       setSessionCartIds((prev) => new Set(prev).add(cartItem.cart_item_id));
+                                      setSessionCartItems((prev) => {
+                                        if (prev.some((i) => i.cart_item_id === cartItem.cart_item_id)) return prev;
+                                        return [...prev, cartItem];
+                                      });
                                     }
-                                    triggerCheckoutCountdown(cartItem);
                                   }}
                                 />
                               </div>
@@ -914,104 +1859,138 @@ export default function Chat() {
           )}
         </div>
 
-        {/* Persistent cart reminder — shown when items were added this session */}
-        {sessionCartCount > 0 && autoCheckoutIn === null && (
-          <div className="mx-6 mb-1">
-            <button
-              onClick={() => setShowCartDrawer(true)}
-              className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-xl border border-[var(--color-primary)]/30 bg-[var(--color-surface)] hover:bg-[var(--color-bg)] transition-colors group"
-            >
-              <div className="flex items-center gap-2 text-sm text-[var(--color-primary)] font-medium">
-                <ShoppingCart size={15} />
-                <span>{sessionCartCount} item{sessionCartCount !== 1 ? "s" : ""} added this chat</span>
-                {cartCount > sessionCartCount && (
-                  <span className="text-xs text-[var(--color-text-muted)] font-normal">· {cartCount} in cart total</span>
-                )}
-              </div>
-              <span className="flex items-center gap-1 text-xs text-[var(--color-primary)] font-semibold group-hover:gap-2 transition-all">
-                View Cart <ArrowRight size={13} />
-              </span>
-            </button>
-          </div>
-        )}
-
-        {/* Auto-checkout countdown toast — appears after "Add to Cart" */}
+        {/* Inline cart panel — collapsible, shows session items without leaving chat */}
         <AnimatePresence>
-          {autoCheckoutIn !== null && (
+          {sessionCartItems.length > 0 && (
             <motion.div
-              initial={{ y: 80, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 80, opacity: 0 }}
-              className="mx-6 mb-2 rounded-xl bg-gradient-to-r from-[var(--color-primary)] to-violet-600 text-white px-5 py-3 flex items-center justify-between shadow-lg"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              className="mx-6 mb-2 rounded-xl border border-[var(--color-primary)]/40 bg-[var(--color-surface)] overflow-hidden"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/20 grid place-items-center shrink-0">
+              {/* Header — always visible */}
+              <button
+                onClick={() => setCartPanelOpen((v) => !v)}
+                className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[var(--color-bg)] transition-colors"
+              >
+                <div className="flex items-center gap-2 text-sm text-[var(--color-primary)] font-semibold">
                   <ShoppingCart size={15} />
+                  <span>{sessionCartItems.length} item{sessionCartItems.length !== 1 ? "s" : ""} in your cart</span>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold">Item added! Heading to checkout...</p>
-                  <p className="text-xs text-white/70">Taking you there in {autoCheckoutIn}s</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[var(--color-text-muted)]">
+                    ${sessionCartItems.reduce((s, i) => s + i.price * i.quantity, 0).toFixed(2)}
+                  </span>
+                  {cartPanelOpen ? <ChevronUp size={14} className="text-[var(--color-primary)]" /> : <ChevronDown size={14} className="text-[var(--color-primary)]" />}
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={cancelCheckoutCountdown}
-                  className="text-xs text-white/70 hover:text-white transition-colors px-2 py-1"
-                >
-                  Stay here
-                </button>
-                <button
-                  onClick={() => {
-                    cancelCheckoutCountdown();
-                    navigate("/cart");
-                  }}
-                  className="flex items-center gap-1.5 text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors"
-                >
-                  Go now <ArrowRight size={14} />
-                </button>
-              </div>
+              </button>
+
+              {/* Expanded item list */}
+              <AnimatePresence>
+                {cartPanelOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-4 pb-3 flex flex-col gap-2 border-t border-[var(--color-border)]">
+                      {sessionCartItems.map((item) => {
+                        const visual = getProductVisual(item.title, item.category);
+                        const ItemIcon = visual.icon;
+                        return (
+                          <div key={item.cart_item_id} className="flex items-center gap-3 pt-2">
+                            <div className={`w-9 h-9 rounded-lg grid place-items-center shrink-0 ${visual.bg}`}>
+                              <ItemIcon size={16} className={visual.fg} strokeWidth={1.5} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-[var(--color-text)] line-clamp-1">{item.title}</p>
+                              <p className="text-[10px] text-[var(--color-text-muted)]">${item.price.toFixed(2)} · qty {item.quantity}</p>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await removeFromCart(item.cart_item_id);
+                                  setSessionCartItems((prev) => prev.filter((i) => i.cart_item_id !== item.cart_item_id));
+                                  setSessionCartIds((prev) => { const s = new Set(prev); s.delete(item.cart_item_id); return s; });
+                                  setSessionCartCount((n) => Math.max(0, n - 1));
+                                  getCart().then((items) => setCartCount(items.length)).catch(() => {});
+                                } catch { /* noop */ }
+                              }}
+                              className="text-[var(--color-text-muted)] hover:text-rose-500 transition-colors p-1 shrink-0"
+                              title="Remove"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      <button
+                        onClick={() => {
+                          setCartPanelOpen(false);
+                          const item = sessionCartItems[0];
+                          const product: ProductData = {
+                            product_id: item.product_id,
+                            merchant_id: item.merchant_id,
+                            merchant_name: item.merchant_name,
+                            title: item.title,
+                            brand: item.brand,
+                            category: item.category,
+                            price: item.price,
+                            currency: item.currency,
+                            size: item.size,
+                            color: item.color,
+                            available: true,
+                            inventory: 1,
+                            delivery_days: item.delivery_days,
+                            rating: item.rating,
+                            review_count: 0,
+                            shipping_cost: 0,
+                            rank_score: 0,
+                            source: "cart",
+                            image_url: item.image_url,
+                            weight_grams: null,
+                            cushioning: null,
+                          };
+                          doCheckoutSummaryRef.current?.("Checkout from cart", product);
+                        }}
+                        className="mt-1 w-full py-2 rounded-lg bg-[var(--color-primary)] text-white text-xs font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <ShoppingCart size={13} /> Checkout
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Floating multi-select bar */}
-        {selectedProducts.size > 0 && (
+        {/* Compare bar — only shown when 2-4 products are selected */}
+        {selectedProducts.size >= 2 && selectedProducts.size <= 4 && (
           <motion.div
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
-            className="mx-6 mb-2 rounded-xl bg-[var(--color-primary)] text-white px-4 py-3 flex items-center justify-between shadow-lg"
+            className="mx-6 mb-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] px-4 py-2.5 flex items-center justify-between shadow-sm"
           >
-            <div className="flex items-center gap-3">
-              <ShoppingCart size={16} />
-              <span className="text-sm font-medium">
-                {selectedProducts.size} item{selectedProducts.size > 1 ? "s" : ""} selected
-              </span>
-              <span className="text-sm text-white/70">
-                · ${Array.from(selectedProducts.values()).reduce((s, p) => s + p.price, 0).toFixed(2)}
-              </span>
+            <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+              <GitCompare size={15} className="text-[var(--color-primary)]" />
+              <span>{selectedProducts.size} products selected</span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSelectedProducts(new Map())}
-                className="text-xs text-white/70 hover:text-white transition-colors"
+                className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
               >
                 Clear
               </button>
-              {selectedProducts.size >= 2 && selectedProducts.size <= 4 && (
-                <button
-                  onClick={() => setShowCompare(true)}
-                  className="flex items-center gap-1.5 text-sm font-semibold bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  <GitCompare size={14} /> Compare
-                </button>
-              )}
               <button
-                onClick={handleBuySelected}
-                disabled={addingToCheckout}
-                className="text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors disabled:opacity-60"
+                onClick={() => setShowCompare(true)}
+                className="flex items-center gap-1.5 text-sm font-semibold bg-[var(--color-primary)] text-white px-3 py-1.5 rounded-lg hover:bg-[var(--color-primary-dark)] transition-colors"
               >
-                {addingToCheckout ? "Adding..." : "Buy Selected"}
+                <GitCompare size={13} /> Compare
               </button>
             </div>
           </motion.div>
@@ -1023,9 +2002,8 @@ export default function Chat() {
             products={Array.from(selectedProducts.values())}
             onClose={() => setShowCompare(false)}
             onAddToCart={(product) => {
-              addToCart(product).then((item) => {
+              addToCart(product).then(() => {
                 getCart().then((items) => setCartCount(items.length)).catch(() => {});
-                triggerCheckoutCountdown(item);
               }).catch(() => {});
             }}
           />
@@ -1039,6 +2017,33 @@ export default function Chat() {
             getCart().then((items) => setCartCount(items.length)).catch(() => {});
           }}
           sessionCartIds={sessionCartIds}
+          onCheckout={(cartItem: CartItemData) => {
+            setShowCartDrawer(false);
+            const product: ProductData = {
+              product_id: cartItem.product_id,
+              merchant_id: cartItem.merchant_id,
+              merchant_name: cartItem.merchant_name,
+              title: cartItem.title,
+              brand: cartItem.brand,
+              category: cartItem.category,
+              price: cartItem.price,
+              currency: cartItem.currency,
+              size: cartItem.size,
+              color: cartItem.color,
+              available: true,
+              inventory: 1,
+              delivery_days: cartItem.delivery_days,
+              rating: cartItem.rating,
+              review_count: 0,
+              shipping_cost: 0,
+              rank_score: 0,
+              source: "cart",
+              image_url: cartItem.image_url,
+              weight_grams: null,
+              cushioning: null,
+            };
+            doCheckoutSummaryRef.current?.("Checkout", product);
+          }}
         />
 
         {/* Input bar */}
@@ -1063,6 +2068,7 @@ export default function Chat() {
             </div>
           )}
           {recording ? (
+            <>
             <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
               <button
                 type="button"
@@ -1090,6 +2096,10 @@ export default function Chat() {
                 <Square size={13} fill="currentColor" />
               </button>
             </div>
+            <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 text-center">
+              Say <span className="font-medium text-[var(--color-primary)]">"choose first"</span> · <span className="font-medium text-[var(--color-primary)]">"confirm"</span> · <span className="font-medium text-[var(--color-primary)]">"cancel"</span> to act hands-free
+            </p>
+          </>
           ) : (
             <div className="flex items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
               <textarea
@@ -1150,13 +2160,30 @@ export default function Chat() {
           className="w-1 shrink-0 cursor-col-resize hover:bg-[var(--color-primary)] transition-colors"
         />
       )}
-      <AgentTrailPanel
-        collapsed={rightCollapsed}
-        onToggleCollapse={() => setRightCollapsed((c) => !c)}
-        width={rightWidth}
-        activeTurnSteps={turns.find((t) => t.id === activeTurnId.current)?.steps ?? []}
-        activeLoading={loading}
-      />
+      {(() => {
+        // Accumulate steps from ALL turns so the panel shows the complete pipeline
+        // even after payment (payment steps live in checkout turn, search steps in prior turn).
+        // When a search is loading, prefer the live active turn so in-progress steps animate.
+        const activeTurn = turns.find((t) => t.id === activeTurnId.current);
+        const sessionSteps = turns.flatMap((t) => t.steps);
+        const displaySteps = loading
+          ? (activeTurn?.steps.length ? activeTurn.steps : sessionSteps)
+          : sessionSteps;
+        const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
+        const lastTurnWithIntent   = [...turns].reverse().find((t) => Object.keys(t.intent).length > 0);
+        return (
+          <AgentTrailPanel
+            collapsed={rightCollapsed}
+            onToggleCollapse={() => setRightCollapsed((c) => !c)}
+            width={rightWidth}
+            activeTurnSteps={displaySteps}
+            activeLoading={loading}
+            activeProducts={lastTurnWithProducts?.products}
+            activeIntent={lastTurnWithIntent?.intent}
+            activeRecommendation={activeTurn?.recommendation}
+          />
+        );
+      })()}
     </div>
   );
 }

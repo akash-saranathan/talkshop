@@ -78,9 +78,14 @@ export async function attachImage(sessionId: string, imageBase64: string): Promi
   if (!res.ok) throw new Error("Failed to attach image");
 }
 
+export interface ChatAction {
+  type: "show_cart" | "add_to_cart" | "checkout" | "remove_from_cart" | "show_more";
+  product_idx?: number;
+}
+
 export interface ChatCallbacks {
   onStep: (event: AgentEvent) => void;
-  onRecommendation: (text: string, products: ProductData[]) => void;
+  onRecommendation: (text: string, products: ProductData[], action?: ChatAction) => void;
   onBlocked: (message: string) => void;
   onError: (message: string) => void;
   onDone: () => void;
@@ -102,13 +107,17 @@ export function streamChat(message: string, sessionId: string, callbacks: ChatCa
         case "step_done":
           callbacks.onStep(event);
           break;
-        case "recommendation":
-          callbacks.onRecommendation(
-            event.message,
-            (event.data as { products?: ProductData[] })?.products ??
-              (Array.isArray(event.data) ? (event.data as ProductData[]) : [])
-          );
+        case "recommendation": {
+          const recData = event.data as { products?: ProductData[]; action?: ChatAction } | ProductData[];
+          const recProducts = Array.isArray(recData)
+            ? (recData as ProductData[])
+            : ((recData as { products?: ProductData[] })?.products ?? []);
+          const recAction = Array.isArray(recData)
+            ? undefined
+            : (recData as { action?: ChatAction })?.action;
+          callbacks.onRecommendation(event.message, recProducts, recAction);
           break;
+        }
         case "blocked":
           callbacks.onBlocked(event.message);
           break;
