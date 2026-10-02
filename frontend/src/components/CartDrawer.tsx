@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ShoppingBag, Trash2, Loader, ShoppingCart } from "lucide-react";
 import { getCart, removeFromCart, updateCartItemQuantity, type CartItemData } from "../api/cart";
+import { authFetch } from "../api/client";
 import { getProductVisual } from "../utils/productVisual";
 
 interface Props {
@@ -24,11 +25,18 @@ export default function CartDrawer({ open, onClose, sessionCartIds, onCheckout }
   const [items, setItems] = useState<CartItemData[]>([]);
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
+  const [wallet, setWallet] = useState<{ balance: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    getCart().then((cartItems) => setItems(cartItems)).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([
+      getCart(),
+      authFetch("/api/wallet").then((r) => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([cartItems, w]) => {
+      setItems(cartItems);
+      setWallet(w);
+    }).catch(() => {}).finally(() => setLoading(false));
   }, [open]);
 
   const handleRemove = async (id: string) => {
@@ -147,6 +155,14 @@ export default function CartDrawer({ open, onClose, sessionCartIds, onCheckout }
                   <span className="text-[var(--color-text)]">Subtotal</span>
                   <span className="text-[var(--color-primary)]">${subtotal.toFixed(2)}</span>
                 </div>
+                {wallet && (
+                  <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+                    <span>Wallet balance</span>
+                    <span className={wallet.balance >= subtotal ? "text-[var(--color-success)]" : "text-amber-600"}>
+                      ${wallet.balance.toFixed(2)}
+                    </span>
+                  </div>
+                )}
                 <button
                   onClick={handleCheckout}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-light)] transition-colors"
