@@ -91,17 +91,25 @@ async def extract_intent(state: CommerceState) -> CommerceState:
         await _emit(state, "step_done", f"VibeCheck — got it, updated {pending['field'].replace('_', ' ')}", {"intent": intent.model_dump()})
         return {**state, "intent": intent}
 
+    # If the session already has products, let the LLM classify whether this is
+    # a follow-up question about those products, a new search, or chitchat —
+    # before running full intent extraction. This handles any phrasing naturally.
+    session_products = session_state.get_ranked_products(session_id)
+    if session_products and not image:
+        classification = await vibecheck.classify_message_intent(state["user_message"], session_products)
+        if classification == "product_followup":
+            await _emit(state, "step_done", "VibeCheck — answering your question about these products")
+            return {**state, "product_followup": True}
+        if classification == "chitchat":
+            await _emit(state, "step_done", "VibeCheck — just a greeting, no products needed")
+            return {**state, "chitchat": True}
+        # "new_search" — fall through to full intent extraction below
+
     intent, error = await vibecheck.extract_intent(state["user_message"], prior_intent=prior, image_base64=image)
     if error or not intent:
         await _emit(state, "error", f"Could not understand request: {error}")
         return {**state, "error": error or "intent_extraction_failed", "blocked": True}
     if intent.category in ("chitchat", "general"):
-        # Before treating as pure chitchat, check if this looks like a follow-up
-        # question about products already shown this session (e.g. "is the first one good?")
-        session_products = session_state.get_ranked_products(session_id)
-        if session_products and vibecheck.is_product_followup(state["user_message"], bool(session_products)):
-            await _emit(state, "step_done", "VibeCheck — follow-up question about shown products")
-            return {**state, "intent": intent, "product_followup": True}
         await _emit(state, "step_done", "VibeCheck — just a greeting, no products needed")
         return {**state, "intent": intent, "chitchat": True}
 

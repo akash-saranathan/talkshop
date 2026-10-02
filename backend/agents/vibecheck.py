@@ -200,26 +200,80 @@ def generate_followup_question(intent: ShoppingIntent) -> str:
     )
 
 
-_FOLLOWUP_HINTS = {
-    "first", "second", "third", "1st", "2nd", "3rd", "top", "that", "it",
-    "this", "those", "one", "good", "bad", "worth", "recommend", "better",
-    "worse", "difference", "which", "compare", "pros", "cons", "review",
-    "reliable", "quality", "durable", "comfortable", "tell me", "think",
-    "should i", "is it", "are they", "how is", "how are", "any good",
-    "pick", "choose", "between", "cheaper", "expensive", "fast",
+_OBVIOUS_CHITCHAT = {
+    "hi", "hello", "hey", "thanks", "thank you", "bye", "goodbye",
+    "ok", "okay", "cool", "nice", "great", "perfect", "awesome",
+    "sure", "yes", "no", "nope", "yep", "yeah",
+}
+
+_NEW_SEARCH_KEYWORDS = {
+    "show me", "find me", "search for", "look for", "i want", "i need",
+    "get me", "buy", "running shoes", "sneakers", "boots", "laptop",
+    "phone", "watch", "shirt", "bag", "headphones", "earbuds", "jacket",
+    "dress", "pants", "sunglasses", "backpack", "camera",
 }
 
 
-def is_product_followup(message: str, has_session_products: bool) -> bool:
+def _fast_classify(message: str) -> Optional[str]:
     """
-    True when a message is likely a question about already-shown products
-    rather than a new search — triggers contextual Q&A instead of a fresh
-    LangGraph product search.
+    Deterministic fast-path — no LLM call.
+    Returns a classification only for clear-cut cases; None means ambiguous
+    and the LLM classifier should decide.
     """
-    if not has_session_products:
-        return False
-    m = message.lower()
-    return any(hint in m for hint in _FOLLOWUP_HINTS)
+    m = message.strip().lower().rstrip("!?.")
+    # Bare one-or-two-word greetings/acks
+    if m in _OBVIOUS_CHITCHAT or all(w in _OBVIOUS_CHITCHAT for w in m.split()):
+        return "chitchat"
+    # Explicit search phrasing or clear product category mention
+    if any(kw in m for kw in _NEW_SEARCH_KEYWORDS):
+        return "new_search"
+    return None  # ambiguous — let the LLM decide
+
+
+async def classify_message_intent(
+    message: str,
+    session_products: list[dict],
+) -> str:
+    """
+    When the session already has shown products, ask the LLM to classify the
+    new message as one of three intents:
+      - "product_followup"  — question/comment about the products already shown
+      - "new_search"        — request for a different/new product
+      - "chitchat"          — greeting, thanks, or unrelated remark
+
+    Returns "new_search" on any error so the pipeline always continues safely.
+    Only called when session_products is non-empty.
+    """
+    # Try deterministic fast-path first — avoids an LLM call for obvious cases
+    fast = _fast_classify(message)
+    if fast is not None:
+        return fast
+
+    products_summary = "\n".join(
+        f"{i + 1}. {p['title']} — ${p['price']}"
+        for i, p in enumerate(session_products[:5])
+    )
+    prompt = f"""The user was just shown these products:
+{products_summary}
+
+New message: "{message}"
+
+Classify this message as exactly one of:
+- "product_followup" — any question or comment about the products already shown above (e.g. "is the first one good?", "which is cheapest?", "tell me more about #2", "are they waterproof?", "which would you recommend?", "what do you think of the top one?", "can you compare them?")
+- "new_search" — a request to find new or different products (e.g. "show me Nike shoes", "I want something under $50", "find me a laptop", "what about blue ones?")
+- "chitchat" — a greeting, thanks, or completely unrelated remark (e.g. "hi", "thanks", "okay")
+
+Reply with exactly one word: product_followup, new_search, or chitchat."""
+
+    try:
+        llm = get_llm(temperature=0.0)
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        result = _content_text(response.content).strip().lower().rstrip(".")
+        if result in ("product_followup", "new_search", "chitchat"):
+            return result
+        return "new_search"
+    except Exception:
+        return "new_search"
 
 
 async def answer_product_question(question: str, products: list[dict]) -> str:
