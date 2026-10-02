@@ -125,9 +125,22 @@ function SecurePaymentModal({
   const handleSubmit = () => {
     const digits = card.number.replace(/\s/g, "");
     if (digits.length < 13) { setError("Please enter a valid card number."); return; }
-    if (!/^\d{2}\/\d{2}$/.test(card.expiry)) { setError("Expiry must be MM/YY."); return; }
+
+    // Expiry — format check then future-date check
+    if (!/^\d{2}\/\d{2}$/.test(card.expiry)) { setError("Expiry must be MM/YY (e.g. 09/27)."); return; }
+    const [expMM, expYY] = card.expiry.split("/").map(Number);
+    if (expMM < 1 || expMM > 12) { setError("Expiry month must be between 01 and 12."); return; }
+    const now = new Date();
+    const expFull = new Date(2000 + expYY, expMM - 1, 1); // first day of expiry month
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (expFull < thisMonth) { setError("Card has expired. Please use a future expiry date."); return; }
+
     if (card.cvc.length < 3) { setError("CVC must be 3 or 4 digits."); return; }
-    if (!card.name.trim()) { setError("Please enter the name on your card."); return; }
+
+    // Name — letters, spaces, hyphens, apostrophes only; min 2 chars
+    if (!card.name.trim() || card.name.trim().length < 2) { setError("Please enter the name as it appears on your card."); return; }
+    if (!/^[A-Za-z\s'\-]+$/.test(card.name.trim())) { setError("Name should contain only letters, spaces, or hyphens."); return; }
+
     setError(null);
     onConfirm(card);
   };

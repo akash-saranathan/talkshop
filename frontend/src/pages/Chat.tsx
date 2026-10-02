@@ -190,6 +190,8 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [sessionCartCount, setSessionCartCount] = useState(0);
+  // Incrementing this forces ProductCards to remount and reset their qty state after payment.
+  const [productCardResetKey, setProductCardResetKey] = useState(0);
   const [sessionCartIds, setSessionCartIds] = useState<Set<string>>(new Set());
   const [sessionCartItems, setSessionCartItems] = useState<CartItemData[]>([]);
   const [cartPanelOpen, setCartPanelOpen] = useState(false);
@@ -702,12 +704,13 @@ export default function Chat() {
         )
       );
 
-      // Clear session cart
+      // Clear session cart and reset all ProductCard qty states
       setCartCount(0);
       setSessionCartCount(0);
       setSessionCartIds(new Set());
       setSessionCartItems([]);
       setCartPanelOpen(false);
+      setProductCardResetKey((k) => k + 1);
     } catch (err) {
       setTurns((prev) =>
         prev.map((t) =>
@@ -1161,7 +1164,7 @@ export default function Chat() {
                           {/* Cards — horizontal scroll row */}
                           <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
                             {sorted.map((p, i) => (
-                              <div key={p.product_id} className="w-64 shrink-0">
+                              <div key={`${p.product_id}-${productCardResetKey}`} className="w-64 shrink-0">
                                 <ProductCard
                                   product={p}
                                   index={i}

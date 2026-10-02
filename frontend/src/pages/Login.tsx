@@ -36,7 +36,10 @@ export default function Login() {
         await register(name, email, password);
         navigate("/");
       } else if (screen === "guest") {
-        if (!name.trim()) throw new Error("Please enter your name");
+        if (!name.trim() || name.trim().length < 2) throw new Error("Please enter your full name (at least 2 characters).");
+        if (!/^[A-Za-z\s'\-]+$/.test(name.trim())) throw new Error("Name should contain only letters, spaces, or hyphens.");
+        if (!email.trim()) throw new Error("Please enter your email address.");
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) throw new Error("Please enter a valid email address.");
         await loginAsGuest(name.trim(), email.trim());
         navigate("/");
       } else if (screen === "reset") {
