@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowRight, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
 import { getCart, addToCart, removeFromCart, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
@@ -195,7 +195,6 @@ export default function Chat() {
   const [cartPanelOpen, setCartPanelOpen] = useState(false);
   const [turnSortModes, setTurnSortModes] = useState<Map<string, SortMode>>(new Map());
   const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
-  const [addingToCheckout, setAddingToCheckout] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -954,13 +953,6 @@ export default function Chat() {
     });
   }, []);
 
-  const handleBuySelected = useCallback(() => {
-    if (addingToCheckout || selectedProducts.size === 0) return;
-    // Take the first selected product — inline checkout handles one at a time
-    const product = [...selectedProducts.values()][0];
-    doCheckoutSummaryRef.current?.("Buy selected", product);
-  }, [addingToCheckout, selectedProducts]);
-
   return (
     <div className="flex h-screen bg-[var(--color-bg)]">
       <ChatSidebar
@@ -1353,44 +1345,30 @@ export default function Chat() {
           )}
         </AnimatePresence>
 
-        {/* Floating multi-select bar */}
-        {selectedProducts.size > 0 && (
+        {/* Compare bar — only shown when 2-4 products are selected */}
+        {selectedProducts.size >= 2 && selectedProducts.size <= 4 && (
           <motion.div
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
-            className="mx-6 mb-2 rounded-xl bg-[var(--color-primary)] text-white px-4 py-3 flex items-center justify-between shadow-lg"
+            className="mx-6 mb-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] px-4 py-2.5 flex items-center justify-between shadow-sm"
           >
-            <div className="flex items-center gap-3">
-              <ShoppingCart size={16} />
-              <span className="text-sm font-medium">
-                {selectedProducts.size} item{selectedProducts.size > 1 ? "s" : ""} ready to buy
-              </span>
-              <span className="text-sm text-white/70">
-                · ${Array.from(selectedProducts.values()).reduce((s, p) => s + p.price, 0).toFixed(2)}
-              </span>
+            <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+              <GitCompare size={15} className="text-[var(--color-primary)]" />
+              <span>{selectedProducts.size} products selected</span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSelectedProducts(new Map())}
-                className="text-xs text-white/70 hover:text-white transition-colors"
+                className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
               >
                 Clear
               </button>
-              {selectedProducts.size >= 2 && selectedProducts.size <= 4 && (
-                <button
-                  onClick={() => setShowCompare(true)}
-                  className="flex items-center gap-1.5 text-sm font-semibold bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  <GitCompare size={14} /> Compare
-                </button>
-              )}
               <button
-                onClick={handleBuySelected}
-                disabled={addingToCheckout}
-                className="text-sm font-semibold bg-white text-[var(--color-primary)] px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors disabled:opacity-60"
+                onClick={() => setShowCompare(true)}
+                className="flex items-center gap-1.5 text-sm font-semibold bg-[var(--color-primary)] text-white px-3 py-1.5 rounded-lg hover:bg-[var(--color-primary-dark)] transition-colors"
               >
-                {addingToCheckout ? "Processing..." : "Buy Now"}
+                <GitCompare size={13} /> Compare
               </button>
             </div>
           </motion.div>
