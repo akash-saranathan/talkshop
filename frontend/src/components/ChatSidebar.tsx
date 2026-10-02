@@ -47,10 +47,16 @@ export default function ChatSidebar({
 
   if (collapsed) {
     return (
-      <aside className="w-12 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col items-center py-4 gap-4 shrink-0">
-        <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] text-white grid place-items-center cursor-pointer" onClick={onToggleCollapse} title="Expand">
-          <Store size={14} />
-        </div>
+      <aside className="w-12 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col items-center py-3 gap-3 shrink-0">
+        {/* Expand arrow — clearly labelled so it doesn't look like a nav icon */}
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          title="Expand sidebar"
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg)] transition-colors"
+        >
+          <ChevronRight size={18} />
+        </button>
         <button
           type="button"
           onClick={onNewChat}

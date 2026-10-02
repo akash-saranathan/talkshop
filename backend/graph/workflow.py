@@ -163,7 +163,16 @@ async def rank_products_node(state: CommerceState) -> CommerceState:
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "SneakPeek is ranking the best options for you...")
     ranked = sneakpeek.rank_products(state["filtered_products"], intent)
-    top5 = ranked[:5]
+    # Deduplicate by (title, merchant_id) — same model in multiple sizes shows up as
+    # one entry (highest-scored variant wins since ranked is already sorted desc).
+    seen_keys: set[tuple[str, str]] = set()
+    deduped: list = []
+    for p in ranked:
+        key = (p.title.lower(), p.merchant_id)
+        if key not in seen_keys:
+            seen_keys.add(key)
+            deduped.append(p)
+    top5 = deduped[:5]
     # Persist so follow-up questions ("is the first one good?") can reference them
     session_state.save_ranked_products(state["session_id"], [p.model_dump() for p in top5])
     await _emit(state, "step_done", f"SneakPeek — top {len(top5)} picks ready for you", [p.model_dump() for p in top5])

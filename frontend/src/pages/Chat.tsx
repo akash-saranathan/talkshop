@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2, ChevronRight } from "lucide-react";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord } from "../api/chat";
 import { getCart, addToCart, removeFromCart, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
@@ -1014,15 +1014,6 @@ export default function Chat() {
         {/* Header */}
         <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
           <div className="flex items-center gap-3">
-            {leftCollapsed && (
-              <button
-                onClick={() => setLeftCollapsed(false)}
-                title="Expand sidebar"
-                className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg)] transition-colors shrink-0"
-              >
-                <ChevronRight size={16} />
-              </button>
-            )}
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] grid place-items-center shrink-0">
                 <Sparkles size={13} className="text-white" />
