@@ -131,12 +131,71 @@ The right panel was completely redesigned from a simple list into a detailed vis
 
 ## Version 3 — Universal Agentic Commerce (future branch)
 
-| Feature | Status |
-|---|---|
-| UCP merchant discovery | 🔮 Not started |
-| ACP agent-to-bank token handshake | 🔮 Not started |
-| APGP payment protocol | 🔮 Not started |
-| X402 machine-to-machine micropayments | 🔮 Not started |
-| Always-on wake word | 🔮 Not started |
-| Facial recognition login | 🔮 Not started |
-| Cross-merchant universal loyalty | 🔮 Not started |
+Everything below is free to run locally. No paid APIs required.
+
+### ML & Intelligence
+
+| Feature | How | Status |
+|---|---|---|
+| **Semantic product search** | `sentence-transformers` (all-MiniLM-L6-v2) — embed product titles+descriptions at seed time, embed queries at runtime, cosine similarity retrieval | 🔮 Not started |
+| **Visual similarity search** | OpenCLIP (`ViT-B-32` via `open_clip`) — embed product images + user-pasted images, nearest-neighbour via FAISS | 🔮 Not started |
+| **Collaborative filtering** | `Implicit` or `LightFM` on order history — "users like you also bought" block below results | 🔮 Not started |
+| **Local intent classifier** | Fine-tune a `distilbert-base-uncased` on labelled messages (shopping/followup/chitchat) — replaces Gemini for the classify step when offline | 🔮 Not started |
+| **Sentiment-aware ranking** | `transformers` sentiment pipeline on scraped product reviews — negative-review penalty added to ranking score | 🔮 Not started |
+| **Fraud signal scoring** | Isolation Forest on order features (amount, time-of-day, device fingerprint) — score shown in audit trail | 🔮 Not started |
+| **Price prediction** | `Prophet` (Meta, free) — forecast price trends from seeded historical price table, "likely to drop next week" badge | 🔮 Not started |
+| **Personalised re-ranking** | Bandit model (ε-greedy) over click/add/buy events stored in SQLite — improves with every session | 🔮 Not started |
+
+### Notifications & Comms
+
+| Feature | How | Status |
+|---|---|---|
+| **Order confirmation email** | SMTP via Gmail free tier (`smtplib`) or local Mailhog dev server — HTML email with order ID, product thumbnail, estimated delivery | 🔮 Not started |
+| **Price drop alerts** | Background Celery beat task checks saved intents hourly; sends email if any matched product drops > 10% | 🔮 Not started |
+| **Abandoned cart email** | Task fires 30 min after cart is non-empty with no order; sends a "you left something behind" email | 🔮 Not started |
+| **Shipment status email** | TrackIt writes delivery milestones; email sent on each stage (dispatched, out for delivery, delivered) | 🔮 Not started |
+| **WhatsApp order updates** | Twilio free sandbox (`twilio` SDK) — WhatsApp message on order confirmed and on delivery | 🔮 Not started |
+| **Web push notifications** | `pywebpush` + browser Push API (no cost, no third-party) — "Your order shipped" push to browser | 🔮 Not started |
+
+### Real-time & Infrastructure
+
+| Feature | How | Status |
+|---|---|---|
+| **Redis session cache** | Replace in-memory LangGraph state with Redis (`redis-py`) — sessions survive backend restarts | 🔮 Not started |
+| **Celery task queue** | Celery + Redis broker — async email sending, price watchers, fraud scoring run off the request thread | 🔮 Not started |
+| **WebSocket chat** | Replace SSE EventSource with `fastapi-websockets` — bidirectional; enables typing indicators and live cart sync across tabs | 🔮 Not started |
+| **Meilisearch full-text** | Self-hosted Meilisearch (free, Docker) — typo-tolerant full-text fallback when embedding search returns no results | 🔮 Not started |
+| **Real-time inventory** | Merchant adapters poll stock table every 60 s via background task; "Only 2 left" badge updates live via WebSocket | 🔮 Not started |
+| **Observability dashboard** | Arize Phoenix already wired; add Grafana + Prometheus (both free, Docker) — latency, error rate, LLM token usage panels | 🔮 Not started |
+
+### Commerce Features
+
+| Feature | How | Status |
+|---|---|---|
+| **Order cancellation & refund** | Cancel endpoint within 15-min window; DPAT token voided, wallet refunded, TrackIt status updated | 🔮 Not started |
+| **Returns flow** | "Return this item" in chat → RMA number issued, return shipping label generated (EasyPost sandbox, free) | 🔮 Not started |
+| **Discount codes** | `promo_codes` table; VibeCheck intercepts "I have a code" → CartUp applies discount before DPAT token is minted | 🔮 Not started |
+| **Bundle / frequently-bought-together** | Association rules (Apriori via `mlxtend`) on order history — "people who bought this also bought" chips | 🔮 Not started |
+| **One-tap reorder** | "Reorder" button on order history card — re-runs the exact same product + checkout without new search | 🔮 Not started |
+| **Cross-merchant universal loyalty** | Unified points ledger across all 3 merchants — single balance, earn/redeem anywhere | 🔮 Not started |
+| **Multi-item checkout** | Single DPAT token covering a cart of N items; guardrail checks cover the combined amount | 🔮 Not started |
+| **Saved addresses** | Address book table; VibeCheck resolves "ship to my home" to the stored default | 🔮 Not started |
+
+### Agentic Protocols
+
+| Feature | How | Status |
+|---|---|---|
+| **UCP merchant discovery** | Universal Commerce Protocol — real-time merchant catalog discovery | 🔮 Not started |
+| **ACP agent-to-bank token handshake** | Stripe ACP / Visa Agentic Token integration | 🔮 Not started |
+| **X402 micropayments** | Machine-to-machine HTTP 402 payment protocol | 🔮 Not started |
+| **APGP payment protocol** | Google AP2 agent-to-payment protocol | 🔮 Not started |
+
+### UX & Accessibility
+
+| Feature | How | Status |
+|---|---|---|
+| **Wake word detection** | `openWakeWord` (free, local) — always-on "Hey TalkShop" activates mic without button press | 🔮 Not started |
+| **Facial recognition login** | `face_recognition` (dlib, free, local) — webcam login for registered users | 🔮 Not started |
+| **Receipt OCR** | `pytesseract` + `Pillow` — scan a physical receipt, find the same product cheaper | 🔮 Not started |
+| **Multi-language** | `deep-translator` (free) wraps LibreTranslate (self-hosted) — UI and LLM prompts in user's language | 🔮 Not started |
+| **Accessibility audit** | `axe-core` CI integration — WCAG 2.1 AA on every PR | 🔮 Not started |

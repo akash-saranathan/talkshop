@@ -93,3 +93,76 @@
 - **Persistent state** — navigating away and back should never lose progress or require re-entry
 - **Every agent visible** — the right panel tells the full story of what happened, even for past turns
 - **One action per message** — the LLM returns at most one frontend action per response, keeping the UX predictable
+
+---
+
+## Version 3 Backlog — Real-World Replica (all free, all local)
+
+Goal: make TalkShop indistinguishable from a real production commerce system, using only open-source libraries and free-tier services that run on a laptop.
+
+### ML & Intelligence
+
+| # | Feature | Library | What it replaces / adds |
+|---|---|---|---|
+| V3-1 | Semantic product search | `sentence-transformers` all-MiniLM-L6-v2 + FAISS | Keyword filter → dense vector retrieval; finds "trail running shoes" for "hiking footwear" |
+| V3-2 | Visual similarity search | OpenCLIP `ViT-B-32` + FAISS | Image-paste finds visually similar products from the catalog |
+| V3-3 | Collaborative filtering | `LightFM` / `Implicit` on order history | "Users like you also bought" section below results |
+| V3-4 | Local intent classifier | Fine-tuned `distilbert-base-uncased` | Offline fallback for `classify_message_intent` — no Gemini quota needed |
+| V3-5 | Sentiment-aware ranking | `transformers` sentiment pipeline on reviews | Negative-review products ranked lower even if price and rating match |
+| V3-6 | Fraud signal scoring | Isolation Forest (sklearn) on order features | Score added to audit trail; flag unusual orders before payment |
+| V3-7 | Price forecasting | Meta `Prophet` (free) | "Likely to drop next week" badge computed from seeded price history table |
+| V3-8 | Personalised re-ranking | ε-greedy bandit on click/add/buy events in SQLite | Gets better with every session — no external ML service |
+| V3-9 | Bundle detection | Apriori association rules (`mlxtend`) | "Frequently bought together" chips below product cards |
+
+### Notifications & Comms
+
+| # | Feature | Library | Notes |
+|---|---|---|---|
+| V3-10 | Order confirmation email | `smtplib` + Gmail free SMTP or local Mailhog | HTML email with product image, order ID, estimated delivery |
+| V3-11 | Price drop alerts | Celery beat + `smtplib` | Hourly check on saved intents; email when matched product drops >10% |
+| V3-12 | Abandoned cart email | Celery delayed task | Fires 30 min after non-empty cart with no order |
+| V3-13 | Shipment milestone emails | TrackIt stage hooks + `smtplib` | Dispatched / Out for delivery / Delivered — one email per milestone |
+| V3-14 | WhatsApp order updates | Twilio free sandbox | Message on order confirmed and on delivery |
+| V3-15 | Browser push notifications | `pywebpush` + Web Push API | "Your order shipped" push — no cost, no third-party |
+
+### Infrastructure
+
+| # | Feature | Library | Notes |
+|---|---|---|---|
+| V3-16 | Redis session cache | `redis-py` | LangGraph state survives backend restarts; consistent across workers |
+| V3-17 | Celery task queue | Celery + Redis broker | Email, price watchers, fraud scoring run off the request thread |
+| V3-18 | WebSocket chat | `fastapi-websockets` | Replaces SSE; typing indicators + live cart sync across tabs |
+| V3-19 | Full-text search | Self-hosted Meilisearch (Docker, free) | Typo-tolerant fallback when semantic search returns low-confidence results |
+| V3-20 | Real-time inventory | Background task + WebSocket push | "Only 2 left" badge updates live without page refresh |
+| V3-21 | Grafana + Prometheus | Docker (free) | Latency, error rate, LLM token usage panels alongside Arize Phoenix |
+
+### Commerce
+
+| # | Feature | Notes |
+|---|---|---|
+| V3-22 | Order cancellation & refund | Cancel within 15-min window; DPAT token voided, wallet credited |
+| V3-23 | Returns flow | "Return this item" in chat → RMA number + EasyPost sandbox label (free) |
+| V3-24 | Discount / promo codes | `promo_codes` table; CartUp applies before DPAT token minted |
+| V3-25 | Multi-item checkout | Single DPAT token covers full cart; all 12 guardrail checks on combined amount |
+| V3-26 | One-tap reorder | Re-runs product + checkout from order history without new search |
+| V3-27 | Saved addresses | Address book; VibeCheck resolves "ship to my home" to stored default |
+| V3-28 | Cross-merchant loyalty | Unified points ledger across all 3 merchants |
+| V3-29 | Real shipping tracking | EasyPost free sandbox — real tracking numbers and status milestones |
+
+### UX
+
+| # | Feature | Library | Notes |
+|---|---|---|---|
+| V3-30 | Wake word detection | `openWakeWord` (free, local) | "Hey TalkShop" activates mic — no button, always-on |
+| V3-31 | Receipt OCR | `pytesseract` + `Pillow` | Scan a receipt, find the same product cheaper |
+| V3-32 | Multi-language | `deep-translator` + self-hosted LibreTranslate | UI and LLM prompts in user's detected language |
+| V3-33 | Facial recognition login | `face_recognition` (dlib, free, local) | Webcam login for registered accounts |
+
+### Agentic Protocols
+
+| # | Feature | Notes |
+|---|---|---|
+| V3-34 | UCP merchant discovery | Universal Commerce Protocol — dynamic merchant catalog |
+| V3-35 | ACP / Visa Agentic Token | Stripe ACP or Visa Agentic Token replaces custom DPAT |
+| V3-36 | X402 micropayments | HTTP 402 machine-to-machine payment protocol |
+| V3-37 | Google AP2 | Agent Payments Protocol — agent-to-bank direct handshake |

@@ -340,14 +340,71 @@ password: demo1234
 
 ## Future Scope (v3)
 
+All features below are free to run locally — no paid APIs or cloud services required.
+
+### ML & Intelligence
+
+| Feature | Library / Approach |
+|---|---|
+| **Semantic product search** | `sentence-transformers` (all-MiniLM-L6-v2) — embed products at seed time, cosine similarity at query time via FAISS |
+| **Visual similarity search** | OpenCLIP (`ViT-B-32`) — match user-pasted images to catalog; zero-cost, runs on CPU |
+| **Collaborative filtering** | `LightFM` or `Implicit` on order history — "users like you also bought" |
+| **Local intent classifier** | Fine-tuned `distilbert-base-uncased` — replaces Gemini for the classify step when offline |
+| **Sentiment-aware ranking** | `transformers` sentiment pipeline on product reviews — negative-review penalty in score |
+| **Fraud signal scoring** | Isolation Forest on order features — score surfaced in audit trail |
+| **Price forecasting** | Meta `Prophet` — forecast price trends, "likely to drop next week" badge |
+| **Personalised re-ranking** | ε-greedy bandit on click/add/buy events — improves with every session, stored in SQLite |
+| **Bundle detection** | Apriori association rules (`mlxtend`) on order history — "frequently bought together" chips |
+
+### Notifications & Comms
+
+| Feature | Library / Approach |
+|---|---|
+| **Order confirmation email** | `smtplib` + Gmail free tier, or local Mailhog dev SMTP — HTML email with product thumbnail and order ID |
+| **Price drop alerts** | Celery beat task every hour — emails user when a saved-intent product drops >10% |
+| **Abandoned cart email** | Fires 30 min after non-empty cart with no order — "you left something behind" |
+| **Shipment milestone emails** | TrackIt writes delivery stages; email sent on dispatched, out-for-delivery, and delivered |
+| **WhatsApp order updates** | Twilio free sandbox — message on order confirmed and on delivery |
+| **Web push notifications** | `pywebpush` + browser Push API — "Your order shipped" push, no third-party cost |
+
+### Real-time & Infrastructure
+
+| Feature | Library / Approach |
+|---|---|
+| **Redis session cache** | `redis-py` — LangGraph state survives backend restarts; session shared across workers |
+| **Celery task queue** | Celery + Redis broker — email, price watchers, fraud scoring off the request thread |
+| **WebSocket chat** | `fastapi-websockets` — replaces SSE; typing indicators, live cart sync across tabs |
+| **Meilisearch full-text** | Self-hosted Meilisearch (Docker, free) — typo-tolerant fallback when embedding search misses |
+| **Real-time inventory** | Background task polls stock every 60 s; "Only 2 left" badge updates live via WebSocket push |
+| **Observability stack** | Arize Phoenix (already wired) + Grafana + Prometheus (Docker, free) — latency, errors, LLM token usage |
+
+### Commerce Features
+
 | Feature | Notes |
 |---|---|
-| UCP merchant discovery | Real-time merchant catalog via Universal Commerce Protocol |
-| ACP agent-to-bank token handshake | Stripe ACP / Visa Agentic Token integration |
-| One-tap reorder | Reorder button re-runs the same purchase |
-| Price drop alerts | Background watcher per saved intent |
-| Real shipping tracking | EasyPost free sandbox |
-| WhatsApp order notifications | Twilio integration |
-| Preference learning | Notices patterns (always Nike, always size 10), pre-fills them |
-| Collaborative filtering | Personalized ranking from order history |
-| X402 micropayments | Machine-to-machine payment protocol |
+| **Order cancellation & refund** | Cancel within 15-min window; DPAT token voided, wallet refunded |
+| **Returns flow** | "Return this item" → RMA number, EasyPost sandbox shipping label (free tier) |
+| **Discount / promo codes** | `promo_codes` table; CartUp applies discount before DPAT token is minted |
+| **Multi-item checkout** | Single DPAT token covers entire cart; guardrail checks on combined amount |
+| **One-tap reorder** | Re-runs the exact product + checkout from order history without new search |
+| **Saved addresses** | Address book; "ship to my home" resolved by VibeCheck to stored default |
+| **Cross-merchant loyalty** | Unified points ledger across all 3 merchants — earn and redeem anywhere |
+| **Real shipping tracking** | EasyPost free sandbox — real tracking numbers and delivery milestones |
+
+### UX & Accessibility
+
+| Feature | Notes |
+|---|---|
+| **Wake word detection** | `openWakeWord` (free, local) — "Hey TalkShop" activates mic without button |
+| **Receipt OCR** | `pytesseract` + `Pillow` — scan a receipt image, find the same item cheaper |
+| **Multi-language** | `deep-translator` + self-hosted LibreTranslate — UI and LLM prompts in user's language |
+| **Facial recognition login** | `face_recognition` (dlib, free, local) — webcam login for registered users |
+
+### Agentic Protocols
+
+| Feature | Notes |
+|---|---|
+| **UCP merchant discovery** | Universal Commerce Protocol — real-time merchant catalog discovery |
+| **ACP agent-to-bank token handshake** | Stripe ACP / Visa Agentic Token integration |
+| **X402 micropayments** | HTTP 402 machine-to-machine payment protocol |
+| **APGP payment protocol** | Google Agent Payments Protocol (AP2) |
