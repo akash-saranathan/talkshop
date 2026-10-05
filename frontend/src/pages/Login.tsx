@@ -88,7 +88,7 @@ export default function Login() {
             <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col gap-3">
               <p className="text-sm text-center text-[var(--color-text-muted)] mb-1">How would you like to continue?</p>
 
-              {/* Known Customer */}
+              {/* Customer (log in or sign up) */}
               <button
                 onClick={() => { reset(); setScreen("login"); }}
                 className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-[var(--color-primary)] bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/10 transition-colors text-left group"
@@ -97,8 +97,8 @@ export default function Login() {
                   <UserCheck size={18} />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-[var(--color-text)] group-hover:text-[var(--color-primary)] transition-colors">Returning Customer</p>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Log in with your account — your saved cards and order history are ready</p>
+                  <p className="text-sm font-bold text-[var(--color-text)] group-hover:text-[var(--color-primary)] transition-colors">Customer</p>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Log in or create an account — access your saved cards and order history</p>
                 </div>
               </button>
 
@@ -114,13 +114,6 @@ export default function Login() {
                   <p className="text-sm font-bold text-[var(--color-text)]">Continue as Guest</p>
                   <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Browse and buy without an account — enter your card at checkout</p>
                 </div>
-              </button>
-
-              <button
-                onClick={() => { reset(); setScreen("register"); }}
-                className="text-xs text-center text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors mt-1"
-              >
-                New here? Create an account →
               </button>
             </motion.div>
           )}

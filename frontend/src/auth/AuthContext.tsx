@@ -61,6 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await parseAuthResponse(res);
     setToken(data.access_token);
     setUser(data.user);
+    setIsGuest(false);
+    try { localStorage.removeItem(GUEST_KEY); } catch { /* noop */ }
   }
 
   async function register(name: string, email: string, password: string) {
@@ -72,6 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await parseAuthResponse(res);
     setToken(data.access_token);
     setUser(data.user);
+    setIsGuest(false);
+    try { localStorage.removeItem(GUEST_KEY); } catch { /* noop */ }
   }
 
   async function loginAsGuest(name: string, email: string) {

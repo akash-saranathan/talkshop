@@ -13,6 +13,7 @@ import ChatSidebar from "../components/ChatSidebar";
 import AgentTrailPanel from "../components/AgentTrailPanel";
 import ThemeToggle from "../components/ThemeToggle";
 import InlineCheckout, { SAVED_CARDS, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape } from "../components/InlineCheckout";
+import InlineOrderTracker from "../components/InlineOrderTracker";
 import { useAuth } from "../auth/AuthContext";
 import { getProductVisual } from "../utils/productVisual";
 
@@ -97,6 +98,7 @@ interface Turn {
   checkout?: InlineCheckoutData;
   cartAdded?: { product: ProductData };
   showCartInline?: boolean;
+  orderTracker?: boolean;
 }
 
 function renderWithBold(text: string): React.ReactNode {
@@ -137,6 +139,16 @@ function isShowCartIntent(text: string): boolean {
   if (/\bcart\b/.test(t) && /\b(show|view|open|see|display|check|look at)\b/.test(t)) return true;
   // "what's in my cart" style
   if (/\bcart\b/.test(t) && /\b(what|whats)\b/.test(t)) return true;
+  return false;
+}
+
+// "track my order", "where's my package", "order status" → show inline order tracker.
+function isOrderTrackingIntent(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (/\border(s|er)?\b/.test(t) && /\b(track|status|where|when|check|show|my|all)\b/.test(t)) return true;
+  if (/\b(track(ing)?|where('?s)?|when)\b/.test(t) && /\b(order|package|parcel|shipment|delivery)\b/.test(t)) return true;
+  if (/^(my orders?|show orders?|all orders?|order history|order tracker)$/.test(t)) return true;
+  if (/\b(delivery status|shipping status|when will (it|my order) arrive)\b/.test(t)) return true;
   return false;
 }
 
@@ -675,6 +687,23 @@ export default function Chat() {
         intent: {},
       }]);
       setShowCartDrawer(true);
+      return;
+    }
+
+    // ── Order tracking intercept — show live tracker bubble in chat ──────
+    if (isOrderTrackingIntent(msg)) {
+      setInput("");
+      const trackerTurnId = crypto.randomUUID();
+      setTurns((prev) => [...prev, {
+        id: trackerTurnId,
+        userMessage: msg,
+        steps: [],
+        products: [],
+        recommendation: "",
+        blocked: null,
+        intent: {},
+        orderTracker: true,
+      }]);
       return;
     }
 
@@ -1730,6 +1759,32 @@ export default function Chat() {
                         onGuestCardChange={(card) => updateGuestCard(turn.id, card)}
                       />
                     )}
+
+                    {/* Track orders button — appears after a purchase is confirmed */}
+                    {turn.checkout?.phase === "confirmed" && (
+                      <motion.button
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        onClick={() => {
+                          setTurns((prev) => [...prev, {
+                            id: crypto.randomUUID(),
+                            userMessage: "Track my orders",
+                            steps: [],
+                            products: [],
+                            recommendation: "",
+                            blocked: null,
+                            intent: {},
+                            orderTracker: true,
+                          }]);
+                        }}
+                        className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-[var(--color-border)] text-xs font-semibold text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-colors self-start"
+                      >
+                        📦 Track my orders
+                      </motion.button>
+                    )}
+
+                    {/* Inline order tracker — shown when user asks to track orders */}
+                    {turn.orderTracker && <InlineOrderTracker />}
 
                     {/* Skeleton cards — only while a product search is in progress (not for follow-up Q&A) */}
                     {isActiveTurn && turn.products.length === 0 && turn.steps.some(s => s.message.toLowerCase().includes("sneakpeek") || s.message.toLowerCase().includes("searching")) && (
