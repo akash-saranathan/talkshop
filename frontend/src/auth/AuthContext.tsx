@@ -20,6 +20,30 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const GUEST_KEY = "talkshop_guest";
+// The server never stores a guest's name/email (only customers' details are
+// persisted), so the guest's own copy lives here — browser only — to keep
+// showing their name after a page reload.
+const GUEST_PROFILE_KEY = "talkshop_guest_profile";
+
+function readGuestProfile(): Pick<User, "name" | "email"> | null {
+  try { return JSON.parse(localStorage.getItem(GUEST_PROFILE_KEY) ?? "null"); } catch { return null; }
+}
+
+// Chat keeps the open conversation (and its in-progress checkout / guest
+// card) in this tab's sessionStorage so navigating to Cart and back resumes
+// it. Any login/logout wipes that, so every sign-in starts on a fresh chat
+// and nothing carries over between accounts. Past chats stay in the sidebar.
+function clearChatSessionState() {
+  try {
+    Object.keys(sessionStorage)
+      .filter((k) => k.startsWith("talkshop_"))
+      .forEach((k) => sessionStorage.removeItem(k));
+  } catch { /* noop */ }
+}
+
+// Thrown by loginAsGuest when the email belongs to a registered account, so
+// the login page can offer "Log in instead" rather than a generic error.
+export class ExistingCustomerError extends Error {}
 
 async function parseAuthResponse(res: Response): Promise<{ access_token: string; user: User }> {
   if (!res.ok) {
@@ -47,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error("session expired");
         return res.json();
       })
-      .then((data: User) => setUser(data))
+      .then((data: User) => setUser(isGuest ? { ...data, ...readGuestProfile() } : data))
       .catch(() => clearToken())
       .finally(() => setLoading(false));
   }, []);
@@ -59,10 +83,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     const data = await parseAuthResponse(res);
+    clearChatSessionState();
     setToken(data.access_token);
     setUser(data.user);
     setIsGuest(false);
-    try { localStorage.removeItem(GUEST_KEY); } catch { /* noop */ }
+    try { localStorage.removeItem(GUEST_KEY); localStorage.removeItem(GUEST_PROFILE_KEY); } catch { /* noop */ }
   }
 
   async function register(name: string, email: string, password: string) {
@@ -72,59 +97,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ name, email, password }),
     });
     const data = await parseAuthResponse(res);
+    clearChatSessionState();
     setToken(data.access_token);
     setUser(data.user);
     setIsGuest(false);
-    try { localStorage.removeItem(GUEST_KEY); } catch { /* noop */ }
+    try { localStorage.removeItem(GUEST_KEY); localStorage.removeItem(GUEST_PROFILE_KEY); } catch { /* noop */ }
   }
 
   async function loginAsGuest(name: string, email: string) {
-    // Auto-generate a random password — guest user never needs to remember it
-    const guestPassword = `guest_${Math.random().toString(36).slice(2)}${Date.now()}`;
-    let data: { access_token: string; user: User };
-    // Try registering first; if email already exists (returning guest), log in
-    const regRes = await fetch("/api/auth/register", {
+    // Fresh guest session (nothing about the guest is stored server-side); an
+    // email that belongs to a registered customer is refused (409) so they're
+    // sent to log in instead.
+    const res = await fetch("/api/auth/guest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password: guestPassword }),
+      body: JSON.stringify({ name, email }),
     });
-    if (regRes.ok) {
-      data = await regRes.json();
-    } else if (regRes.status === 409) {
-      // Email already has an account — reset its password so we can log in as guest.
-      // This lets a returning guest (or someone who forgot they registered) continue
-      // without needing their old password.
-      const resetRes = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, new_password: guestPassword }),
-      });
-      if (!resetRes.ok) {
-        const d = await resetRes.json().catch(() => ({}));
-        throw new Error(d.detail || "Could not start guest session");
-      }
-      const loginRes = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password: guestPassword }),
-      });
-      data = await parseAuthResponse(loginRes);
-    } else {
-      // Any other registration error (server error, validation, etc.)
-      const d = await regRes.json().catch(() => ({}));
-      throw new Error(d.detail || "Could not start guest session. Please try again.");
+    if (res.status === 409) {
+      const d = await res.json().catch(() => ({}));
+      throw new ExistingCustomerError(d.detail || "You're already a customer with this email. Please log in instead.");
     }
+    const data = await parseAuthResponse(res);
+    clearChatSessionState();
     setToken(data.access_token);
     setUser(data.user);
     setIsGuest(true);
-    try { localStorage.setItem(GUEST_KEY, "1"); } catch { /* noop */ }
+    try {
+      localStorage.setItem(GUEST_KEY, "1");
+      localStorage.setItem(GUEST_PROFILE_KEY, JSON.stringify({ name: data.user.name, email: data.user.email }));
+    } catch { /* noop */ }
   }
 
   function logout() {
+    clearChatSessionState();
     clearToken();
     setUser(null);
     setIsGuest(false);
-    try { localStorage.removeItem(GUEST_KEY); } catch { /* noop */ }
+    try { localStorage.removeItem(GUEST_KEY); localStorage.removeItem(GUEST_PROFILE_KEY); } catch { /* noop */ }
   }
 
   return (

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Loader, Eye, Plus, Minus, X, ZoomIn } from "lucide-react";
 import type { ProductData } from "../api/chat";
 import { getProductVisual } from "../utils/productVisual";
-import { addToCart, updateCartItemQuantity, removeFromCart, type CartItemData } from "../api/cart";
+import type { CartItemData } from "../api/cart";
 import ProductDetailModal from "./ProductDetailModal";
 
 interface Props {
@@ -12,7 +12,11 @@ interface Props {
   index: number;
   selected?: boolean;
   onToggleSelect?: (product: ProductData) => void;
-  onAdded?: (item?: CartItemData) => void;
+  // Owned by the Chat page so the card and the compare popup always show the
+  // same quantity — the card never tracks cart state on its own.
+  cartItem?: CartItemData;
+  onAddToCart?: (product: ProductData) => Promise<void>;
+  onSetQuantity?: (item: CartItemData, quantity: number) => Promise<void>;
   matchTags?: string[];
 }
 
@@ -42,11 +46,10 @@ const RANK_BADGE: Record<number, { label: string; className: string }> = {
   2: { label: "#3", className: "bg-amber-700 text-white" },
 };
 
-export default function ProductCard({ product, index, selected = false, onToggleSelect, onAdded, matchTags }: Props) {
+export default function ProductCard({ product, index, selected = false, onToggleSelect, matchTags, cartItem, onAddToCart, onSetQuantity }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [qty, setQty] = useState(0);
-  const [cartItemId, setCartItemId] = useState<string | null>(null);
+  const qty = cartItem?.quantity ?? 0;
   const [updating, setUpdating] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
@@ -59,13 +62,10 @@ export default function ProductCard({ product, index, selected = false, onToggle
 
   const handleAddToCart = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (adding) return;
+    if (adding || !onAddToCart) return;
     setAdding(true);
     try {
-      const item = await addToCart(product);
-      setCartItemId(item.cart_item_id);
-      setQty(1);
-      onAdded?.(item);
+      await onAddToCart(product);
     } catch {
       // silent — don't crash the card
     } finally {
@@ -73,44 +73,20 @@ export default function ProductCard({ product, index, selected = false, onToggle
     }
   };
 
-  const handleIncrement = async (e: React.MouseEvent) => {
+  const changeQuantity = async (e: React.MouseEvent, delta: number) => {
     e.stopPropagation();
-    if (updating || !cartItemId) return;
+    if (updating || !cartItem || !onSetQuantity) return;
     setUpdating(true);
     try {
-      const newQty = qty + 1;
-      await updateCartItemQuantity(cartItemId, newQty);
-      setQty(newQty);
-      onAdded?.();
+      await onSetQuantity(cartItem, qty + delta);
     } catch {
       // silent
     } finally {
       setUpdating(false);
     }
   };
-
-  const handleDecrement = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (updating || !cartItemId) return;
-    setUpdating(true);
-    try {
-      if (qty <= 1) {
-        await removeFromCart(cartItemId);
-        setQty(0);
-        setCartItemId(null);
-        onAdded?.();
-      } else {
-        const newQty = qty - 1;
-        await updateCartItemQuantity(cartItemId, newQty);
-        setQty(newQty);
-        onAdded?.();
-      }
-    } catch {
-      // silent
-    } finally {
-      setUpdating(false);
-    }
-  };
+  const handleIncrement = (e: React.MouseEvent) => changeQuantity(e, 1);
+  const handleDecrement = (e: React.MouseEvent) => changeQuantity(e, -1);
 
   return (
     <motion.div

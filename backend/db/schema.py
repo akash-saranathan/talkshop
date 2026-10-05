@@ -18,6 +18,10 @@ class User(Base):
     email = Column(String(200), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     status = Column(String(20), default="active")
+    # True for accounts created by "Continue as Guest" (random password the
+    # shopper never sees). Lets the guest flow resume a guest's own account
+    # while refusing to touch a registered customer's.
+    is_guest = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, server_default=func.now())
 
 
