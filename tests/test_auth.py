@@ -123,3 +123,51 @@ def test_create_and_decode_access_token_roundtrip():
     from backend.auth.security import create_access_token, decode_access_token
     token = create_access_token("USR999")
     assert decode_access_token(token) == "USR999"
+
+
+# ── Guest sessions ────────────────────────────────────────────────────────────
+
+def test_guest_creates_session_for_new_email(client):
+    email = _unique_email()
+    resp = client.post("/api/auth/guest", json={"name": "Guest User", "email": email})
+    assert resp.status_code == 200
+    assert resp.json()["access_token"]
+    assert resp.json()["user"]["email"] == email
+
+
+def test_guest_email_and_name_are_not_stored(client):
+    from backend.db.schema import User
+    from backend.db.session_utils import get_session
+    email = _unique_email()
+    data = client.post("/api/auth/guest", json={"name": "Private Guest", "email": email}).json()
+    # Echoed back for the UI...
+    assert data["user"]["email"] == email
+    assert data["user"]["name"] == "Private Guest"
+    # ...but never persisted.
+    with get_session() as session:
+        assert session.query(User).filter(User.email == email).first() is None
+        row = session.query(User).filter(User.user_id == data["user"]["user_id"]).first()
+        assert row.is_guest and row.name == "Guest" and row.email.endswith("@guest.invalid")
+
+
+def test_guest_email_can_register_later(client):
+    email = _unique_email()
+    client.post("/api/auth/guest", json={"name": "Guest First", "email": email})
+    resp = client.post("/api/auth/register", json={"name": "Now Customer", "email": email, "password": "customer123"})
+    assert resp.status_code == 200
+
+
+def test_guest_refuses_registered_customer_email(client):
+    email = _unique_email()
+    client.post("/api/auth/register", json={"name": "Real Customer", "email": email, "password": "customer123"})
+    resp = client.post("/api/auth/guest", json={"name": "Someone Else", "email": email})
+    assert resp.status_code == 409
+    assert "already a customer" in resp.json()["detail"]
+
+
+def test_guest_attempt_does_not_change_customer_password(client):
+    email = _unique_email()
+    client.post("/api/auth/register", json={"name": "Real Customer", "email": email, "password": "customer123"})
+    client.post("/api/auth/guest", json={"name": "Someone Else", "email": email})
+    resp = client.post("/api/auth/login", json={"email": email, "password": "customer123"})
+    assert resp.status_code == 200

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader, Store, Eye, EyeOff, ArrowLeft, UserCheck, UserPlus } from "lucide-react";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth, ExistingCustomerError } from "../auth/AuthContext";
 
 type Screen = "landing" | "login" | "register" | "guest" | "reset";
 
@@ -18,9 +18,11 @@ export default function Login() {
   const [showNew, setShowNew] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Guest tried an email that belongs to a registered account — offer login.
+  const [existingCustomer, setExistingCustomer] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const reset = () => { setError(null); setSuccess(null); setPassword(""); setNewPassword(""); };
+  const reset = () => { setError(null); setExistingCustomer(false); setSuccess(null); setPassword(""); setNewPassword(""); };
   const goBack = () => { setScreen("landing"); reset(); };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -58,6 +60,7 @@ export default function Login() {
       }
     } catch (err) {
       setError((err as Error).message);
+      setExistingCustomer(err instanceof ExistingCustomerError);
     } finally {
       setLoading(false);
     }
@@ -132,7 +135,17 @@ export default function Login() {
                   placeholder="Your name" required className={inputCls} />
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email address" required className={inputCls} />
-                {error && <p className="text-sm text-rose-500 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</p>}
+                {error && (
+                  <div className="text-sm text-rose-500 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                    <p>{error}</p>
+                    {existingCustomer && (
+                      <button type="button" onClick={() => { reset(); setScreen("login"); }}
+                        className="mt-1.5 font-semibold text-[var(--color-primary)] hover:underline">
+                        Log in instead →
+                      </button>
+                    )}
+                  </div>
+                )}
                 <button type="submit" disabled={loading}
                   className="mt-1 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-dark)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                   {loading && <Loader size={14} className="animate-spin" />}

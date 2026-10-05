@@ -1,9 +1,9 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2, CheckCircle2, ShoppingBag } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord, type ChatAction } from "../api/chat";
-import { getCart, addToCart, removeFromCart, type CartItemData } from "../api/cart";
+import { getCart, addToCart, removeFromCart, updateCartItemQuantity, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
 import ProductCard from "../components/ProductCard";
 import SkeletonProductCard from "../components/SkeletonProductCard";
@@ -16,6 +16,7 @@ import InlineCheckout, { SAVED_CARDS, type InlineCheckoutData, type CheckoutData
 import InlineOrderTracker from "../components/InlineOrderTracker";
 import { useAuth } from "../auth/AuthContext";
 import { getProductVisual } from "../utils/productVisual";
+import { autocorrectOnType, autocorrectLastWord, type Correction } from "../utils/autocorrect";
 
 // ── Intent parsing ──────────────────────────────────────────────────────────
 
@@ -448,6 +449,9 @@ export default function Chat() {
   const activeTurnId = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // The autocorrect just applied — Backspace straight after it restores
+  // what was actually typed (same as a phone keyboard).
+  const lastCorrectionRef = useRef<Correction | null>(null);
 
   // Grow the textarea with its content instead of scrolling a single line.
   useEffect(() => {
@@ -456,6 +460,39 @@ export default function Chat() {
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
+
+  // This chat's cart, keyed by product — the single source of truth for the
+  // quantity shown on product cards and in the compare popup, so a change
+  // made in one place shows up in the other.
+  const cartItemByProduct = useMemo(
+    () => new Map(sessionCartItems.map((i) => [i.product_id, i])),
+    [sessionCartItems],
+  );
+
+  // Re-read the cart after any add/update/remove. Quantities come from the
+  // server (adding a product that's already in the cart bumps its quantity
+  // there), so local guesses can't drift from what will actually be bought.
+  const syncSessionCart = useCallback(async (addedItemId?: string) => {
+    const items = await getCart();
+    setCartCount(items.length);
+    if (addedItemId) setSessionCartIds((prev) => new Set(prev).add(addedItemId));
+    setSessionCartItems((prev) => {
+      const ids = new Set(prev.map((i) => i.cart_item_id));
+      if (addedItemId) ids.add(addedItemId);
+      return items.filter((i) => ids.has(i.cart_item_id));
+    });
+  }, []);
+
+  const addProductToSessionCart = useCallback(async (product: ProductData) => {
+    const item = await addToCart(product);
+    await syncSessionCart(item.cart_item_id);
+  }, [syncSessionCart]);
+
+  const setSessionCartQuantity = useCallback(async (item: CartItemData, quantity: number) => {
+    if (quantity < 1) await removeFromCart(item.cart_item_id);
+    else await updateCartItemQuantity(item.cart_item_id, quantity);
+    await syncSessionCart();
+  }, [syncSessionCart]);
 
 
   // Refresh the cart badge on mount and whenever the tab regains focus —
@@ -1845,17 +1882,9 @@ export default function Chat() {
                                   selected={selectedProducts.has(p.product_id)}
                                   onToggleSelect={handleToggleSelect}
                                   matchTags={computeMatchTags(turn.intent, p)}
-                                  onAdded={(cartItem) => {
-                                    getCart().then((items) => setCartCount(items.length)).catch(() => {});
-                                    if (cartItem) {
-                                      setSessionCartCount((n) => n + 1);
-                                      setSessionCartIds((prev) => new Set(prev).add(cartItem.cart_item_id));
-                                      setSessionCartItems((prev) => {
-                                        if (prev.some((i) => i.cart_item_id === cartItem.cart_item_id)) return prev;
-                                        return [...prev, cartItem];
-                                      });
-                                    }
-                                  }}
+                                  cartItem={cartItemByProduct.get(p.product_id)}
+                                  onAddToCart={addProductToSessionCart}
+                                  onSetQuantity={setSessionCartQuantity}
                                 />
                               </div>
                             ))}
@@ -1896,14 +1925,14 @@ export default function Chat() {
                 {[
                   "Running shoes size 10 under $100",
                   "Blue running shoes arriving in 2 days",
-                  "Wireless headphones with great reviews",
-                  "Dress for a formal occasion",
                   "Blue polo shirt in size M",
                   "Sony noise cancelling earbuds",
                 ].map((suggestion) => (
                   <button
                     key={suggestion}
-                    onClick={() => setInput(suggestion)}
+                    // Move focus to the chat box so Enter sends the suggestion
+                    // (otherwise focus stays on this chip and Enter re-clicks it).
+                    onClick={() => { setInput(suggestion); textareaRef.current?.focus(); }}
                     className="text-sm px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
                   >
                     {suggestion}
@@ -2056,11 +2085,9 @@ export default function Chat() {
           <CompareModal
             products={Array.from(selectedProducts.values())}
             onClose={() => setShowCompare(false)}
-            onAddToCart={(product) => {
-              addToCart(product).then(() => {
-                getCart().then((items) => setCartCount(items.length)).catch(() => {});
-              }).catch(() => {});
-            }}
+            cartItemByProduct={cartItemByProduct}
+            onAddToCart={addProductToSessionCart}
+            onSetQuantity={setSessionCartQuantity}
           />
         )}
 
@@ -2160,11 +2187,30 @@ export default function Chat() {
               <textarea
                 ref={textareaRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  const correction = autocorrectOnType(input, e.target.value);
+                  lastCorrectionRef.current = correction;
+                  setInput(correction ? correction.corrected : e.target.value);
+                }}
                 onKeyDown={(e) => {
+                  const last = lastCorrectionRef.current;
+                  if (e.key === "Backspace" && last && input === last.corrected) {
+                    e.preventDefault();
+                    lastCorrectionRef.current = null;
+                    setInput(last.original);
+                    return;
+                  }
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleSend();
+                    const fixed = autocorrectLastWord(input);
+                    if (fixed === input) {
+                      handleSend();
+                    } else {
+                      // Send after the corrected text has rendered — handleSendRef
+                      // then points at a handleSend that sees it.
+                      setInput(fixed);
+                      setTimeout(() => handleSendRef.current?.(), 0);
+                    }
                   }
                 }}
                 onPaste={async (e) => {

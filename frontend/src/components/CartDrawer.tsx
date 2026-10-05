@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, ShoppingBag, Trash2, Loader, ShoppingCart } from "lucide-react";
 import { getCart, removeFromCart, updateCartItemQuantity, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { getProductVisual } from "../utils/productVisual";
 
 interface Props {
@@ -26,6 +27,7 @@ export default function CartDrawer({ open, onClose, sessionCartIds, onCheckout }
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
   const [wallet, setWallet] = useState<{ balance: number } | null>(null);
+  const { isGuest } = useAuth();
 
   useEffect(() => {
     if (!open) return;
@@ -36,11 +38,13 @@ export default function CartDrawer({ open, onClose, sessionCartIds, onCheckout }
       .then((cartItems) => setItems(cartItems))
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Guests pay by card only — no wallet to show.
+    if (isGuest) return;
     authFetch("/api/wallet")
       .then((r) => r.ok ? r.json() : null)
       .then((w) => { if (w) setWallet(w); })
       .catch(() => {});
-  }, [open]);
+  }, [open, isGuest]);
 
   const handleRemove = async (id: string) => {
     setRemoving((prev) => new Set(prev).add(id));

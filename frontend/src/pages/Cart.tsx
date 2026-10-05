@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Loader, Minus, Plus, Trash2, ShoppingCart, Wallet, CreditCard } from "lucide-react";
 import { getCart, updateCartItemQuantity, removeFromCart, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { getProductVisual } from "../utils/productVisual";
 
 interface WalletBalance { balance: number; currency: string; }
@@ -39,14 +40,16 @@ export default function Cart() {
   const [error, setError] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [wallet, setWallet] = useState<WalletBalance | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"wallet" | "card">("wallet");
+  // Guests pay by card only — the wallet option isn't offered to them.
+  const { isGuest } = useAuth();
+  const [paymentMethod, setPaymentMethod] = useState<"wallet" | "card">(isGuest ? "card" : "wallet");
   const [selectedCard, setSelectedCard] = useState("4242");
   const [sessionCartIds] = useState<Set<string>>(readSessionCartIds);
 
   useEffect(() => {
     Promise.all([
       getCart(),
-      authFetch("/api/wallet").then((r) => r.ok ? r.json() : null).catch(() => null),
+      isGuest ? Promise.resolve(null) : authFetch("/api/wallet").then((r) => r.ok ? r.json() : null).catch(() => null),
     ])
       .then(([data, w]) => {
         setItems(data);
@@ -59,7 +62,7 @@ export default function Cart() {
       })
       .catch(() => setError("Couldn't load your cart. Please try again in a moment."))
       .finally(() => setLoading(false));
-  }, [sessionCartIds]);
+  }, [sessionCartIds, isGuest]);
 
   const toggleSelected = (cartItemId: string) => {
     setSelected((prev) => {
@@ -306,8 +309,8 @@ export default function Cart() {
                 <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
                   Payment Method
                 </p>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <button
+                <div className={`grid gap-2 mb-3 ${isGuest ? "grid-cols-1" : "grid-cols-2"}`}>
+                  {!isGuest && <button
                     type="button"
                     onClick={() => setPaymentMethod("wallet")}
                     className={`flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-colors ${
@@ -317,7 +320,7 @@ export default function Cart() {
                     }`}
                   >
                     <Wallet size={15} /> Wallet
-                  </button>
+                  </button>}
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("card")}

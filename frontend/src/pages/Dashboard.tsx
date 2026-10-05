@@ -7,6 +7,7 @@ import {
 import { authFetch } from "../api/client";
 import { getProductVisual } from "../utils/productVisual";
 import AppHeader from "../components/AppHeader";
+import { useAuth } from "../auth/AuthContext";
 
 type DeliveryStatus = "processing" | "shipped" | "delivered";
 type FilterKey = "all" | "arrived";
@@ -107,6 +108,8 @@ function AISummary({ orders, wallet }: { orders: Order[]; wallet: WalletBalance 
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  // Guests pay by card only — no wallet to show.
+  const { isGuest } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [wallet, setWallet] = useState<WalletBalance | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,12 +127,14 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.all([
       authFetch("/api/orders").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
-      authFetch("/api/wallet").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
+      isGuest
+        ? Promise.resolve(null)
+        : authFetch("/api/wallet").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
     ])
-      .then(([o, w]: [Order[], WalletBalance]) => { setOrders(o); setWallet(w); })
+      .then(([o, w]: [Order[], WalletBalance | null]) => { setOrders(o); setWallet(w); })
       .catch(() => setError("Couldn't load your dashboard — please try again."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [isGuest]);
 
   const toggleAudit = async (id: string) => {
     if (expandedId === id) { setExpandedId(null); return; }
@@ -175,11 +180,13 @@ export default function Dashboard() {
 
       <div className="flex-1 p-6 max-w-5xl mx-auto w-full">
         {/* KPI row */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
-          <div className="rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] text-white p-4">
-            <p className="text-xs text-white/70 flex items-center gap-1 mb-1"><WalletIcon size={12} /> Wallet</p>
-            <p className="text-xl font-bold">{loading ? "—" : wallet ? `$${wallet.balance.toFixed(2)}` : "$0.00"}</p>
-          </div>
+        <div className={`grid grid-cols-2 gap-3 mb-5 ${isGuest ? "md:grid-cols-4" : "md:grid-cols-5"}`}>
+          {!isGuest && (
+            <div className="rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] text-white p-4">
+              <p className="text-xs text-white/70 flex items-center gap-1 mb-1"><WalletIcon size={12} /> Wallet</p>
+              <p className="text-xl font-bold">{loading ? "—" : wallet ? `$${wallet.balance.toFixed(2)}` : "$0.00"}</p>
+            </div>
+          )}
           {[
             { label: "Items Ordered", value: paid.length,               cls: "text-[var(--color-primary)]" },
             { label: "In Transit",    value: inTransit.length,           cls: "text-blue-500" },

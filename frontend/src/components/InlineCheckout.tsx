@@ -112,12 +112,14 @@ function formatExpiry(raw: string): string {
   return digits;
 }
 
+// Collects and validates the guest's card. Saving does NOT charge — payment
+// only happens from the summary's "Secure Payment" button, which stays
+// disabled until a card has been saved here.
 function SecurePaymentModal({
-  total, onClose, onConfirm, initialCard,
+  onClose, onSave, initialCard,
 }: {
-  total: number;
   onClose: () => void;
-  onConfirm: (card: GuestCardInput) => void;
+  onSave: (card: GuestCardInput) => void;
   initialCard?: GuestCardInput;
 }) {
   const hasSaved = !!(initialCard?.number);
@@ -148,7 +150,7 @@ function SecurePaymentModal({
     if (!/^[A-Za-z\s'\-]+$/.test(card.name.trim())) { setError("Name should contain only letters, spaces, or hyphens."); return; }
 
     setError(null);
-    onConfirm(card);
+    onSave(card);
   };
 
   return createPortal(
@@ -167,7 +169,7 @@ function SecurePaymentModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
           <div className="flex items-center gap-2">
             <ShieldCheck size={18} className="text-[var(--color-primary)]" />
-            <span className="font-semibold text-sm text-[var(--color-text)]">Secure Payment</span>
+            <span className="font-semibold text-sm text-[var(--color-text)]">Card details</span>
           </div>
           <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
             <X size={16} />
@@ -207,7 +209,7 @@ function SecurePaymentModal({
                 value={card.number}
                 onChange={(e) => setCard({ ...card, number: formatCardNumber(e.target.value) })}
                 className={inputCls}
-                autoComplete="cc-number"
+                autoComplete="off"
               />
             </div>
             <div className="flex gap-2">
@@ -221,7 +223,7 @@ function SecurePaymentModal({
                   value={card.expiry}
                   onChange={(e) => setCard({ ...card, expiry: formatExpiry(e.target.value) })}
                   className={inputCls}
-                  autoComplete="cc-exp"
+                  autoComplete="off"
                 />
               </div>
               <div className="flex-1">
@@ -234,7 +236,7 @@ function SecurePaymentModal({
                   value={card.cvc}
                   onChange={(e) => setCard({ ...card, cvc: e.target.value.replace(/\D/g, "") })}
                   className={inputCls}
-                  autoComplete="cc-csc"
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -246,7 +248,7 @@ function SecurePaymentModal({
                 value={card.name}
                 onChange={(e) => setCard({ ...card, name: e.target.value })}
                 className={inputCls}
-                autoComplete="cc-name"
+                autoComplete="off"
               />
             </div>
           </div>
@@ -269,7 +271,7 @@ function SecurePaymentModal({
             type="submit"
             className="flex-[2] py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2"
           >
-            <Lock size={13} /> Pay ${total.toFixed(2)}
+            <Lock size={13} /> Save card
           </button>
         </div>
         </form>
@@ -298,10 +300,13 @@ function SummaryCard({
   const freeShipping = checkoutData.shipping === 0;
   const [showPayModal, setShowPayModal] = useState(false);
 
-  const handleGuestPay = (card: GuestCardInput) => {
+  // A card only lands in guestCard after passing the modal's validation
+  // (or was saved earlier this session), so a number means it's usable.
+  const guestCardReady = !!guestCard?.number;
+
+  const handleGuestCardSave = (card: GuestCardInput) => {
     setShowPayModal(false);
     onGuestCardChange?.(card);
-    onConfirm();
   };
 
   return (
@@ -360,12 +365,26 @@ function SummaryCard({
         {/* Card picker (known customer) OR secure payment button (guest) */}
         <div className="px-4 py-3 border-b border-[var(--color-border)]">
           {isGuest ? (
-            <button
-              onClick={() => setShowPayModal(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-[var(--color-primary)]/40 text-sm text-[var(--color-primary)] font-medium hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-colors"
-            >
-              <Lock size={14} /> Enter card details securely
-            </button>
+            guestCardReady ? (
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-sm">
+                <CheckCircle size={15} className="text-[var(--color-success)] shrink-0" />
+                <span className="flex-1 text-[var(--color-text)]">Card ···· {guestCard!.number.replace(/\s/g, "").slice(-4)}</span>
+                <span className="text-xs text-[var(--color-text-muted)]">{guestCard!.expiry}</span>
+                <button
+                  onClick={() => setShowPayModal(true)}
+                  className="text-xs font-medium text-[var(--color-primary)] hover:underline"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowPayModal(true)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-[var(--color-primary)]/40 text-sm text-[var(--color-primary)] font-medium hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-colors"
+              >
+                <Lock size={14} /> Enter card details securely
+              </button>
+            )
           ) : (
             <>
               <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Pay with</p>
@@ -408,8 +427,10 @@ function SummaryCard({
           </button>
           {isGuest ? (
             <button
-              onClick={() => setShowPayModal(true)}
-              className="flex-[2] py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2"
+              onClick={onConfirm}
+              disabled={!guestCardReady}
+              title={guestCardReady ? undefined : "Enter your card details first"}
+              className="flex-[2] py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--color-primary)]"
             >
               <Lock size={14} /> Secure Payment
             </button>
@@ -429,9 +450,8 @@ function SummaryCard({
       <AnimatePresence>
         {showPayModal && (
           <SecurePaymentModal
-            total={checkoutData.total}
             onClose={() => setShowPayModal(false)}
-            onConfirm={handleGuestPay}
+            onSave={handleGuestCardSave}
             initialCard={guestCard?.number ? guestCard : undefined}
           />
         )}

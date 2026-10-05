@@ -1,14 +1,74 @@
 import { createPortal } from "react-dom";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Star, Zap, ShoppingCart, Sparkles, Trophy, Loader } from "lucide-react";
+import { X, Star, Zap, ShoppingCart, Sparkles, Trophy, Loader, Minus, Plus } from "lucide-react";
 import type { ProductData } from "../api/chat";
+import type { CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
 
 interface Props {
   products: ProductData[];
   onClose: () => void;
-  onAddToCart: (product: ProductData) => void;
+  // Same cart state the product cards read, so both always agree on what's
+  // in the cart and in what quantity.
+  cartItemByProduct: Map<string, CartItemData>;
+  onAddToCart: (product: ProductData) => Promise<void>;
+  onSetQuantity: (item: CartItemData, quantity: number) => Promise<void>;
+}
+
+// Add-to-cart button that turns into a quantity stepper once the product is
+// in the cart — mirrors the ProductCard control.
+function CartAction({ product, cartItem, onAddToCart, onSetQuantity }: {
+  product: ProductData;
+  cartItem?: CartItemData;
+  onAddToCart: Props["onAddToCart"];
+  onSetQuantity: Props["onSetQuantity"];
+}) {
+  const [busy, setBusy] = useState(false);
+  const run = async (action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    try { await action(); } catch { /* silent — keep the modal usable */ } finally { setBusy(false); }
+  };
+
+  if (!cartItem) {
+    return (
+      <button
+        onClick={() => run(() => onAddToCart(product))}
+        disabled={busy}
+        className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[var(--color-primary)] text-white text-xs font-medium hover:bg-[var(--color-primary-light)] disabled:opacity-60 transition-colors"
+      >
+        {busy ? <Loader size={13} className="animate-spin" /> : <ShoppingCart size={13} />}
+        {busy ? "Adding..." : "Add to Cart"}
+      </button>
+    );
+  }
+
+  const qty = cartItem.quantity;
+  return (
+    <div className="flex items-center justify-between gap-2 py-1 px-1 rounded-lg border border-[var(--color-primary)] bg-[var(--color-primary)]/5">
+      <button
+        onClick={() => run(() => onSetQuantity(cartItem, qty - 1))}
+        disabled={busy}
+        title={qty <= 1 ? "Remove from cart" : "Decrease quantity"}
+        className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-border)] hover:text-[var(--color-primary)] transition-colors disabled:opacity-40"
+      >
+        <Minus size={13} />
+      </button>
+      <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-primary)]">
+        {busy ? <Loader size={12} className="animate-spin" /> : <ShoppingCart size={12} />}
+        {qty} in cart
+      </span>
+      <button
+        onClick={() => run(() => onSetQuantity(cartItem, qty + 1))}
+        disabled={busy}
+        title="Increase quantity"
+        className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-border)] hover:text-[var(--color-primary)] transition-colors disabled:opacity-40"
+      >
+        <Plus size={13} />
+      </button>
+    </div>
+  );
 }
 
 interface AiVerdict {
@@ -52,7 +112,7 @@ const SPEC_ROWS: Array<{ label: string; key: keyof ProductData; format?: (v: unk
   { label: "Merchant",  key: "merchant_name",  format: (v) => (v as string) || "—" },
 ];
 
-export default function CompareModal({ products, onClose, onAddToCart }: Props) {
+export default function CompareModal({ products, onClose, cartItemByProduct, onAddToCart, onSetQuantity }: Props) {
   const [verdict, setVerdict] = useState<AiVerdict | null>(null);
   const [verdictLoading, setVerdictLoading] = useState(true);
 
@@ -239,13 +299,13 @@ export default function CompareModal({ products, onClose, onAddToCart }: Props) 
             <span className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Action</span>
           </div>
           {products.map((p) => (
-            <button
+            <CartAction
               key={p.product_id}
-              onClick={() => { onAddToCart(p); onClose(); }}
-              className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[var(--color-primary)] text-white text-xs font-medium hover:bg-[var(--color-primary-light)] transition-colors"
-            >
-              <ShoppingCart size={13} /> Add to Cart
-            </button>
+              product={p}
+              cartItem={cartItemByProduct.get(p.product_id)}
+              onAddToCart={onAddToCart}
+              onSetQuantity={onSetQuantity}
+            />
           ))}
         </div>
 
