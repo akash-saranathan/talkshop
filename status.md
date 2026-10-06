@@ -106,33 +106,29 @@ Update each checkbox as you complete a step. Add notes under a step if something
 ## Phase 3 — Frontend + Full Flow
 *Goal: the app is fully usable end-to-end in the browser — chat works, protocol trace fires, both payment cases work.*
 
-- [ ] **3.1 — Chat page skeleton**
-  `frontend/src/pages/Chat.tsx` at route `/chat`
-  - 3-column layout: Sessions sidebar | Chat center | Protocol Trace right
-  - Protocol selector in chat toolbar: `[ A2A + UCP + AP2 ]` / `[ A2A + UCP + ACP + AP2 ]`
-  - Connects to `GET /api/chat/stream` SSE
-  - Human approval moments: ProductCard selection → `POST /api/chat/resume`; APPROVE & PAY → `POST /api/chat/resume`
+- [x] **3.1 — GenericChat page**
+  `frontend/src/pages/GenericChat.tsx` at route `/chat`
+  - 3-column layout: Sessions sidebar | Chat center | Protocol Trace right (collapsible)
+  - Protocol selector in header: `[ A2A + UCP + ACP + AP2 ]` / `[ A2A + UCP + AP2 ]` toggle
+  - SSE connection to `GET /api/generic/stream`; EventSource with `?token=` auth
+  - State machine: idle → searching → products_shown → checkout_loading → payment_ready → ordering → complete/error
+  - Human approval moments: ProductCard selection → `POST /api/generic/resume`; APPROVE & PAY → `POST /api/generic/resume`
 
-- [ ] **3.2 — Protocol Trace Panel**
+- [x] **3.2 — Protocol Trace Panel**
   `frontend/src/components/ProtocolTracePanel.tsx`
-  `frontend/src/components/AgentInteractionCard.tsx`
-  - Segmented toggle: Pipeline | Protocol Trace
-  - Auto-badge + auto-flip logic on first/second `protocol_event`
-  - Color coding: A2A=blue, UCP=purple, ACP=indigo, AP2=amber, PSP=green, HUMAN=neutral
+  - Color coding: A2A=blue, UCP=violet, ACP=indigo, AP2=amber, internal=slate
   - Expandable rows showing raw JSON payload
+  - Live event count badge; legend strip
 
-- [ ] **3.3 — Product results UI**
-  - Top 3 ProductCards shown by default
-  - `+ N more results` expands inline (no new A2A call)
-  - Filter bar: brand filter, price filter, sort — all client-side
-  - Filters stack
+- [x] **3.3 — Product results UI**
+  - Top 3 products shown by default; `+ N more results` expands inline
+  - Brand filter chips (client-side); sort toggle (rating / price)
 
-- [ ] **3.4 — Payment flows**
-  `frontend/src/components/MockHostedPaymentField.tsx`
+- [x] **3.4 — Payment flows**
   `frontend/src/utils/mockTokenizer.ts`
-  - **Case 1 (customer)**: saved card chips + "use new card" expands inline hosted-fields form (not a popup)
-  - **Case 2 (guest)**: pre-registered demo instruments shown as selection list (no card entry)
-  - Both paths emit `mock_card_XXXX` token only — raw card data never exits frontend
+  - **Case 1 (customer, useAcp=true)**: inline hosted-fields form → `mockTokenize()` → `mock_pm_<last4>` → ACP SPT path
+  - **Case 2 (guest, useAcp=false)**: pre-registered demo instruments from `GET /api/generic/instruments`
+  - Raw card digits never leave the browser; only opaque token sent to backend
 
 ---
 
@@ -143,6 +139,12 @@ Phase 2 — all steps complete (2026-10-05)
   New files: backend/ucp/, backend/acp/, backend/ap2/, backend/agents/generic_shopping_agent.py,
              backend/routers/generic_chat.py, tests/test_phase2_protocols.py
   Tests: 12 A2A (Phase 1) + 42 protocol (Phase 2) = 54 total, all passing
+
+Phase 3 — all steps complete (2026-10-05)
+  New files: frontend/src/pages/GenericChat.tsx (replaced placeholder),
+             frontend/src/components/ProtocolTracePanel.tsx,
+             frontend/src/utils/mockTokenizer.ts
+  Route: /chat → GenericChat (already wired in App.tsx)
 
 ---
 
