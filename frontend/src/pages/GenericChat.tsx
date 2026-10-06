@@ -307,9 +307,9 @@ export default function GenericChat() {
   }, [allProducts, filterBrand, showAll]);
 
   // ── SSE session starter ───────────────────────────────────────────────────
-  const startSearch = (e: FormEvent) => {
-    e.preventDefault();
-    if (!query.trim() || flowState !== "idle") return;
+  const launchSearch = (q: string) => {
+    if (!q.trim() || flowState !== "idle") return;
+    setQuery(q);
 
     const sid = crypto.randomUUID().replace(/-/g, "");
     setSessionId(sid);
@@ -326,7 +326,7 @@ export default function GenericChat() {
     setFilterBrand(null);
 
     const token = getToken();
-    const url = `/api/generic/stream?q=${encodeURIComponent(query)}&session_id=${sid}&use_acp=${useAcp}&token=${encodeURIComponent(token ?? "")}`;
+    const url = `/api/generic/stream?q=${encodeURIComponent(q)}&session_id=${sid}&use_acp=${useAcp}&token=${encodeURIComponent(token ?? "")}`;
     const es = new EventSource(url);
     esRef.current = es;
 
@@ -377,6 +377,8 @@ export default function GenericChat() {
       }
     };
   };
+
+  const startSearch = (e: FormEvent) => { e.preventDefault(); launchSearch(query); };
 
   // ── Resume: product selected ──────────────────────────────────────────────
   const selectProduct = async (product: Product) => {
@@ -523,7 +525,7 @@ export default function GenericChat() {
               </div>
               <div className="flex flex-wrap gap-2 justify-center">
                 {["Nike running shoes", "Zara summer dress", "Casio watch under $80", "Adidas sneakers"].map((s) => (
-                  <button key={s} onClick={() => setQuery(s)}
+                  <button key={s} onClick={() => launchSearch(s)}
                     className="text-xs px-3 py-1.5 rounded-full border border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors">
                     {s}
                   </button>
