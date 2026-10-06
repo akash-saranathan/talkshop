@@ -5,6 +5,7 @@
 # Python
 .venv/
 .venv-photos/
+.venv-qa/
 __pycache__/
 *.pyc
 *.pyo
@@ -17,6 +18,7 @@ build/
 
 # DB (generated at runtime)
 backend/db/commerce.db
+backend/db/*.db
 
 # Node
 frontend/node_modules/

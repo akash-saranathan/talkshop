@@ -16,15 +16,15 @@
 
 ### Progress
 
-**Phases approved: 3 / 8 · Steps done: 31 / 64** · Phase 3 👀 ready for your review
+**Phases approved: 4 / 8 · Steps done: 41 / 64** · Phase 4 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
 | 0 | Groundwork | 4 / 4 | ✅ Approved |
 | 1 | ShopSphere catalog and data foundation | 7 / 7 | ✅ Approved |
 | 2 | ShopSphere merchant services (APIs) | 8 / 8 | ✅ Approved |
-| 3 | Talkshop orchestrator (AI layer) | 12 / 12 | 👀 Ready for your review |
-| 4 | ShopSphere storefront (website) | 0 / 10 | ⬜ Not started |
+| 3 | Talkshop orchestrator (AI layer) | 12 / 12 | ✅ Approved |
+| 4 | ShopSphere storefront (website) | 10 / 10 | 👀 Ready for your review |
 | 5 | Talkshop panel (inside ShopSphere) | 0 / 11 | ⬜ Not started |
 | 6 | Connecting ShopSphere and Talkshop | 0 / 6 | ⬜ Not started |
 | 7 | Polish, quality and demo readiness | 0 / 6 | ⬜ Not started |
@@ -76,20 +76,20 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 3.11 Old browser-run cart and checkout actions retired *(Talkshop's new orchestrator has none. The old `/api/chat` code path is deleted together with the old chat page in 5.11, so today's chat keeps working until the new panel replaces it)*
 - [x] 3.12 Orchestrator tests (incl. "typing go ahead never pays")
 - [x] **Checkpoint:** demo script runs through the stream with the right events *(228 tests pass incl. 22 orchestrator tests; live run with Gemini: spec flow end to end, order SS-#####, typed "go ahead" never pays)*
-- [ ] **Approved, proceed to Phase 4**
+- [x] **Approved, proceed to Phase 4**
 
 ### Phase 4: ShopSphere storefront (website)
-- [ ] 4.1 Design system: tokens (light + dark), typography, buttons, chips, cards
-- [ ] 4.2 Store layout: ShopSphere header + Talkshop slot
-- [ ] 4.3 Home: hero, Talkshop-picks row slot, new arrivals, departments
-- [ ] 4.4 Category pages with filters
-- [ ] 4.5 Product page: per-colour gallery, size and colour pickers, Ask Talkshop button
-- [ ] 4.6 Cart page with Select checkboxes
-- [ ] 4.7 Checkout page with Change, Standard/Express, inline add forms, Place order
-- [ ] 4.8 Order confirmation + My Orders
-- [ ] 4.9 ShopSphere login and sign up (no guest)
-- [ ] 4.10 Routing
-- [ ] **Checkpoint:** full website purchase without Talkshop, in light and dark
+- [x] 4.1 Design system: tokens (light + dark), typography, buttons, chips, cards
+- [x] 4.2 Store layout: ShopSphere header + Talkshop slot
+- [x] 4.3 Home: hero, Talkshop-picks row slot, new arrivals, departments
+- [x] 4.4 Category pages with filters
+- [x] 4.5 Product page: per-colour gallery, size and colour pickers, Ask Talkshop button
+- [x] 4.6 Cart page with Select checkboxes
+- [x] 4.7 Checkout page with Change, Standard/Express, inline add forms, Place order
+- [x] 4.8 Order confirmation + My Orders
+- [x] 4.9 ShopSphere login and sign up (no guest)
+- [x] 4.10 Routing
+- [x] **Checkpoint:** full website purchase without Talkshop, in light and dark *(browser-automated: login → Shoes → FlexRun 5 orange/9 → cart select → Express → Place order → SS-##### in My orders, light + dark, no console errors; no horizontal overflow at 390 px)*
 - [ ] **Approved, proceed to Phase 5**
 
 ### Phase 5: Talkshop panel (inside ShopSphere)
@@ -757,3 +757,4 @@ Browse **Shoes** → open **FlexRun 5** → **✦ Ask Talkshop about this** → 
 | ~~Tax was 8.2%~~ | `backend/payment/policy.py` | ✅ Resolved in Phase 2: 8.25% ($129 → $10.64) |
 | Men's crew-tee photos (mock-up flat-lays) show a faint line where props covered the hem. Two Converse photos keep a thin source streak | `frontend/public/catalog/` | Phase 7 visual pass |
 | The `rembg` photo tool needs numpy 2, which conflicts with the app's packages. It was removed from the global Python and must be run in `.venv-photos` | `scripts/fetch_catalog_photos.py` | Documented in the script header |
+| Some older dev databases still hold pre-Demo-1 data. The website runs on a separate `backend/db/demo1.db` (set with `COMMERCE_DB_PATH`) until you approve resetting `commerce.db` | `backend/db/` | Waiting for your go-ahead |

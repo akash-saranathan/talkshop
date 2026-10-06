@@ -122,8 +122,8 @@
      "name": "Black",
      "hex": "#1c1c1e",
      "photo": {
-      "pixabay_id": 115150,
-      "mode": "studio"
+      "pixabay_id": 115151,
+      "mode": "largest"
      }
     },
     {
@@ -444,7 +444,8 @@
      "hex": "#1f2a44",
      "photo": {
       "pixabay_id": 2743420,
-      "mode": "largest"
+      "mode": "largest",
+      "kernel": 17
      }
     }
    ],
@@ -514,7 +515,8 @@
      "hex": "#3e7d4f",
      "photo": {
       "pixabay_id": 2768263,
-      "mode": "largest"
+      "mode": "largest",
+      "kernel": 17
      }
     },
     {
@@ -522,7 +524,8 @@
      "hex": "#c0392b",
      "photo": {
       "pixabay_id": 2768218,
-      "mode": "largest"
+      "mode": "largest",
+      "kernel": 17
      }
     },
     {
@@ -530,7 +533,8 @@
      "hex": "#6d4c9f",
      "photo": {
       "pixabay_id": 2768260,
-      "mode": "largest"
+      "mode": "largest",
+      "kernel": 17
      }
     }
    ],

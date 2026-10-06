@@ -1,0 +1,75 @@
+/* ShopSphere design tokens (Demo 1) — clean premium, light + dark.
+   Warm neutrals that sit with the studio product photos' backdrop, ink
+   buttons, one terracotta accent for ShopSphere and a distinct indigo for
+   the Talkshop assistant. Mapped to Tailwind utilities in index.css
+   (bg-canvas, text-ink, border-line, bg-btn, text-accent, bg-talk, …). */
+
+:root {
+  --ss-canvas: #ffffff;
+  --ss-panel: #f7f6f3;
+  --ss-panel-2: #efede8;
+  --ss-photo: #f3f2ef;          /* matches the catalog photos' backdrop */
+  --ss-line: #e7e4de;
+  --ss-line-strong: #d4d0c8;
+  --ss-ink: #151515;
+  --ss-ink-soft: #2b2b2b;
+  --ss-muted: #6e6b66;
+  --ss-faint: #9c988f;
+  --ss-accent: #b4532a;         /* ShopSphere terracotta */
+  --ss-accent-soft: #f6e7df;
+  --ss-talk: #5b5bd6;           /* Talkshop indigo */
+  --ss-talk-soft: #ececfd;
+  --ss-good: #2f7d4f;
+  --ss-good-soft: #e5f2ea;
+  --ss-bad: #c0392b;
+  --ss-bad-soft: #fbe9e7;
+  --ss-btn: #151515;
+  --ss-btn-ink: #ffffff;
+  --ss-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.06);
+  --ss-shadow-lg: 0 2px 6px rgb(0 0 0 / 0.05), 0 24px 48px rgb(0 0 0 / 0.10);
+}
+
+:root[data-theme="dark"] {
+  --ss-canvas: #0f0f10;
+  --ss-panel: #17171a;
+  --ss-panel-2: #212125;
+  --ss-photo: #f3f2ef;          /* photos keep their light studio backdrop */
+  --ss-line: #2a2a2f;
+  --ss-line-strong: #3b3b42;
+  --ss-ink: #f2f1ee;
+  --ss-ink-soft: #d9d8d4;
+  --ss-muted: #a3a19c;
+  --ss-faint: #77756f;
+  --ss-accent: #e4825a;
+  --ss-accent-soft: #3a2419;
+  --ss-talk: #8e8cf7;
+  --ss-talk-soft: #23224a;
+  --ss-good: #5bbf86;
+  --ss-good-soft: #15301f;
+  --ss-bad: #f2766a;
+  --ss-bad-soft: #3a1916;
+  --ss-btn: #f2f1ee;
+  --ss-btn-ink: #111111;
+  --ss-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+  --ss-shadow-lg: 0 2px 6px rgb(0 0 0 / 0.4), 0 24px 48px rgb(0 0 0 / 0.5);
+}
+
+.ss-app {
+  background: var(--ss-canvas);
+  color: var(--ss-ink);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* Slim scrollbars inside panels and rails */
+.ss-scroll { scrollbar-width: thin; scrollbar-color: var(--ss-line-strong) transparent; }
+.ss-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.ss-scroll::-webkit-scrollbar-thumb { background: var(--ss-line-strong); border-radius: 8px; }
+
+/* Cart badge "bump" when something is added */
+@keyframes ss-bump { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
+.ss-bump { animation: ss-bump 0.45s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ss-bump { animation: none; }
+}

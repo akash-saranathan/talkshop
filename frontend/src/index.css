@@ -1,4 +1,33 @@
 @import "tailwindcss";
+@import "./styles/shopsphere.css";
+
+/* ShopSphere tokens as Tailwind utilities (bg-canvas, text-ink, border-line …).
+   Names deliberately differ from the older --color-* tokens the legacy chat
+   page still uses, so the two can't clash. */
+@theme inline {
+  --color-canvas: var(--ss-canvas);
+  --color-panel: var(--ss-panel);
+  --color-panel-2: var(--ss-panel-2);
+  --color-photo: var(--ss-photo);
+  --color-line: var(--ss-line);
+  --color-line-strong: var(--ss-line-strong);
+  --color-ink: var(--ss-ink);
+  --color-ink-soft: var(--ss-ink-soft);
+  --color-muted: var(--ss-muted);
+  --color-faint: var(--ss-faint);
+  --color-accent: var(--ss-accent);
+  --color-accent-soft: var(--ss-accent-soft);
+  --color-talk: var(--ss-talk);
+  --color-talk-soft: var(--ss-talk-soft);
+  --color-good: var(--ss-good);
+  --color-good-soft: var(--ss-good-soft);
+  --color-bad: var(--ss-bad);
+  --color-bad-soft: var(--ss-bad-soft);
+  --color-btn: var(--ss-btn);
+  --color-btn-ink: var(--ss-btn-ink);
+  --shadow-card: var(--ss-shadow);
+  --shadow-float: var(--ss-shadow-lg);
+}
 
 /* ── Light mode — white + Chase blue ──────────────────────────────── */
 :root {

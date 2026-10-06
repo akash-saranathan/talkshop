@@ -167,7 +167,7 @@ def main():
                         # (stretched-edge artefacts in some sources) before keeping
                         # the single largest shape.
                         solid = ndimage.binary_opening(np.asarray(cut.getchannel("A")) > 40,
-                                                       structure=np.ones((9, 1)))
+                                                       structure=np.ones((photo.get("kernel", 9), 1)))
                         mask = keep_largest(solid)
                         cut.putalpha(Image.fromarray((np.asarray(cut.getchannel("A")) * mask).astype("uint8")))
                 dest.parent.mkdir(parents=True, exist_ok=True)
