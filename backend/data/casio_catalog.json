@@ -1,0 +1,164 @@
+[
+  {
+    "id": "casio_gshock_ga2100",
+    "title": "Casio G-Shock GA-2100",
+    "brand": "Casio",
+    "category": "watches",
+    "subcategory": "sport",
+    "price": 99.99,
+    "currency": "USD",
+    "variants": [
+      { "size": "45mm", "color": "Black",           "available": true,  "inventory": 14 },
+      { "size": "45mm", "color": "White",           "available": true,  "inventory": 11 },
+      { "size": "45mm", "color": "Caramel",         "available": true,  "inventory": 8  },
+      { "size": "45mm", "color": "Olive",           "available": false, "inventory": 0  },
+      { "size": "45mm", "color": "Red",             "available": true,  "inventory": 6  }
+    ],
+    "shipping_days": 3,
+    "rating": 4.7,
+    "review_count": 3200,
+    "image_url": "/assets/casio_ga2100.png",
+    "sku": "casio_gshock_ga2100",
+    "description": "Ultra-slim G-Shock with carbon core guard — shockproof, waterproof, iconic."
+  },
+  {
+    "id": "casio_f91w",
+    "title": "Casio F-91W Classic",
+    "brand": "Casio",
+    "category": "watches",
+    "subcategory": "digital",
+    "price": 29.99,
+    "currency": "USD",
+    "variants": [
+      { "size": "33mm", "color": "Black",           "available": true,  "inventory": 30 },
+      { "size": "33mm", "color": "Grey",            "available": true,  "inventory": 25 },
+      { "size": "33mm", "color": "Gold",            "available": true,  "inventory": 18 }
+    ],
+    "shipping_days": 2,
+    "rating": 4.8,
+    "review_count": 8700,
+    "image_url": "/assets/casio_f91w.png",
+    "sku": "casio_f91w",
+    "description": "The original digital watch — lightweight, durable, and timeless."
+  },
+  {
+    "id": "casio_edifice_efr",
+    "title": "Casio Edifice EFR-303",
+    "brand": "Casio",
+    "category": "watches",
+    "subcategory": "chronograph",
+    "price": 119.99,
+    "currency": "USD",
+    "variants": [
+      { "size": "46mm", "color": "Silver/Blue",     "available": true,  "inventory": 9  },
+      { "size": "46mm", "color": "Black/Black",     "available": true,  "inventory": 7  },
+      { "size": "46mm", "color": "Silver/Black",    "available": false, "inventory": 0  }
+    ],
+    "shipping_days": 3,
+    "rating": 4.5,
+    "review_count": 640,
+    "image_url": "/assets/casio_edifice_efr.png",
+    "sku": "casio_edifice_efr",
+    "description": "Stainless steel chronograph with tachymetre bezel — sporty and refined."
+  },
+  {
+    "id": "casio_pro_trek",
+    "title": "Casio Pro Trek PRW-3500",
+    "brand": "Casio",
+    "category": "watches",
+    "subcategory": "outdoor",
+    "price": 139.99,
+    "currency": "USD",
+    "variants": [
+      { "size": "48mm", "color": "Black",           "available": true,  "inventory": 6  },
+      { "size": "48mm", "color": "Green",           "available": true,  "inventory": 5  },
+      { "size": "48mm", "color": "Navy",            "available": false, "inventory": 0  }
+    ],
+    "shipping_days": 3,
+    "rating": 4.6,
+    "review_count": 420,
+    "image_url": "/assets/casio_pro_trek.png",
+    "sku": "casio_pro_trek",
+    "description": "Triple-sensor outdoor watch with altimeter, barometer, and compass."
+  },
+  {
+    "id": "casio_gshock_gbd200",
+    "title": "Casio G-Shock GBD-200",
+    "brand": "Casio",
+    "category": "watches",
+    "subcategory": "sport",
+    "price": 89.99,
+    "currency": "USD",
+    "variants": [
+      { "size": "46mm", "color": "Black",           "available": true,  "inventory": 10 },
+      { "size": "46mm", "color": "White",           "available": true,  "inventory": 8  },
+      { "size": "46mm", "color": "Blue",            "available": false, "inventory": 0  }
+    ],
+    "shipping_days": 3,
+    "rating": 4.5,
+    "review_count": 870,
+    "image_url": "/assets/casio_gbd200.png",
+    "sku": "casio_gshock_gbd200",
+    "description": "Step-tracking G-Shock with Bluetooth and built-in running features."
+  },
+  {
+    "id": "casio_baby_g",
+    "title": "Casio Baby-G BGA-310",
+    "brand": "Casio",
+    "category": "watches",
+    "subcategory": "ladies",
+    "price": 69.99,
+    "currency": "USD",
+    "variants": [
+      { "size": "40mm", "color": "White/Pink",      "available": true,  "inventory": 13 },
+      { "size": "40mm", "color": "Black",           "available": true,  "inventory": 11 },
+      { "size": "40mm", "color": "Purple",          "available": true,  "inventory": 9  },
+      { "size": "40mm", "color": "Mint",            "available": false, "inventory": 0  }
+    ],
+    "shipping_days": 3,
+    "rating": 4.5,
+    "review_count": 1100,
+    "image_url": "/assets/casio_baby_g.png",
+    "sku": "casio_baby_g",
+    "description": "Compact and shockproof Baby-G — sporty, colourful, and 100m water-resistant."
+  },
+  {
+    "id": "casio_databank",
+    "title": "Casio Databank CA-53W",
+    "brand": "Casio",
+    "category": "watches",
+    "subcategory": "digital",
+    "price": 34.99,
+    "currency": "USD",
+    "variants": [
+      { "size": "34mm", "color": "Black",           "available": true,  "inventory": 20 },
+      { "size": "34mm", "color": "Grey",            "available": true,  "inventory": 15 }
+    ],
+    "shipping_days": 2,
+    "rating": 4.6,
+    "review_count": 2300,
+    "image_url": "/assets/casio_databank.png",
+    "sku": "casio_databank",
+    "description": "Classic databank calculator watch — retro nostalgia meets everyday utility."
+  },
+  {
+    "id": "casio_gshock_gw5610",
+    "title": "Casio G-Shock GW-M5610",
+    "brand": "Casio",
+    "category": "watches",
+    "subcategory": "sport",
+    "price": 99.99,
+    "currency": "USD",
+    "variants": [
+      { "size": "46mm", "color": "Black",           "available": true,  "inventory": 11 },
+      { "size": "46mm", "color": "Red",             "available": true,  "inventory": 7  },
+      { "size": "46mm", "color": "Blue",            "available": false, "inventory": 0  }
+    ],
+    "shipping_days": 3,
+    "rating": 4.7,
+    "review_count": 1850,
+    "image_url": "/assets/casio_gw5610.png",
+    "sku": "casio_gshock_gw5610",
+    "description": "Slim square G-Shock with solar charging and atomic timekeeping."
+  }
+]

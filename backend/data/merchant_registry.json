@@ -1,0 +1,50 @@
+[
+  {
+    "id": "nike",
+    "name": "Nike",
+    "categories": ["shoes", "running", "sneakers", "sportswear", "apparel", "clothing"],
+    "catalog_file": "nike_catalog.json",
+    "a2a_url": "http://localhost:8000/a2a/nike",
+    "description": "Nike sports shoes, running gear, and sportswear"
+  },
+  {
+    "id": "adidas",
+    "name": "Adidas",
+    "categories": ["shoes", "running", "sneakers", "sportswear", "apparel", "clothing"],
+    "catalog_file": "adidas_catalog.json",
+    "a2a_url": "http://localhost:8000/a2a/adidas",
+    "description": "Adidas sports shoes, running gear, and sportswear"
+  },
+  {
+    "id": "zara",
+    "name": "Zara",
+    "categories": ["clothing", "dresses", "fashion", "women", "tops", "bottoms", "outerwear", "apparel"],
+    "catalog_file": "zara_catalog.json",
+    "a2a_url": "http://localhost:8000/a2a/zara",
+    "description": "Zara contemporary clothing, dresses, and accessories"
+  },
+  {
+    "id": "hm",
+    "name": "H&M",
+    "categories": ["clothing", "dresses", "fashion", "women", "men", "tops", "bottoms", "knitwear", "apparel"],
+    "catalog_file": "hm_catalog.json",
+    "a2a_url": "http://localhost:8000/a2a/hm",
+    "description": "H&M affordable fashion for women and men"
+  },
+  {
+    "id": "fossil",
+    "name": "Fossil",
+    "categories": ["watches", "accessories", "smartwatch", "chronograph", "gifts"],
+    "catalog_file": "fossil_catalog.json",
+    "a2a_url": "http://localhost:8000/a2a/fossil",
+    "description": "Fossil watches — classic, smart, and chronograph styles"
+  },
+  {
+    "id": "casio",
+    "name": "Casio",
+    "categories": ["watches", "accessories", "digital", "sport", "gifts", "outdoor"],
+    "catalog_file": "casio_catalog.json",
+    "a2a_url": "http://localhost:8000/a2a/casio",
+    "description": "Casio watches — G-Shock, digital, and outdoor timepieces"
+  }
+]

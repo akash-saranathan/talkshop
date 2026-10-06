@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Loader } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Chat from "./pages/Chat";
+import GenericChat from "./pages/GenericChat";
 import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
 import PaymentResult from "./pages/PaymentResult";
@@ -18,7 +19,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -27,8 +28,15 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<RequireAuth><Chat /></RequireAuth>} />
+          {/* v3 generic agent — entry point */}
+          <Route path="/" element={<Login />} />
+          <Route path="/chat" element={<RequireAuth><GenericChat /></RequireAuth>} />
+
+          {/* v1 demo — preserved at /v1 */}
+          <Route path="/v1" element={<RequireAuth><Chat /></RequireAuth>} />
+          <Route path="/login" element={<Navigate to="/" replace />} />
+
+          {/* shared routes */}
           <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
           <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
           <Route path="/payment-result/:orderId" element={<RequireAuth><PaymentResult /></RequireAuth>} />

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "demo_inst_visa_4001",
+    "network": "Visa",
+    "last4": "4001",
+    "label": "Demo Visa",
+    "expiry": "12/28",
+    "mock_token": "mock_card_4001",
+    "note": "Platform demo credential — available to all guest sessions"
+  },
+  {
+    "id": "demo_inst_mc_5002",
+    "network": "Mastercard",
+    "last4": "5002",
+    "label": "Demo Mastercard",
+    "expiry": "09/27",
+    "mock_token": "mock_card_5002",
+    "note": "Platform demo credential — available to all guest sessions"
+  }
+]
