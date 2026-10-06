@@ -916,7 +916,7 @@ This section explains how each protocol is represented in the POC. The goal is a
 
 | Protocol | Main Talk Shop chat | Generic protocol path (`/api/generic/stream`) |
 |---|---|---|
-| A2A | Yes. The six merchant agents are called in-process with A2A-style messages and task results. | Not verified for this path |
+| A2A | Yes. The six merchant agents are called in-process with A2A-style messages and task results. | Yes. Merchant agents are called in-process with A2A events (`backend/agents/generic_shopping_agent.py`). |
 | UCP | Yes, for catalog search. Checkout is our REST endpoint with UCP-style totals and fulfillment. | Yes, through the UCP adapter |
 | AP2 | No | Yes. Intent, cart and payment mandates. |
 | ACP | No. Payment uses the GreenLight DPAT token. | Yes. Delegated payment tokens. |
