@@ -106,7 +106,7 @@ export default function StoreHeader() {
                 <Link to="/orders" onClick={() => setAccountOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel">
                   <Package size={16} /> My orders
                 </Link>
-                <button onClick={() => { setAccountOpen(false); logout(); navigate("/"); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel text-left">
+                <button onClick={() => { setAccountOpen(false); navigate("/", { replace: true }); logout(); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel text-left">
                   <LogOut size={16} /> Log out
                 </button>
               </div>
@@ -129,7 +129,7 @@ export default function StoreHeader() {
             {isCustomer ? (
               <>
                 <Link to="/orders" onClick={() => setMenuOpen(false)} className="py-3 border-b border-line text-[15px] text-ink-soft">My orders</Link>
-                <button onClick={() => { setMenuOpen(false); logout(); navigate("/"); }} className="py-3 text-left text-[15px] text-ink-soft">Log out</button>
+                <button onClick={() => { setMenuOpen(false); navigate("/", { replace: true }); logout(); }} className="py-3 text-left text-[15px] text-ink-soft">Log out</button>
               </>
             ) : (
               <Link to={loginHref} onClick={() => setMenuOpen(false)} className="py-3 text-[15px] font-medium">Log in or create an account</Link>

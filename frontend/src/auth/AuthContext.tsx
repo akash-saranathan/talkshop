@@ -28,6 +28,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Pages that need an account (see RequireCustomer in App.tsx). */
+const CUSTOMER_ONLY = /^\/(checkout|orders)(\/|$)/;
+
 /** Per-tab shopping state (the Talkshop conversation, a pending checkout). */
 function clearTabState() {
   try {
@@ -95,7 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // someone else's (or no) token.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === TOKEN_KEY || e.key === null) window.location.reload();
+      if (e.key !== TOKEN_KEY && e.key !== null) return;
+      // Logged out (or lost) elsewhere: a page that needs an account goes to
+      // Home, like the tab that logged out, not to "log in to come back here".
+      const loggedOut = e.key === null || e.newValue === null;
+      if (loggedOut && CUSTOMER_ONLY.test(window.location.pathname)) window.location.replace("/");
+      else window.location.reload();
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
