@@ -33,7 +33,7 @@ export default function StoreLayout() {
 function StoreFooter() {
   return (
     <footer className="mt-24 border-t border-line bg-panel">
-      <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mx-auto max-w-[1400px] px-4 sm:px-6 py-12 grid gap-10 sm:grid-cols-2 xl:grid-cols-4">
         <div className="flex flex-col gap-3">
           <Wordmark />
           <p className="text-sm text-muted leading-relaxed max-w-xs">

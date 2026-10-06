@@ -38,7 +38,8 @@ export function OrdersPage() {
   if (!orders) return <Spinner label="Loading your orders…" />;
   return (
     <div className="mx-auto max-w-[960px] px-4 sm:px-6 pt-10">
-      <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">My orders</h1>
+      <nav className="text-xs text-muted"><Link to="/" className="hover:underline">Home</Link> / My orders</nav>
+      <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mt-2">My orders</h1>
       {!orders.length ? (
         <Empty icon={<Package size={22} />} title="No orders yet">
           <p>When you place an order it'll show up here.</p>
@@ -98,7 +99,7 @@ export function OrderDetailPage() {
           </div>
         </div>
       )}
-      <nav className="text-xs text-muted"><Link to="/orders" className="hover:underline">My orders</Link> / {order.id}</nav>
+      <nav className="text-xs text-muted"><Link to="/" className="hover:underline">Home</Link> / <Link to="/orders" className="hover:underline">My orders</Link> / {order.id}</nav>
       <div className="flex flex-wrap items-center gap-3 mt-2">
         <h1 className="text-3xl font-semibold tracking-tight">Order {order.id}</h1>
         <Badge tone={status.tone}>{status.label}</Badge>

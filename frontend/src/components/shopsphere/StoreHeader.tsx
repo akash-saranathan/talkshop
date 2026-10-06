@@ -62,7 +62,8 @@ export default function StoreHeader() {
         </button>
         <Wordmark />
 
-        <nav className="hidden lg:flex items-center gap-7 ml-4" aria-label="Departments">
+        <nav className="hidden lg:flex items-center gap-5 xl:gap-7 ml-4" aria-label="Departments">
+          <NavLink to="/" end className={navLink}>Home</NavLink>
           {DEPARTMENTS.map((d) => <NavLink key={d.slug} to={`/c/${d.slug}`} className={navLink}>{d.label}</NavLink>)}
         </nav>
 
@@ -98,7 +99,7 @@ export default function StoreHeader() {
               <span className="w-8 h-8 rounded-full bg-ink text-canvas grid place-items-center text-sm font-semibold">
                 {user.name.charAt(0).toUpperCase()}
               </span>
-              <span className="text-sm font-medium max-w-[120px] truncate">{user.name.split(" ")[0]}</span>
+              <span className="sr-only xl:not-sr-only text-sm font-medium max-w-[120px] truncate">{user.name.split(" ")[0]}</span>
               <ChevronDown size={14} className="text-muted" />
             </button>
             {accountOpen && (
@@ -122,6 +123,8 @@ export default function StoreHeader() {
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search ShopSphere" className="w-full bg-transparent text-sm outline-none" />
           </form>
           <nav className="flex flex-col mt-2">
+            <NavLink to="/" end onClick={() => setMenuOpen(false)}
+              className={({ isActive }) => cx("py-3 border-b border-line text-[15px]", isActive ? "font-semibold" : "text-ink-soft")}>Home</NavLink>
             {DEPARTMENTS.map((d) => (
               <NavLink key={d.slug} to={`/c/${d.slug}`} onClick={() => setMenuOpen(false)}
                 className={({ isActive }) => cx("py-3 border-b border-line text-[15px]", isActive ? "font-semibold" : "text-ink-soft")}>{d.label}</NavLink>
