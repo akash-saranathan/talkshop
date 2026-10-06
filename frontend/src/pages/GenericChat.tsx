@@ -100,17 +100,29 @@ function ProtocolStack({ useAcp }: { useAcp: boolean }) {
 
 // ── Product card (simplified — direct-purchase flow) ──────────────────────────
 
+// Merchant brand colors for product card backgrounds
+const MERCHANT_BG: Record<string, { grad: string; icon: string }> = {
+  nike:   { grad: "from-blue-500 to-blue-700",    icon: "text-white" },
+  adidas: { grad: "from-slate-600 to-slate-800",   icon: "text-white" },
+  zara:   { grad: "from-rose-400 to-rose-600",     icon: "text-white" },
+  hm:     { grad: "from-pink-400 to-pink-600",     icon: "text-white" },
+  fossil: { grad: "from-stone-500 to-stone-700",   icon: "text-white" },
+  casio:  { grad: "from-teal-500 to-teal-700",     icon: "text-white" },
+};
+
 function GenericProductCard({
   product, index, selectable, onSelect,
 }: { product: Product; index: number; selectable: boolean; onSelect: () => void }) {
   const rankColors = ["bg-amber-400", "bg-slate-400", "bg-amber-700"];
-  const merchantColors: Record<string, string> = {
+  const merchantBadgeColors: Record<string, string> = {
     nike: "bg-blue-100 text-blue-700", adidas: "bg-sky-100 text-sky-700",
     zara: "bg-rose-100 text-rose-700", hm: "bg-pink-100 text-pink-700",
     fossil: "bg-stone-100 text-stone-700", casio: "bg-teal-100 text-teal-700",
   };
-  const badgeClass = merchantColors[product.merchant_id] ?? "bg-slate-100 text-slate-600";
+  const badgeClass = merchantBadgeColors[product.merchant_id] ?? "bg-slate-100 text-slate-600";
   const available = product.variants.some((v) => v.available);
+  const bg = MERCHANT_BG[product.merchant_id] ?? { grad: "from-slate-400 to-slate-600", icon: "text-white" };
+  const isWatch = product.category?.toLowerCase().includes("watch");
 
   return (
     <motion.div
@@ -119,14 +131,20 @@ function GenericProductCard({
       transition={{ delay: index * 0.05 }}
       className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 flex flex-col gap-2"
     >
-      {/* Visual placeholder */}
-      <div className="relative h-20 rounded-lg bg-[var(--color-surface-2)] flex items-center justify-center">
+      {/* Merchant-colored product image area */}
+      <div className={`relative h-24 rounded-lg bg-gradient-to-br ${bg.grad} flex items-center justify-center overflow-hidden`}>
         {index < 3 && (
-          <span className={`absolute top-1 left-1 w-5 h-5 rounded-full text-[10px] font-bold grid place-items-center text-white ${rankColors[index]}`}>
+          <span className={`absolute top-1 left-1 w-5 h-5 rounded-full text-[10px] font-bold grid place-items-center bg-white/20 text-white`}>
             #{index + 1}
           </span>
         )}
-        <ShoppingBag size={28} className="text-[var(--color-text-muted)]" strokeWidth={1.5} />
+        <div className="flex flex-col items-center gap-1 opacity-80">
+          {isWatch
+            ? <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={bg.icon}><circle cx="12" cy="12" r="6"/><polyline points="12 10 12 12 13 13"/><path d="M9 2h6M9 22h6"/></svg>
+            : <ShoppingBag size={32} className={bg.icon} strokeWidth={1.5} />
+          }
+          <span className={`text-[10px] font-bold tracking-widest uppercase ${bg.icon} opacity-60`}>{product.merchant_id}</span>
+        </div>
       </div>
 
       <span className={`self-start text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${badgeClass}`}>
@@ -274,6 +292,13 @@ export default function GenericChat() {
       })
       .catch(() => {});
   }, [isGuest]);
+
+  // Customer: re-auto-select default card when payment step is reached (instruments already loaded)
+  useEffect(() => {
+    if (flowState === "payment_ready" && !isGuest && !selectedInstrument && instruments.length > 0) {
+      setSelectedInstrument(instruments[0]);
+    }
+  }, [flowState, isGuest, instruments, selectedInstrument]);
 
   // Auto-scroll
   useEffect(() => {
