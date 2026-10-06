@@ -213,7 +213,7 @@ def test_get_order_detail_includes_merchant_name_and_reason(client, auth_headers
     co, auth = _create_and_approve(client, auth_headers)
     client.post("/api/payments/execute", json=_execute_body(co, auth, checkout_hash="TAMPERED"), headers=auth_headers)
 
-    resp = client.get(f"/api/orders/{co['checkout_id']}")
+    resp = client.get(f"/api/orders/{co['checkout_id']}", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["merchant_name"] == co["merchant_name"]

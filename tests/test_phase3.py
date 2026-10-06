@@ -17,7 +17,7 @@ from backend.models.checkout import CheckoutObject
 from backend.models.payment import GuardrailEvent, PaymentRequest
 from backend.models.product import NormalizedProduct
 from backend.payment.policy import (
-    evaluate_purchase, MAX_PURCHASE_AMOUNT, ALLOWED_MERCHANTS
+    evaluate_purchase, MAX_PURCHASE_AMOUNT, ALLOWED_MERCHANTS, TAX_RATE
 )
 from backend.payment.signing import sign_authorization, verify_authorization
 from backend.payment.guardrail_engine import run_guardrails
@@ -307,7 +307,7 @@ async def test_cartup_builds_checkout_with_mocked_mcp():
     assert checkout.product_id == "PROD001"
     assert checkout.merchant_id == "SHOPSPHERE"
     assert checkout.subtotal == 79.99
-    assert checkout.total == round(79.99 + round(79.99 * 0.082, 2), 2)
+    assert checkout.total == round(79.99 + round(79.99 * TAX_RATE, 2), 2)
     assert len(checkout.checkout_hash) == 64  # SHA-256 hex
 
 

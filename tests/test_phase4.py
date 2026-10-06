@@ -308,9 +308,13 @@ def test_get_orders_lists_paid_order(client, auth_headers):
     assert match["status"] == "paid"
 
 
-def test_get_order_detail_404_for_unknown(client):
-    resp = client.get("/api/orders/NOT_A_REAL_ORDER")
+def test_get_order_detail_404_for_unknown(client, auth_headers):
+    resp = client.get("/api/orders/NOT_A_REAL_ORDER", headers=auth_headers)
     assert resp.status_code == 404
+
+
+def test_get_order_detail_requires_login(client):
+    assert client.get("/api/orders/ANY_ORDER").status_code == 401
 
 
 def test_audit_trail_includes_execution_events(client, auth_headers):

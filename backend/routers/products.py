@@ -1,59 +1,71 @@
+"""
+ShopSphere catalog API (public — browsing doesn't need a login).
+
+  GET /api/products                          search + filters + sort
+  GET /api/products/{id}                     product detail with every variant (SKU)
+  GET /api/products/{id}/availability        sizes/colours in stock, exact SKU check
+"""
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from backend.db.init_db import get_engine
-from backend.db.schema import Product
+from backend.shop import catalog
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
 
 def get_db():
-    engine = get_engine()
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         yield session
-
-
-def _product_to_dict(p: Product) -> dict:
-    return {
-        "product_id": p.product_id,
-        "merchant_id": p.merchant_id,
-        "name": p.name,
-        "brand": p.brand,
-        "category": p.category,
-        "size": p.size,
-        "color": p.color,
-        "price": p.price,
-        "currency": p.currency,
-        "inventory": p.inventory,
-        "available": p.inventory > 0,
-        "delivery_days": p.delivery_days,
-        "weight_grams": p.weight_grams,
-        "cushioning": p.cushioning,
-        "rating": p.rating,
-        "review_count": p.review_count,
-        "image_url": p.image_url,
-    }
 
 
 @router.get("")
 def list_products(
+    q: Optional[str] = Query(None, description="Shopper's words, e.g. 'everyday running'"),
+    department: Optional[str] = Query(None, description="shoes | clothing | accessories | electronics"),
     category: Optional[str] = Query(None),
+    subcategory: Optional[str] = Query(None),
+    gender: Optional[str] = Query(None, description="women | men (unisex items are included in both)"),
+    brand: Optional[str] = Query(None),
+    color: Optional[str] = Query(None),
+    size: Optional[str] = Query(None, description="Only products with this size in stock"),
+    min_price: Optional[float] = Query(None),
+    max_price: Optional[float] = Query(None),
+    new: Optional[bool] = Query(None, description="New arrivals only"),
+    in_stock: bool = Query(True),
     merchant_id: Optional[str] = Query(None),
+    sort: str = Query("relevance", description="relevance | price_asc | price_desc | rating | new"),
+    limit: Optional[int] = Query(None, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Product)
-    if category:
-        q = q.filter(Product.category == category)
-    if merchant_id:
-        q = q.filter(Product.merchant_id == merchant_id)
-    return [_product_to_dict(p) for p in q.all()]
+    if sort not in catalog.SORTS:
+        raise HTTPException(status_code=422, detail=f"sort must be one of {', '.join(catalog.SORTS)}")
+    products = catalog.search(
+        db, q=q, department=department, category=category, subcategory=subcategory, gender=gender,
+        brand=brand, color=color, size=size, min_price=min_price, max_price=max_price, is_new=new,
+        in_stock=in_stock, merchant_id=merchant_id, sort=sort, limit=limit,
+    )
+    return [catalog.product_summary(p) for p in products]
 
 
 @router.get("/{product_id}")
 def get_product(product_id: str, db: Session = Depends(get_db)):
-    p = db.query(Product).filter_by(product_id=product_id).first()
+    p = catalog.get_product(db, product_id)
     if not p:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Product not found")
-    return _product_to_dict(p)
+    return catalog.product_detail(p)
+
+
+@router.get("/{product_id}/availability")
+def get_availability(
+    product_id: str,
+    size: Optional[str] = Query(None),
+    color: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    p = catalog.get_product(db, product_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return catalog.availability(p, size=size, color=color)

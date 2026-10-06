@@ -5,7 +5,9 @@ These constants are the single source of truth for all authorization decisions.
 from dataclasses import dataclass
 from typing import Literal
 
-MAX_PURCHASE_AMOUNT: float = 500.00
+# Demo 1: the ShopSphere catalog includes $799–$1,099 phones and laptops; above
+# this a purchase needs step-up approval instead of going straight through.
+MAX_PURCHASE_AMOUNT: float = 2500.00
 ALLOWED_CURRENCIES: set[str] = {"USD"}
 TOKEN_TTL_MINUTES: int = 15
 SINGLE_USE: bool = True
@@ -13,7 +15,7 @@ REQUIRE_USER_CONSENT: bool = True
 # SHOPSPHERE is the Demo 1 merchant; the older merchant IDs stay allowed for the
 # external adapters (switched off by CATALOG_SOURCES, kept for later demos).
 ALLOWED_MERCHANTS: set[str] = {"SHOPSPHERE", "MERCHANT_A", "MERCHANT_B", "MERCHANT_C"}
-TAX_RATE: float = 0.082  # 8.2%
+TAX_RATE: float = 0.0825  # 8.25% (Demo 1 spec: $129 → $10.64 tax)
 FREE_SHIPPING_THRESHOLD: float = 50.0
 FLAT_SHIPPING_COST: float = 5.99
 

@@ -34,6 +34,9 @@ class PaymentRequest(BaseModel):
     order_id: str
     amount: float = Field(..., ge=0)
     currency: str = Field(default="USD")
+    # Demo 1: the customer's saved card to charge (a token reference only —
+    # never card data). None = legacy wallet-default behaviour.
+    payment_method_id: Optional[str] = None
 
 
 class PaymentResult(BaseModel):

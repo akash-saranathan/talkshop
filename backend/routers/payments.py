@@ -44,6 +44,7 @@ class ExecutePaymentRequest(BaseModel):
     tax: float
     shipping: float
     payment_method: str = "wallet"  # "wallet" | "card"
+    payment_method_id: Optional[str] = None  # Demo 1: which saved card to charge
 
 
 class ExecutePaymentResponse(BaseModel):
@@ -103,6 +104,7 @@ async def execute_payment_endpoint(
             order_id=req.checkout_id,
             amount=req.total,
             currency=req.currency,
+            payment_method_id=req.payment_method_id,
         )
 
         with get_session() as session:
@@ -273,6 +275,16 @@ def _block_reason(session, order_id: str) -> Optional[str]:
     return None
 
 
+def _shop_fields(session, order: Order) -> dict:
+    """Demo 1 order detail, under keys that don't clash with the older ones."""
+    from backend.shop.orders import order_dict
+    d = order_dict(session, order)
+    return {"display_id": d["order_id"], "lines": d["lines"], "subtotal": d["subtotal"], "tax": d["tax"],
+            "shipping": d["shipping"], "delivery_method": d["delivery_method"],
+            "delivery_date": d["delivery_date"], "ship_to": d["ship_to"], "payment": d["payment"],
+            "payment_status": d["payment_status"]}
+
+
 def _delivery_fields(order: Order, product: Optional[Product], cart_fallback: Optional[CartItem] = None) -> dict:
     """Product info + time-based delivery simulation, shared by both order endpoints.
     cart_fallback is a CartItem snapshot used when the Product row is missing (e.g. external product IDs)."""
@@ -324,18 +336,22 @@ async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
                 "reason": None if is_paid else _block_reason(session, order.order_id),
                 "created_at": order.created_at.isoformat() if order.created_at else None,
                 **_delivery_fields(order, product, cart_fallback),
+                # ShopSphere (Demo 1) order detail: public SS-##### id, lines, delivery, masked card
+                **(_shop_fields(session, order) if order.display_id else {}),
             })
         return results
 
 
 @router.get("/api/orders/{order_id}")
-async def get_order(order_id: str):
+async def get_order(order_id: str, current_user: CurrentUser = Depends(get_current_user)):
+    """One of the caller's own orders, by internal id or public id (SS-48291)."""
     with get_session() as session:
         row = (
             session.query(Order, Merchant, Product)
             .join(Merchant, Order.merchant_id == Merchant.merchant_id)
             .outerjoin(Product, Order.product_id == Product.product_id)
-            .filter(Order.order_id == order_id)
+            .filter((Order.order_id == order_id) | (Order.display_id == order_id))
+            .filter(Order.user_id == current_user.user_id)
             .first()
         )
         if not row:
@@ -354,6 +370,7 @@ async def get_order(order_id: str):
             "reason": None if is_confirmed else _block_reason(session, order.order_id),
             "created_at": order.created_at.isoformat() if order.created_at else None,
             **_delivery_fields(order, product),
+            **(_shop_fields(session, order) if order.display_id else {}),
         }
 
 

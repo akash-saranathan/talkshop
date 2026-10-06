@@ -54,7 +54,7 @@ add("SSP001", "Runner Pro X", "Kinetic", "shoes", "running_shoes", "running", "u
     ["everyday running", "cushioned", "road", "breathable"], "running shoe", [{"size": "11"}])
 add("SSP002", "FlexRun 5", "Kinetic", "shoes", "running_shoes", "running", "unisex", 139.0, 4.6, 962, 3, True,
     "shoe_unisex", col("Grey", "Black", "Red"),
-    "Lightweight and flexible for daily miles, with a grippy rubber outsole.",
+    "Lightweight and flexible for everyday miles, with a grippy rubber outsole.",
     ["everyday running", "lightweight", "flexible", "road"], "running shoe", [{"size": "12", "color": "Red"}])
 add("SSP003", "Daily Runner", "Northpace", "shoes", "running_shoes", "running", "unisex", 119.0, 4.5, 1530, 4, False,
     "shoe_unisex", col("Navy", "White"),

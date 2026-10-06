@@ -16,13 +16,13 @@
 
 ### Progress
 
-**Phases approved: 1 / 8 · Steps done: 11 / 64** · Phase 1 👀 ready for your review
+**Phases approved: 2 / 8 · Steps done: 19 / 64** · Phase 2 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
 | 0 | Groundwork | 4 / 4 | ✅ Approved |
-| 1 | ShopSphere catalog and data foundation | 7 / 7 | 👀 Ready for your review |
-| 2 | ShopSphere merchant services (APIs) | 0 / 8 | ⬜ Not started |
+| 1 | ShopSphere catalog and data foundation | 7 / 7 | ✅ Approved |
+| 2 | ShopSphere merchant services (APIs) | 8 / 8 | 👀 Ready for your review |
 | 3 | Talkshop orchestrator (AI layer) | 0 / 12 | ⬜ Not started |
 | 4 | ShopSphere storefront (website) | 0 / 10 | ⬜ Not started |
 | 5 | Talkshop panel (inside ShopSphere) | 0 / 11 | ⬜ Not started |
@@ -48,18 +48,18 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 1.6 Seed: ShopSphere merchant, catalog, Kaajal with 2 addresses and 2 cards
 - [x] 1.7 Catalog and seed tests
 - [x] **Checkpoint:** fresh reset gives the catalog with variants and photos, and Kaajal's saved details *(184 tests pass on a fresh test database; 60 products, 400 SKUs, 99 studio photos)*
-- [ ] **Approved, proceed to Phase 2**
+- [x] **Approved, proceed to Phase 2**
 
 ### Phase 2: ShopSphere merchant services (deterministic APIs, no AI)
-- [ ] 2.1 Catalog / search API (filters + ranking)
-- [ ] 2.2 Inventory API (sizes, colours, SKU stock, alternatives)
-- [ ] 2.3 Cart API (SKU-based, full cart in every response)
-- [ ] 2.4 Customer profile API (addresses, masked payment methods)
-- [ ] 2.5 Checkout API (complete checkout record, server-side recalculation)
-- [ ] 2.6 Payment API, consent-gated (stock re-check → GreenLight → PayIt → processor)
-- [ ] 2.7 Order service (`SS-#####`, reduce stock, save everything, tracking)
-- [ ] 2.8 API tests: happy path + every §7 alternative path
-- [ ] **Checkpoint:** full purchase flow passes as API tests with no LLM
+- [x] 2.1 Catalog / search API (filters + ranking)
+- [x] 2.2 Inventory API (sizes, colours, SKU stock, alternatives)
+- [x] 2.3 Cart API (SKU-based, full cart in every response)
+- [x] 2.4 Customer profile API (addresses, masked payment methods)
+- [x] 2.5 Checkout API (complete checkout record, server-side recalculation)
+- [x] 2.6 Payment API, consent-gated (stock re-check → GreenLight → PayIt → processor)
+- [x] 2.7 Order service (`SS-#####`, reduce stock, save everything, tracking)
+- [x] 2.8 API tests: happy path + every §7 alternative path
+- [x] **Checkpoint:** full purchase flow passes as API tests with no LLM *(206 tests pass, incl. 21 service tests covering every §7 path)*
 - [ ] **Approved, proceed to Phase 3**
 
 ### Phase 3: Talkshop orchestrator (AI layer)
@@ -546,6 +546,14 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
 
 ✅ **Checkpoint:** search → variant → cart → checkout → confirm → order passes as **API tests with no LLM**, including every case in §7.
 
+**As built (Phase 2):** services live in `backend/shop/` (`catalog`, `cart`, `profile`, `checkout`, `payment`, `orders`) behind `backend/routers/products.py` and `backend/routers/shop.py`:
+- **Cart:** the SKU-based cart is at **`/api/cart/lines`**. The older product-level `/api/cart` and `/api/cart/items` stay for the current chat UI until Phase 5.
+- **Checkouts:** `POST /api/checkouts` · `GET/PATCH /api/checkouts/{id}` · `POST /api/checkouts/{id}/cancel` · `POST /api/checkouts/{id}/confirm {consent: true}`.
+- **Saved details:** `GET/POST /api/me/addresses` and `GET/POST /api/me/payment-methods`. Card numbers are validated (Luhn) and then discarded.
+- **Confirm:** calls the existing GreenLight approve and PayIt execute (12 checks) with amounts from the server-held checkout only. Each attempt gets its own payment reference, so a declined card can be swapped and retried. Declined or blocked attempts leave no order.
+- **Policy:** tax is now **8.25%** and the single-purchase limit is **$2,500** (above that, step-up). The processor charges the chosen saved card (`behaviour=decline` → CARD_DECLINED).
+- **Fix found on the way:** `GET /api/orders/{id}` had no login check. It now requires login and returns only the caller's own orders (also accepts `SS-#####`).
+
 ---
 
 ### Phase 3: Talkshop orchestrator (the AI layer)
@@ -741,7 +749,7 @@ Browse **Shoes** → open **FlexRun 5** → **✦ Ask Talkshop about this** → 
 |---|---|---|
 | **DummyJSON adapter drops every product.** Items are fetched but tagged `source="dummyjson"`, which the product model doesn't allow, so all fail validation and are silently skipped. DummyJSON has never added results to search | `backend/merchants/dummyjson.py`, `backend/models/product.py` | Not fixed in Demo 1. External catalogs are off (`CATALOG_SOURCES=shopsphere`). Logged in `status.md` |
 | **"Forgot password" changes a password with only an email** (account-takeover risk) | `POST /api/auth/reset-password` | Out of Demo 1 scope. Needs an emailed reset link |
-| **Payment policy caps purchases at $500**, but 4 catalog items cost more (iPhone 15 $799, Galaxy S24 $799.99, MacBook Air $1,099, Aero 14 $899) | `backend/payment/policy.py` `MAX_PURCHASE_AMOUNT` | **Phase 2 must resolve** (raise the demo limit, or show a step-up approval) |
-| Tax is still **8.2%**. The plan uses **8.25%** (A1) | `backend/payment/policy.py` `TAX_RATE` | Phase 2 (checkout service) |
+| ~~Payment policy capped purchases at $500~~ | `backend/payment/policy.py` | ✅ Resolved in Phase 2: limit $2,500 (step-up above) |
+| ~~Tax was 8.2%~~ | `backend/payment/policy.py` | ✅ Resolved in Phase 2: 8.25% ($129 → $10.64) |
 | Men's crew-tee photos (mock-up flat-lays) show a faint line where props covered the hem. Two Converse photos keep a thin source streak | `frontend/public/catalog/` | Phase 7 visual pass |
 | The `rembg` photo tool needs numpy 2, which conflicts with the app's packages. It was removed from the global Python and must be run in `.venv-photos` | `scripts/fetch_catalog_photos.py` | Documented in the script header |

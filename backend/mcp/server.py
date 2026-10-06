@@ -12,6 +12,7 @@ from fastmcp import FastMCP
 from backend.models.product import NormalizedProduct
 from backend.models.checkout import CheckoutObject
 from backend.merchants import local as local_adapter
+from backend.payment.policy import TAX_RATE
 from backend.merchants import shopify as shopify_adapter
 from backend.merchants import bestbuy as bestbuy_adapter
 from backend.merchants import dummyjson as dummyjson_adapter
@@ -149,7 +150,7 @@ async def create_checkout(
         return {"error": "product_not_found"}
 
     subtotal = round(product.price * quantity, 2)
-    tax = round(subtotal * 0.082, 2)
+    tax = round(subtotal * TAX_RATE, 2)
     shipping = 0.0 if subtotal >= 50 else 5.99
     total = round(subtotal + tax + shipping, 2)
 
