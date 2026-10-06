@@ -263,13 +263,17 @@ export default function GenericChat() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // Load pre-registered instruments for Case 2
+  // Load instruments — for guest: selection list; for customer: auto-use first card
   useEffect(() => {
     authFetch("/api/generic/instruments")
       .then((r) => r.json())
-      .then(setInstruments)
+      .then((data: Instrument[]) => {
+        setInstruments(data);
+        // Customers: auto-select the first registered card — no manual selection needed
+        if (!isGuest && data.length > 0) setSelectedInstrument(data[0]);
+      })
       .catch(() => {});
-  }, []);
+  }, [isGuest]);
 
   // Auto-scroll
   useEffect(() => {
@@ -648,12 +652,28 @@ export default function GenericChat() {
                   <CreditCard size={12} /> Payment
                 </p>
 
-                {/* Saved card chips — shown for both customer and guest */}
-                {!showNewCardForm && (
+                {useAcp ? (
+                  /* Customer: auto-use registered card — just confirm */
+                  selectedInstrument ? (
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+                      <CreditCard size={16} className="text-[var(--color-primary)] shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-[var(--color-text)]">
+                          {selectedInstrument.network} •••• {selectedInstrument.last4}
+                        </p>
+                        <p className="text-[11px] text-[var(--color-text-muted)]">Registered card · exp {selectedInstrument.expiry}</p>
+                      </div>
+                      <Lock size={12} className="ml-auto text-[var(--color-text-muted)]" />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[var(--color-text-muted)]">Loading payment method…</p>
+                  )
+                ) : (
+                  /* Guest: select from pre-registered demo instruments */
                   <div className="space-y-2">
                     {instruments.map((inst) => (
                       <button key={inst.id}
-                        onClick={() => { setSelectedInstrument(inst); setTokenizedCard(null); }}
+                        onClick={() => setSelectedInstrument(inst)}
                         className={`w-full flex items-center gap-3 p-2.5 rounded-lg border text-sm transition-colors ${
                           selectedInstrument?.id === inst.id
                             ? "border-[var(--color-primary)] bg-[var(--color-primary-bg)]"
@@ -666,35 +686,6 @@ export default function GenericChat() {
                         <span className="ml-auto text-[10px] text-[var(--color-text-muted)]">exp {inst.expiry}</span>
                       </button>
                     ))}
-                    {/* Customer-only: option to use a new card */}
-                    {useAcp && (
-                      <button
-                        onClick={() => { setShowNewCardForm(true); setSelectedInstrument(null); }}
-                        className="w-full text-left text-xs text-[var(--color-primary)] hover:underline pt-1"
-                      >
-                        + Use a new card
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* New card form — customer only, shown when "Use a new card" clicked */}
-                {useAcp && showNewCardForm && (
-                  <div>
-                    {tokenizedCard ? (
-                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">
-                        <Lock size={12} /> Card tokenized — {tokenizedCard.brand} •••• {tokenizedCard.last4}
-                        <button onClick={() => { setTokenizedCard(null); }} className="ml-auto underline">change</button>
-                      </div>
-                    ) : (
-                      <MockHostedPaymentField onTokenize={setTokenizedCard} />
-                    )}
-                    <button
-                      onClick={() => { setShowNewCardForm(false); setTokenizedCard(null); }}
-                      className="mt-1.5 text-xs text-[var(--color-text-muted)] hover:underline"
-                    >
-                      ← Use saved card
-                    </button>
                   </div>
                 )}
               </div>
@@ -710,7 +701,7 @@ export default function GenericChat() {
                 </button>
                 {!canApprove && (
                   <p className="text-[11px] text-center text-[var(--color-text-muted)] mt-1">
-                    {showNewCardForm ? "Tokenize your card above to continue" : "Select a payment card above"}
+                    {useAcp ? "Loading payment method…" : "Select a payment card above"}
                   </p>
                 )}
               </div>
