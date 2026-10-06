@@ -69,8 +69,101 @@ class Product(Base):
     rating = Column(Float, default=0.0)
     review_count = Column(Integer, default=0)
     image_url = Column(String(500))
+    # ShopSphere catalog (Demo 1). A product is the parent of its sellable
+    # variants (product_variants). size/color/inventory/image_url above are
+    # kept as a summary for code that predates variants: no single size,
+    # the default colour, total stock across variants, the default photo.
+    slug = Column(String(120))
+    department = Column(String(30))      # shoes | clothing | accessories | electronics
+    subcategory = Column(String(50))     # e.g. running, jeans, headphones
+    gender = Column(String(10))          # women | men | unisex
+    description = Column(Text)
+    tags = Column(Text)                  # comma-separated, e.g. "everyday running,cushioned"
+    is_new = Column(Boolean, default=False)
+    option_label = Column(String(30), default="Size")  # what the size slot means: Size, Waist, Storage...
 
     merchant = relationship("Merchant", back_populates="products")
+    variants = relationship("ProductVariant", back_populates="product", order_by="ProductVariant.id")
+
+
+class ProductVariant(Base):
+    """One sellable SKU: a product in a specific size/option and colour."""
+    __tablename__ = "product_variants"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sku = Column(String(60), unique=True, nullable=False)
+    product_id = Column(String(50), ForeignKey("products.product_id"), nullable=False, index=True)
+    size = Column(String(20))            # None for one-size products
+    color = Column(String(50), nullable=False)
+    color_hex = Column(String(9))
+    stock = Column(Integer, nullable=False, default=0)
+    image_url = Column(String(500))      # photo for this colour
+
+    product = relationship("Product", back_populates="variants")
+
+
+class Address(Base):
+    __tablename__ = "addresses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    address_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False, index=True)
+    label = Column(String(30))           # Home, Work...
+    full_name = Column(String(100), nullable=False)
+    line1 = Column(String(200), nullable=False)
+    line2 = Column(String(200))
+    city = Column(String(100), nullable=False)
+    state = Column(String(50), nullable=False)
+    postal_code = Column(String(20), nullable=False)
+    country = Column(String(2), default="US")
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PaymentMethod(Base):
+    """A saved card — masked details plus a processor token reference only.
+    The full card number and CVV are never stored."""
+    __tablename__ = "payment_methods"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    payment_method_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False, index=True)
+    brand = Column(String(20), nullable=False)       # Visa, Mastercard, Amex...
+    last4 = Column(String(4), nullable=False)
+    exp_month = Column(Integer, nullable=False)
+    exp_year = Column(Integer, nullable=False)
+    cardholder_name = Column(String(100))
+    token_ref = Column(String(100), nullable=False)  # processor-side token, never the PAN
+    # Demo-only: how the mock processor treats this card ("approve" | "decline").
+    behaviour = Column(String(10), nullable=False, default="approve")
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Checkout(Base):
+    """The canonical checkout snapshot the customer reviews and consents to.
+    Amounts here — not anything the browser sends — are what get charged."""
+    __tablename__ = "checkouts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    checkout_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="open")  # open | consented | paid | cancelled
+    lines_json = Column(Text, nullable=False)          # [{sku, product_id, name, size, color, qty, unit_price, image_url}]
+    cart_item_ids = Column(Text)                       # comma-separated cart lines this checkout covers
+    address_id = Column(String(50))
+    delivery_method = Column(String(20), default="standard")  # standard | express
+    delivery_date = Column(DateTime)
+    payment_method_id = Column(String(50))
+    subtotal = Column(Float, nullable=False, default=0.0)
+    tax = Column(Float, nullable=False, default=0.0)
+    shipping = Column(Float, nullable=False, default=0.0)
+    total = Column(Float, nullable=False, default=0.0)
+    currency = Column(String(10), default="USD")
+    checkout_hash = Column(String(64))
+    consented_at = Column(DateTime)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class Order(Base):
@@ -87,6 +180,35 @@ class Order(Base):
     transaction_id = Column(String(100))
     tracking_number = Column(String(50))
     created_at = Column(DateTime, server_default=func.now())
+    # Demo 1 order record. product_id/amount above stay for older code; a
+    # ShopSphere order's full detail is these fields plus its order_lines.
+    display_id = Column(String(20), unique=True)       # customer-facing, e.g. SS-48291
+    checkout_id = Column(String(50))
+    subtotal = Column(Float)
+    tax = Column(Float)
+    shipping = Column(Float)
+    delivery_method = Column(String(20))                # standard | express
+    delivery_date = Column(DateTime)
+    ship_to_json = Column(Text)                         # address snapshot at purchase time
+    payment_brand = Column(String(20))                  # masked payment shown to the customer
+    payment_last4 = Column(String(4))
+    payment_status = Column(String(20))                 # authorized | declined
+
+
+class OrderLine(Base):
+    __tablename__ = "order_lines"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(String(50), ForeignKey("orders.order_id"), nullable=False, index=True)
+    sku = Column(String(60), nullable=False)
+    product_id = Column(String(50), nullable=False)
+    product_name = Column(String(200), nullable=False)
+    size = Column(String(20))
+    color = Column(String(50))
+    quantity = Column(Integer, nullable=False, default=1)
+    unit_price = Column(Float, nullable=False)
+    line_total = Column(Float, nullable=False)
+    image_url = Column(String(500))
 
 
 class Wallet(Base):
@@ -184,6 +306,7 @@ class CartItem(Base):
     delivery_days = Column(Integer, default=5)
     quantity = Column(Integer, default=1, nullable=False)
     added_at = Column(DateTime, server_default=func.now())
+    sku = Column(String(60))  # the exact variant (Demo 1); null on pre-variant cart lines
 
 
 class LoyaltyPoints(Base):

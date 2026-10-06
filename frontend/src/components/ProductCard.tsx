@@ -29,12 +29,14 @@ function getDeliveryLabel(days: number): string {
 }
 
 const MERCHANT_COLORS: Record<string, string> = {
+  SHOPSPHERE: "bg-sky-100 text-sky-700",
   MERCHANT_A: "bg-blue-100 text-blue-700",
   MERCHANT_B: "bg-violet-100 text-violet-700",
   MERCHANT_C: "bg-emerald-100 text-emerald-700",
 };
 
 const MERCHANT_TRUST: Record<string, { tier: "Premium" | "Verified"; ships: string; returns: string }> = {
+  SHOPSPHERE: { tier: "Verified", ships: "Ships in 24h", returns: "30-day returns" },
   MERCHANT_A: { tier: "Verified", ships: "Ships in 24h", returns: "30-day returns" },
   MERCHANT_B: { tier: "Verified", ships: "Ships in 48h", returns: "14-day returns" },
   MERCHANT_C: { tier: "Premium",  ships: "Ships same day", returns: "60-day returns" },

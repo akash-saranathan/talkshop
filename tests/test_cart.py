@@ -12,10 +12,10 @@ def client():
 
 def _sample_item(**overrides):
     item = {
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
-        "merchant_name": "RunnerWorld",
-        "title": "Nike Pegasus 41",
+        "product_id": "SSP001",
+        "merchant_id": "SHOPSPHERE",
+        "merchant_name": "ShopSphere",
+        "title": "Runner Pro X",
         "brand": "Nike",
         "category": "running_shoes",
         "price": 109.0,
@@ -34,12 +34,12 @@ def test_add_cart_item_creates_row(client, auth_headers):
     resp = client.post("/api/cart/items", json=_sample_item(), headers=auth_headers)
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["product_id"] == "RW001"
+    assert data["product_id"] == "SSP001"
     assert data["quantity"] == 1
 
     items = client.get("/api/cart", headers=auth_headers).json()
     assert len(items) == 1
-    assert items[0]["title"] == "Nike Pegasus 41"
+    assert items[0]["title"] == "Runner Pro X"
 
 
 def test_add_same_product_increments_quantity_instead_of_duplicating(client, auth_headers):

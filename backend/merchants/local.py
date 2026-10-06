@@ -5,13 +5,13 @@ Reads from the seeded products table. Never fails.
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from backend.db.schema import Product, Merchant
+from backend.db.schema import Merchant, Product, ProductVariant
 from backend.models.product import NormalizedProduct
 
-DB_PATH = Path(__file__).parent.parent / "db" / "commerce.db"
+from backend.db.config import DB_PATH
 
 
 def _get_session() -> Session:
@@ -38,7 +38,11 @@ def search_products(
         if max_price is not None:
             query = query.filter(Product.price <= max_price)
         if size:
-            query = query.filter(Product.size == size)
+            # Sizes live on variants: keep products with that size in stock
+            in_size = select(ProductVariant.product_id).where(
+                ProductVariant.size == size, ProductVariant.stock > 0
+            )
+            query = query.filter(Product.product_id.in_(in_size))
         if merchant_id:
             query = query.filter(Product.merchant_id == merchant_id)
 

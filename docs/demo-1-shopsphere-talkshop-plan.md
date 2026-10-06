@@ -16,12 +16,12 @@
 
 ### Progress
 
-**Phases approved: 0 / 8 · Steps done: 4 / 64** · Phase 0 👀 ready for your review
+**Phases approved: 1 / 8 · Steps done: 11 / 64** · Phase 1 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
-| 0 | Groundwork | 4 / 4 | 👀 Ready for your review |
-| 1 | ShopSphere catalog and data foundation | 0 / 7 | ⬜ Not started |
+| 0 | Groundwork | 4 / 4 | ✅ Approved |
+| 1 | ShopSphere catalog and data foundation | 7 / 7 | 👀 Ready for your review |
 | 2 | ShopSphere merchant services (APIs) | 0 / 8 | ⬜ Not started |
 | 3 | Talkshop orchestrator (AI layer) | 0 / 12 | ⬜ Not started |
 | 4 | ShopSphere storefront (website) | 0 / 10 | ⬜ Not started |
@@ -37,17 +37,17 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 0.3 Guest login removed from the UI
 - [x] 0.4 Demo reset command (reseed catalog, customer, carts, orders)
 - [x] **Checkpoint:** app runs, search returns ShopSphere catalog only, reset works *(174 tests pass; live search: "30 products across 1 store", 0 DummyJSON)*
-- [ ] **Approved, proceed to Phase 1**
+- [x] **Approved, proceed to Phase 1**
 
 ### Phase 1: ShopSphere catalog and data foundation
-- [ ] 1.1 Catalog file: about 60 products, variants, gender tags, new arrivals, stock gaps, the spec's 3 running shoes
-- [ ] 1.2 Colour photos sourced, resized and saved locally, plus licence record
-- [ ] 1.3 Schema: product fields + `product_variants` (SKU, size, colour, stock, image)
-- [ ] 1.4 Schema: `addresses`, `payment_methods` (masked), `checkouts`
-- [ ] 1.5 Schema: extended `orders` + `order_lines`; SKU-based cart
-- [ ] 1.6 Seed: ShopSphere merchant, catalog, Kaajal with 2 addresses and 2 cards
-- [ ] 1.7 Catalog and seed tests
-- [ ] **Checkpoint:** fresh reset gives the catalog with variants and photos, and Kaajal's saved details
+- [x] 1.1 Catalog file: about 60 products, variants, gender tags, new arrivals, stock gaps, the spec's 3 running shoes
+- [x] 1.2 Colour photos sourced, resized and saved locally, plus licence record
+- [x] 1.3 Schema: product fields + `product_variants` (SKU, size, colour, stock, image)
+- [x] 1.4 Schema: `addresses`, `payment_methods` (masked), `checkouts`
+- [x] 1.5 Schema: extended `orders` + `order_lines`; SKU-based cart
+- [x] 1.6 Seed: ShopSphere merchant, catalog, Kaajal with 2 addresses and 2 cards
+- [x] 1.7 Catalog and seed tests
+- [x] **Checkpoint:** fresh reset gives the catalog with variants and photos, and Kaajal's saved details *(184 tests pass on a fresh test database; 60 products, 400 SKUs, 99 studio photos)*
 - [ ] **Approved, proceed to Phase 2**
 
 ### Phase 2: ShopSphere merchant services (deterministic APIs, no AI)
@@ -155,8 +155,8 @@ Talkshop must never make up a product, price, rating, stock level, cart, tax, de
 | D1 | Names | **ShopSphere** = merchant website · **Talkshop** = its AI assistant |
 | D2 | Product data source | **Synthetic ShopSphere catalog only.** DummyJSON, Shopify and Best Buy are switched off for Demo 1 (code kept for later; see §9.1) |
 | D3 | Departments | **Shoes · Clothing · Accessories · Electronics** |
-| D4 | Catalog size | **About 60 products with full variants** (2–4 colours each, full size ranges; about 400 sellable variants) |
-| D5 | Product images | **One photo per colour**, **saved locally** in the repo (works offline, never breaks) |
+| D4 | Catalog size | **60 products with full variants** (full size ranges; 400 sellable variants). Colours per product: see D24 |
+| D5 | Product images | **One photo per colour**, **saved locally** in the repo (works offline, never breaks). Source and style: D22–D23 |
 | D6 | Navigation | **Women · Men · Shoes · Accessories · Electronics** (products tagged women, men or unisex) |
 | D7 | Talkshop placement | **Docked on the right, open by default.** Minimise to a floating "Ask Talkshop" button. Conversation kept across pages |
 | D8 | Top 3 display | **In the chat** (compact cards with **Select**) **and highlighted on the page** ("Talkshop picks for you" row in full size) |
@@ -172,6 +172,10 @@ Talkshop must never make up a product, price, rating, stock level, cart, tax, de
 | D18 | Declined-payment demo | **Yes**: the second saved card (**Mastercard •••• 0019**) always declines. No order is created |
 | D19 | Agent pipeline trace | **Hidden from customers.** A **"How Talkshop works"** toggle for presenters opens it as an overlay |
 | D20 | Talkshop input features | Keep **voice (mic)**, **image search (paste a photo)** and **autocorrect** |
+| D21 | Brand naming | **Mix**: real brands only where a matching or logo-free photo exists (Nike, Adidas, Converse, Levi's, Ray-Ban, Sony, Apple, Samsung, JBL: 13 products). Everything else is ShopSphere-style fictional brands (Kinetic, Northpace, Lumen, Hartwell, Marisol, Sphere Basics, Pulse Audio…). A request for a brand ShopSphere doesn't carry gets "we don't carry X, here are similar" |
+| D22 | Photo source | **Pixabay** (free licence, no attribution). Pexels has paused new API keys. Every photo is **hand-picked and checked by eye** |
+| D23 | Photo style | **Studio style**: background removed, product centred on one soft neutral backdrop with a floor shadow, square **800×800** WebP (square fits wide items like shoes and laptops better than the planned 4:5) |
+| D24 | Colours follow photos | A product offers only colours it has a convincing photo for. Result: 26 products × 1 colour, 30 × 2, 3 × 3, 1 × 4 (99 photos, 400 SKUs). Fewer colours than D4's 2–4 target, but no wrong photos. Where possible the colours are **the same model** (e.g. FlexRun 5, Converse, men's tees) |
 
 ## 3. Assumptions (not yet confirmed; tell me if any are wrong)
 
@@ -468,12 +472,13 @@ The panel draws cards from **structured events**, never by parsing the LLM's tex
 - **Each variant (SKU) has:** product ID, size/option, colour, **stock**, **photo for that colour**.
 - **Built-in stock gaps** so the demo can show "out of stock" (e.g. Runner Pro X size 11).
 - **Products named in the spec are included:** *Runner Pro X ($129, ★4.7)*, *FlexRun 5 ($139, ★4.6)*, *Daily Runner ($119, ★4.5)*, so the demo script matches the document.
+- **As built (Phase 1):** the catalog is generated by `scripts/build_shopsphere_catalog.py` into `data/shopsphere_catalog.json`. 14 planned products were renamed or replaced where no usable photo existed (e.g. Nike Air Force 1 → *Sphere Canvas Low*, Bose → *Pulse Studio Wireless Headphones*, Garmin → *Pulse Smartwatch S2*, leggings/track pants/beanie/cap → *Ribbed Turtleneck Top*, *Knit Fringe Poncho*, *Evening Clutch Bag*, *Marisol Cat-Eye Sunglasses*).
 
 ### 10.2 Product images (D5)
 
 - **One photo per colour** (about 150–200 photos), from **free-licence stock sites** (Pexels / Unsplash), chosen to match each product and colour.
-- **Format and location:** resized to about 800 px **WebP**, saved at `frontend/public/catalog/<product-slug>/<colour>.webp`, so the demo works fully offline.
-- **Source record:** `catalog/images.json` lists each photo's source URL and licence.
+- **Format and location:** **800×800 WebP** in studio style (D23), saved at `frontend/public/catalog/<product-slug>/<colour>.webp` (about 3 MB in total), so the demo works fully offline. Made by `scripts/fetch_catalog_photos.py`, which must run in its own virtual environment (see its header).
+- **Source record:** `data/catalog_images.json` lists each photo's Pixabay ID, page URL, photographer and licence.
 
 ### 10.3 Customer, checkout and order data
 
@@ -736,4 +741,7 @@ Browse **Shoes** → open **FlexRun 5** → **✦ Ask Talkshop about this** → 
 |---|---|---|
 | **DummyJSON adapter drops every product.** Items are fetched but tagged `source="dummyjson"`, which the product model doesn't allow, so all fail validation and are silently skipped. DummyJSON has never added results to search | `backend/merchants/dummyjson.py`, `backend/models/product.py` | Not fixed in Demo 1. External catalogs are off (`CATALOG_SOURCES=shopsphere`). Logged in `status.md` |
 | **"Forgot password" changes a password with only an email** (account-takeover risk) | `POST /api/auth/reset-password` | Out of Demo 1 scope. Needs an emailed reset link |
-
+| **Payment policy caps purchases at $500**, but 4 catalog items cost more (iPhone 15 $799, Galaxy S24 $799.99, MacBook Air $1,099, Aero 14 $899) | `backend/payment/policy.py` `MAX_PURCHASE_AMOUNT` | **Phase 2 must resolve** (raise the demo limit, or show a step-up approval) |
+| Tax is still **8.2%**. The plan uses **8.25%** (A1) | `backend/payment/policy.py` `TAX_RATE` | Phase 2 (checkout service) |
+| Men's crew-tee photos (mock-up flat-lays) show a faint line where props covered the hem. Two Converse photos keep a thin source streak | `frontend/public/catalog/` | Phase 7 visual pass |
+| The `rembg` photo tool needs numpy 2, which conflicts with the app's packages. It was removed from the global Python and must be run in `.venv-photos` | `scripts/fetch_catalog_photos.py` | Documented in the script header |

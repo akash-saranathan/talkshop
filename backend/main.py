@@ -11,7 +11,7 @@ from backend.routers import auth, merchants, products, chat, authorizations, pay
 from backend.config.llm import resolve_llm
 from backend.observability.tracing import init_tracing
 
-DB_PATH = Path(__file__).parent / "db" / "commerce.db"
+from backend.db.config import DB_PATH
 
 
 @asynccontextmanager

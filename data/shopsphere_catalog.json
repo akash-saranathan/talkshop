@@ -1,0 +1,2552 @@
+{
+ "merchant": {
+  "merchant_id": "SHOPSPHERE",
+  "merchant_name": "ShopSphere",
+  "trust_status": "trusted",
+  "tier": "local"
+ },
+ "size_ranges": {
+  "shoe_unisex": [
+   "6",
+   "7",
+   "8",
+   "9",
+   "10",
+   "11",
+   "12"
+  ],
+  "shoe_men": [
+   "7",
+   "8",
+   "9",
+   "10",
+   "11",
+   "12",
+   "13"
+  ],
+  "shoe_women": [
+   "5",
+   "6",
+   "7",
+   "8",
+   "9",
+   "10"
+  ],
+  "apparel_women": [
+   "XS",
+   "S",
+   "M",
+   "L",
+   "XL"
+  ],
+  "apparel_men": [
+   "S",
+   "M",
+   "L",
+   "XL",
+   "XXL"
+  ],
+  "apparel_unisex": [
+   "XS",
+   "S",
+   "M",
+   "L",
+   "XL",
+   "XXL"
+  ],
+  "jeans_women": [
+   "24",
+   "26",
+   "28",
+   "30",
+   "32"
+  ],
+  "jeans_men": [
+   "28",
+   "30",
+   "32",
+   "34",
+   "36",
+   "38"
+  ],
+  "belt": [
+   "S",
+   "M",
+   "L",
+   "XL"
+  ],
+  "one_size": [
+   null
+  ],
+  "watch_case": [
+   "41mm",
+   "45mm"
+  ],
+  "phone_storage": [
+   "128GB",
+   "256GB",
+   "512GB"
+  ],
+  "phone_storage_2": [
+   "128GB",
+   "256GB"
+  ],
+  "laptop_storage": [
+   "256GB",
+   "512GB"
+  ],
+  "laptop_storage_2": [
+   "512GB",
+   "1TB"
+  ]
+ },
+ "products": [
+  {
+   "product_id": "SSP001",
+   "slug": "runner-pro-x",
+   "name": "Runner Pro X",
+   "brand": "Kinetic",
+   "department": "shoes",
+   "category": "running_shoes",
+   "subcategory": "running",
+   "gender": "unisex",
+   "price": 129.0,
+   "rating": 4.7,
+   "review_count": 1284,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "shoe_unisex",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 115150,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 77085,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Blue",
+     "hex": "#2f5fb3",
+     "photo": {
+      "pixabay_id": 5351339,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A cushioned everyday road runner with a responsive foam midsole and breathable knit upper.",
+   "tags": [
+    "everyday running",
+    "cushioned",
+    "road",
+    "breathable"
+   ],
+   "out_of_stock": [
+    {
+     "size": "11"
+    }
+   ]
+  },
+  {
+   "product_id": "SSP002",
+   "slug": "flexrun-5",
+   "name": "FlexRun 5",
+   "brand": "Kinetic",
+   "department": "shoes",
+   "category": "running_shoes",
+   "subcategory": "running",
+   "gender": "unisex",
+   "price": 139.0,
+   "rating": 4.6,
+   "review_count": 962,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "shoe_unisex",
+   "colors": [
+    {
+     "name": "Orange",
+     "hex": "#e07b39",
+     "photo": {
+      "pixabay_id": 2768733,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Green",
+     "hex": "#3e7d4f",
+     "photo": {
+      "pixabay_id": 2768760,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Lightweight and flexible for daily miles, with a grippy rubber outsole.",
+   "tags": [
+    "everyday running",
+    "lightweight",
+    "flexible",
+    "road"
+   ],
+   "out_of_stock": [
+    {
+     "size": "12",
+     "color": "Green"
+    }
+   ]
+  },
+  {
+   "product_id": "SSP003",
+   "slug": "daily-runner",
+   "name": "Daily Runner",
+   "brand": "Northpace",
+   "department": "shoes",
+   "category": "running_shoes",
+   "subcategory": "running",
+   "gender": "unisex",
+   "price": 119.0,
+   "rating": 4.5,
+   "review_count": 1530,
+   "delivery_days": 4,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "shoe_unisex",
+   "colors": [
+    {
+     "name": "Blue",
+     "hex": "#2f5fb3",
+     "photo": {
+      "pixabay_id": 371625,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Pink",
+     "hex": "#e8a0b4",
+     "photo": {
+      "pixabay_id": 371624,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A durable, comfortable trainer built for beginners and everyday runs.",
+   "tags": [
+    "everyday running",
+    "durable",
+    "beginner",
+    "comfortable"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP004",
+   "slug": "nike-pegasus-41",
+   "name": "Nike Pegasus 41",
+   "brand": "Nike",
+   "department": "shoes",
+   "category": "running_shoes",
+   "subcategory": "running",
+   "gender": "men",
+   "price": 149.99,
+   "rating": 4.4,
+   "review_count": 3241,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "shoe_men",
+   "colors": [
+    {
+     "name": "Coral",
+     "hex": "#f26b5b",
+     "photo": {
+      "pixabay_id": 1324431,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Teal",
+     "hex": "#2bb3b1",
+     "photo": {
+      "pixabay_id": 2799608,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Nike's versatile road trainer with ReactX foam for daily training.",
+   "tags": [
+    "road running",
+    "daily training",
+    "cushioned"
+   ],
+   "out_of_stock": [
+    {
+     "size": "13"
+    }
+   ]
+  },
+  {
+   "product_id": "SSP005",
+   "slug": "adidas-ultraboost-light",
+   "name": "Adidas Ultraboost Light",
+   "brand": "Adidas",
+   "department": "shoes",
+   "category": "running_shoes",
+   "subcategory": "running",
+   "gender": "women",
+   "price": 189.99,
+   "rating": 4.6,
+   "review_count": 2104,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "shoe_women",
+   "colors": [
+    {
+     "name": "Grey",
+     "hex": "#8e9196",
+     "photo": {
+      "pixabay_id": 2554690,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 5418991,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Energy-returning Boost cushioning in Adidas' lightest Ultraboost yet.",
+   "tags": [
+    "cushioned",
+    "lightweight",
+    "road running",
+    "premium"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP006",
+   "slug": "trail-blazer-gtx",
+   "name": "Trail Blazer GTX",
+   "brand": "Northpace",
+   "department": "shoes",
+   "category": "running_shoes",
+   "subcategory": "trail",
+   "gender": "men",
+   "price": 134.99,
+   "rating": 4.3,
+   "review_count": 688,
+   "delivery_days": 5,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "shoe_men",
+   "colors": [
+    {
+     "name": "Green",
+     "hex": "#3e7d4f",
+     "photo": {
+      "pixabay_id": 629643,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 5351330,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A waterproof trail shoe with aggressive lugs for mud and rock.",
+   "tags": [
+    "trail running",
+    "waterproof",
+    "grip",
+    "hiking"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP007",
+   "slug": "lumen-cloud-glide",
+   "name": "Lumen Cloud Glide",
+   "brand": "Lumen",
+   "department": "shoes",
+   "category": "running_shoes",
+   "subcategory": "running",
+   "gender": "women",
+   "price": 124.99,
+   "rating": 4.4,
+   "review_count": 845,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "shoe_women",
+   "colors": [
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 321199,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Silver",
+     "hex": "#c0c3c7",
+     "photo": {
+      "pixabay_id": 77087,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Soft, cloud-like cushioning for easy recovery runs and long walks.",
+   "tags": [
+    "recovery runs",
+    "cushioned",
+    "walking",
+    "comfortable"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP008",
+   "slug": "sphere-canvas-low",
+   "name": "Sphere Canvas Low",
+   "brand": "Sphere Basics",
+   "department": "shoes",
+   "category": "sneakers",
+   "subcategory": "sneakers",
+   "gender": "unisex",
+   "price": 49.99,
+   "rating": 4.4,
+   "review_count": 1180,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "shoe_unisex",
+   "colors": [
+    {
+     "name": "Navy",
+     "hex": "#1f2a44",
+     "photo": {
+      "pixabay_id": 2743420,
+      "mode": "largest"
+     }
+    }
+   ],
+   "description": "A simple canvas low-top with a cushioned footbed.",
+   "tags": [
+    "casual",
+    "canvas",
+    "everyday",
+    "lightweight"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP009",
+   "slug": "adidas-nmd_r1",
+   "name": "Adidas NMD_R1",
+   "brand": "Adidas",
+   "department": "shoes",
+   "category": "sneakers",
+   "subcategory": "sneakers",
+   "gender": "unisex",
+   "price": 149.99,
+   "rating": 4.6,
+   "review_count": 4870,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "shoe_unisex",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 5418990,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Boost-cushioned street sneaker with a sock-like knit upper.",
+   "tags": [
+    "casual",
+    "streetwear",
+    "cushioned",
+    "knit"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP010",
+   "slug": "converse-chuck-taylor-all-star",
+   "name": "Converse Chuck Taylor All Star",
+   "brand": "Converse",
+   "department": "shoes",
+   "category": "sneakers",
+   "subcategory": "sneakers",
+   "gender": "unisex",
+   "price": 64.99,
+   "rating": 4.6,
+   "review_count": 12890,
+   "delivery_days": 4,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "shoe_unisex",
+   "colors": [
+    {
+     "name": "Green",
+     "hex": "#3e7d4f",
+     "photo": {
+      "pixabay_id": 2768263,
+      "mode": "largest"
+     }
+    },
+    {
+     "name": "Red",
+     "hex": "#c0392b",
+     "photo": {
+      "pixabay_id": 2768218,
+      "mode": "largest"
+     }
+    },
+    {
+     "name": "Purple",
+     "hex": "#6d4c9f",
+     "photo": {
+      "pixabay_id": 2768260,
+      "mode": "largest"
+     }
+    }
+   ],
+   "description": "The timeless canvas high-top that goes with everything.",
+   "tags": [
+    "casual",
+    "canvas",
+    "classic",
+    "high-top"
+   ],
+   "out_of_stock": [
+    {
+     "size": "6",
+     "color": "Red"
+    }
+   ]
+  },
+  {
+   "product_id": "SSP011",
+   "slug": "urban-court-low",
+   "name": "Urban Court Low",
+   "brand": "Lumen",
+   "department": "shoes",
+   "category": "sneakers",
+   "subcategory": "sneakers",
+   "gender": "women",
+   "price": 79.99,
+   "rating": 4.4,
+   "review_count": 610,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "shoe_women",
+   "colors": [
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 4762266,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Lilac",
+     "hex": "#b7a3d8",
+     "photo": {
+      "pixabay_id": 2732693,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A clean low-top court sneaker with a cushioned insole.",
+   "tags": [
+    "casual",
+    "minimal",
+    "everyday",
+    "comfortable"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP012",
+   "slug": "hartwell-chelsea-boot",
+   "name": "Hartwell Chelsea Boot",
+   "brand": "Hartwell",
+   "department": "shoes",
+   "category": "boots",
+   "subcategory": "boots",
+   "gender": "men",
+   "price": 169.99,
+   "rating": 4.6,
+   "review_count": 1144,
+   "delivery_days": 5,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "shoe_men",
+   "colors": [
+    {
+     "name": "Brown",
+     "hex": "#7a4a2a",
+     "photo": {
+      "pixabay_id": 3743542,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Full-grain leather Chelsea boots with elastic sides and a stacked heel.",
+   "tags": [
+    "leather",
+    "smart casual",
+    "classic",
+    "pull-on"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP013",
+   "slug": "ridge-hiker-waterproof-boot",
+   "name": "Ridge Hiker Waterproof Boot",
+   "brand": "Northpace",
+   "department": "shoes",
+   "category": "boots",
+   "subcategory": "boots",
+   "gender": "unisex",
+   "price": 149.99,
+   "rating": 4.5,
+   "review_count": 932,
+   "delivery_days": 5,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "shoe_unisex",
+   "colors": [
+    {
+     "name": "Navy",
+     "hex": "#1f2a44",
+     "photo": {
+      "pixabay_id": 220499,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Brown",
+     "hex": "#7a4a2a",
+     "photo": {
+      "pixabay_id": 3583017,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Waterproof hiking boots with ankle support and a rugged outsole.",
+   "tags": [
+    "hiking",
+    "waterproof",
+    "outdoor",
+    "ankle support"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP014",
+   "slug": "coastline-flip-flop",
+   "name": "Coastline Flip-Flop",
+   "brand": "Marisol",
+   "department": "shoes",
+   "category": "shoes",
+   "subcategory": "sandals",
+   "gender": "women",
+   "price": 24.99,
+   "rating": 4.3,
+   "review_count": 402,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "shoe_women",
+   "colors": [
+    {
+     "name": "Light Blue",
+     "hex": "#8fb3d9",
+     "photo": {
+      "pixabay_id": 4370860,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Pink",
+     "hex": "#e8a0b4",
+     "photo": {
+      "pixabay_id": 251019,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Soft, lightweight flip-flops for the beach and lazy weekends.",
+   "tags": [
+    "summer",
+    "casual",
+    "comfortable",
+    "beach"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP015",
+   "slug": "hartwell-oxford-derby",
+   "name": "Hartwell Oxford Derby",
+   "brand": "Hartwell",
+   "department": "shoes",
+   "category": "shoes",
+   "subcategory": "formal",
+   "gender": "men",
+   "price": 139.99,
+   "rating": 4.5,
+   "review_count": 733,
+   "delivery_days": 5,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "shoe_men",
+   "colors": [
+    {
+     "name": "Tan",
+     "hex": "#c69c6d",
+     "photo": {
+      "pixabay_id": 6078951,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Brown",
+     "hex": "#7a4a2a",
+     "photo": {
+      "pixabay_id": 2434210,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Polished leather derby shoes for the office and formal occasions.",
+   "tags": [
+    "formal",
+    "leather",
+    "office",
+    "wedding"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP016",
+   "slug": "marisol-classic-pump",
+   "name": "Marisol Classic Pump",
+   "brand": "Marisol",
+   "department": "shoes",
+   "category": "shoes",
+   "subcategory": "formal",
+   "gender": "women",
+   "price": 89.99,
+   "rating": 4.4,
+   "review_count": 518,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "shoe_women",
+   "colors": [
+    {
+     "name": "Red",
+     "hex": "#c0392b",
+     "photo": {
+      "pixabay_id": 20085,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 1460033,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A timeless pointed pump that works from desk to dinner.",
+   "tags": [
+    "formal",
+    "office",
+    "heels",
+    "party"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP017",
+   "slug": "raglan-baseball-tee",
+   "name": "Raglan Baseball Tee",
+   "brand": "Sphere Basics",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "tops",
+   "gender": "women",
+   "price": 24.99,
+   "rating": 4.5,
+   "review_count": 2210,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "apparel_women",
+   "colors": [
+    {
+     "name": "Red",
+     "hex": "#c0392b",
+     "photo": {
+      "pixabay_id": 5206369,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Peach",
+     "hex": "#f2b28c",
+     "photo": {
+      "pixabay_id": 5206371,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A soft cotton raglan tee with contrast sleeves.",
+   "tags": [
+    "cotton",
+    "casual",
+    "sporty",
+    "everyday"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP018",
+   "slug": "tiered-denim-midi-dress",
+   "name": "Tiered Denim Midi Dress",
+   "brand": "Sphere Denim",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "dresses",
+   "gender": "women",
+   "price": 69.99,
+   "rating": 4.6,
+   "review_count": 894,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "apparel_women",
+   "colors": [
+    {
+     "name": "Blue",
+     "hex": "#2f5fb3",
+     "photo": {
+      "pixabay_id": 8568399,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A relaxed tiered midi dress in soft washed denim.",
+   "tags": [
+    "dress",
+    "denim",
+    "casual",
+    "everyday"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP019",
+   "slug": "linen-summer-sundress",
+   "name": "Linen Summer Sundress",
+   "brand": "Marisol",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "dresses",
+   "gender": "women",
+   "price": 54.99,
+   "rating": 4.4,
+   "review_count": 507,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "apparel_women",
+   "colors": [
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 107269,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Breathable linen sundress, light enough for the hottest days.",
+   "tags": [
+    "dress",
+    "summer",
+    "linen",
+    "casual"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP020",
+   "slug": "high-rise-skinny-jeans",
+   "name": "High-Rise Skinny Jeans",
+   "brand": "Sphere Denim",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "jeans",
+   "gender": "women",
+   "price": 59.99,
+   "rating": 4.5,
+   "review_count": 1320,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Waist",
+   "sizes": "jeans_women",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 4514891,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Blue",
+     "hex": "#2f5fb3",
+     "photo": {
+      "pixabay_id": 4514892,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Stretch denim skinny jeans with a high, shaping waist.",
+   "tags": [
+    "denim",
+    "jeans",
+    "stretch",
+    "everyday"
+   ],
+   "out_of_stock": [
+    {
+     "size": "24",
+     "color": "Black"
+    }
+   ]
+  },
+  {
+   "product_id": "SSP021",
+   "slug": "levis-501-original-jeans",
+   "name": "Levi's 501 Original Jeans",
+   "brand": "Levi's",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "jeans",
+   "gender": "men",
+   "price": 79.99,
+   "rating": 4.7,
+   "review_count": 9876,
+   "delivery_days": 4,
+   "is_new": false,
+   "option_label": "Waist",
+   "sizes": "jeans_men",
+   "colors": [
+    {
+     "name": "Light Blue",
+     "hex": "#8fb3d9",
+     "photo": {
+      "pixabay_id": 2799490,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Grey",
+     "hex": "#8e9196",
+     "photo": {
+      "pixabay_id": 4514889,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "The original straight-fit button-fly jean since 1873.",
+   "tags": [
+    "denim",
+    "jeans",
+    "classic",
+    "straight fit"
+   ],
+   "out_of_stock": [
+    {
+     "size": "38"
+    }
+   ]
+  },
+  {
+   "product_id": "SSP022",
+   "slug": "oversized-knit-sweater",
+   "name": "Oversized Knit Sweater",
+   "brand": "Sphere Basics",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "knitwear",
+   "gender": "women",
+   "price": 64.99,
+   "rating": 4.6,
+   "review_count": 688,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "apparel_women",
+   "colors": [
+    {
+     "name": "Beige",
+     "hex": "#d9c7a7",
+     "photo": {
+      "pixabay_id": 3847148,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Rose",
+     "hex": "#b5838d",
+     "photo": {
+      "pixabay_id": 3847119,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A cosy chunky-knit sweater with dropped shoulders.",
+   "tags": [
+    "knitwear",
+    "cosy",
+    "winter",
+    "casual"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP023",
+   "slug": "quilted-moto-jacket",
+   "name": "Quilted Moto Jacket",
+   "brand": "Northline",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "jackets",
+   "gender": "women",
+   "price": 119.99,
+   "rating": 4.6,
+   "review_count": 742,
+   "delivery_days": 5,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "apparel_women",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 2821961,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A quilted jacket with snap details and a stand collar.",
+   "tags": [
+    "jacket",
+    "quilted",
+    "layering",
+    "smart casual"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP024",
+   "slug": "ribbed-turtleneck-top",
+   "name": "Ribbed Turtleneck Top",
+   "brand": "Sphere Basics",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "tops",
+   "gender": "women",
+   "price": 39.99,
+   "rating": 4.5,
+   "review_count": 2640,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "apparel_women",
+   "colors": [
+    {
+     "name": "Grey",
+     "hex": "#8e9196",
+     "photo": {
+      "pixabay_id": 3847132,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A fitted ribbed turtleneck that layers under everything.",
+   "tags": [
+    "knitwear",
+    "layering",
+    "winter",
+    "basics"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP025",
+   "slug": "breton-stripe-sweater",
+   "name": "Breton Stripe Sweater",
+   "brand": "Hartwell",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "knitwear",
+   "gender": "men",
+   "price": 69.99,
+   "rating": 4.5,
+   "review_count": 1180,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "apparel_men",
+   "colors": [
+    {
+     "name": "Grey",
+     "hex": "#8e9196",
+     "photo": {
+      "pixabay_id": 3740357,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A classic striped crew-neck in soft cotton knit.",
+   "tags": [
+    "knitwear",
+    "striped",
+    "classic",
+    "casual"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP026",
+   "slug": "classic-oxford-shirt",
+   "name": "Classic Oxford Shirt",
+   "brand": "Hartwell",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "shirts",
+   "gender": "men",
+   "price": 59.99,
+   "rating": 4.5,
+   "review_count": 1032,
+   "delivery_days": 4,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "apparel_men",
+   "colors": [
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 3740340,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Pink",
+     "hex": "#e8a0b4",
+     "photo": {
+      "pixabay_id": 3740347,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Navy",
+     "hex": "#1f2a44",
+     "photo": {
+      "pixabay_id": 2947549,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A crisp button-down Oxford shirt for work or weekends.",
+   "tags": [
+    "shirt",
+    "office",
+    "smart casual",
+    "cotton"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP027",
+   "slug": "pique-polo-shirt",
+   "name": "Pique Polo Shirt",
+   "brand": "Sphere Basics",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "shirts",
+   "gender": "men",
+   "price": 44.99,
+   "rating": 4.4,
+   "review_count": 815,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "apparel_men",
+   "colors": [
+    {
+     "name": "Red",
+     "hex": "#c0392b",
+     "photo": {
+      "pixabay_id": 3183681,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A breathable cotton pique polo with a classic fit.",
+   "tags": [
+    "polo",
+    "casual",
+    "summer",
+    "cotton"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP028",
+   "slug": "essential-crew-tee-men",
+   "name": "Essential Crew Tee (Men)",
+   "brand": "Sphere Basics",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "tops",
+   "gender": "men",
+   "price": 22.99,
+   "rating": 4.5,
+   "review_count": 3105,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "apparel_men",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 5257441,
+      "mode": "diff",
+      "ref_pixabay_id": 5257434
+     }
+    },
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 5257434,
+      "mode": "diff",
+      "ref_pixabay_id": 5257441
+     }
+    },
+    {
+     "name": "Green",
+     "hex": "#3e7d4f",
+     "photo": {
+      "pixabay_id": 5257443,
+      "mode": "diff",
+      "ref_pixabay_id": 5257434
+     }
+    },
+    {
+     "name": "Grey",
+     "hex": "#8e9196",
+     "photo": {
+      "pixabay_id": 5257432,
+      "mode": "diff",
+      "ref_pixabay_id": 5257434
+     }
+    }
+   ],
+   "description": "Everyday heavyweight cotton tee with a structured neckline.",
+   "tags": [
+    "cotton",
+    "basics",
+    "everyday",
+    "casual"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP029",
+   "slug": "slim-chino-pants",
+   "name": "Slim Chino Pants",
+   "brand": "Hartwell",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "pants",
+   "gender": "men",
+   "price": 54.99,
+   "rating": 4.4,
+   "review_count": 964,
+   "delivery_days": 4,
+   "is_new": false,
+   "option_label": "Waist",
+   "sizes": "jeans_men",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 7866,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Slim stretch chinos that move from office to weekend.",
+   "tags": [
+    "pants",
+    "chinos",
+    "smart casual",
+    "stretch"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP030",
+   "slug": "denim-trucker-jacket",
+   "name": "Denim Trucker Jacket",
+   "brand": "Sphere Denim",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "jackets",
+   "gender": "men",
+   "price": 89.99,
+   "rating": 4.6,
+   "review_count": 1210,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "apparel_men",
+   "colors": [
+    {
+     "name": "Light Blue",
+     "hex": "#8fb3d9",
+     "photo": {
+      "pixabay_id": 2566082,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A classic trucker jacket in rigid denim that wears in beautifully.",
+   "tags": [
+    "jacket",
+    "denim",
+    "casual",
+    "layering"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP031",
+   "slug": "printed-camp-shirt",
+   "name": "Printed Camp Shirt",
+   "brand": "Hartwell",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "shirts",
+   "gender": "men",
+   "price": 49.99,
+   "rating": 4.4,
+   "review_count": 2780,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "apparel_men",
+   "colors": [
+    {
+     "name": "Navy",
+     "hex": "#1f2a44",
+     "photo": {
+      "pixabay_id": 2563851,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A relaxed short-sleeve camp shirt with an all-over print.",
+   "tags": [
+    "shirt",
+    "summer",
+    "printed",
+    "casual"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP032",
+   "slug": "knit-fringe-poncho",
+   "name": "Knit Fringe Poncho",
+   "brand": "Marisol",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "knitwear",
+   "gender": "women",
+   "price": 54.99,
+   "rating": 4.5,
+   "review_count": 4410,
+   "delivery_days": 4,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Cream",
+     "hex": "#efe6d2",
+     "photo": {
+      "pixabay_id": 2619832,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "An open-knit poncho with a fringed hem.",
+   "tags": [
+    "knitwear",
+    "boho",
+    "layering",
+    "summer"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP033",
+   "slug": "hooded-fleece-sweatshirt",
+   "name": "Hooded Fleece Sweatshirt",
+   "brand": "Sphere Basics",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "tops",
+   "gender": "unisex",
+   "price": 59.99,
+   "rating": 4.6,
+   "review_count": 1870,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "apparel_unisex",
+   "colors": [
+    {
+     "name": "Beige",
+     "hex": "#d9c7a7",
+     "photo": {
+      "pixabay_id": 9260884,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A brushed-fleece hoodie with a roomy kangaroo pocket.",
+   "tags": [
+    "hoodie",
+    "cosy",
+    "casual",
+    "layering"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP034",
+   "slug": "satin-evening-gown",
+   "name": "Satin Evening Gown",
+   "brand": "Marisol",
+   "department": "clothing",
+   "category": "clothing",
+   "subcategory": "dresses",
+   "gender": "women",
+   "price": 189.0,
+   "rating": 4.7,
+   "review_count": 655,
+   "delivery_days": 5,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "apparel_women",
+   "colors": [
+    {
+     "name": "Red",
+     "hex": "#c0392b",
+     "photo": {
+      "pixabay_id": 5660012,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A floor-length satin gown with a thigh-high slit.",
+   "tags": [
+    "dress",
+    "evening",
+    "formal",
+    "party"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP035",
+   "slug": "leather-crossbody-bag",
+   "name": "Leather Crossbody Bag",
+   "brand": "Marisol",
+   "department": "accessories",
+   "category": "bags",
+   "subcategory": "bags",
+   "gender": "women",
+   "price": 129.99,
+   "rating": 4.6,
+   "review_count": 904,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Red",
+     "hex": "#c0392b",
+     "photo": {
+      "pixabay_id": 2661412,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Navy",
+     "hex": "#1f2a44",
+     "photo": {
+      "pixabay_id": 1051714,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A compact leather crossbody with an adjustable strap.",
+   "tags": [
+    "bag",
+    "leather",
+    "everyday",
+    "crossbody"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP036",
+   "slug": "trailhead-hiking-backpack",
+   "name": "Trailhead Hiking Backpack",
+   "brand": "Northline",
+   "department": "accessories",
+   "category": "bags",
+   "subcategory": "bags",
+   "gender": "unisex",
+   "price": 69.99,
+   "rating": 4.5,
+   "review_count": 1630,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Blue",
+     "hex": "#2f5fb3",
+     "photo": {
+      "pixabay_id": 139758,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A 30L hiking pack with a padded hip belt and rain cover.",
+   "tags": [
+    "backpack",
+    "hiking",
+    "travel",
+    "outdoor"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP037",
+   "slug": "structured-leather-handbag",
+   "name": "Structured Leather Handbag",
+   "brand": "Marisol",
+   "department": "accessories",
+   "category": "bags",
+   "subcategory": "bags",
+   "gender": "women",
+   "price": 149.99,
+   "rating": 4.5,
+   "review_count": 712,
+   "delivery_days": 4,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 444171,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Coral",
+     "hex": "#f26b5b",
+     "photo": {
+      "pixabay_id": 229610,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A structured top-handle handbag with a detachable strap.",
+   "tags": [
+    "bag",
+    "leather",
+    "work",
+    "handbag"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP038",
+   "slug": "ray-ban-wayfarer-classic",
+   "name": "Ray-Ban Wayfarer Classic",
+   "brand": "Ray-Ban",
+   "department": "accessories",
+   "category": "sunglasses",
+   "subcategory": "sunglasses",
+   "gender": "unisex",
+   "price": 163.0,
+   "rating": 4.7,
+   "review_count": 6230,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Grey",
+     "hex": "#8e9196",
+     "photo": {
+      "pixabay_id": 2110273,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "The legendary Wayfarer frame with G-15 polarized lenses.",
+   "tags": [
+    "sunglasses",
+    "classic",
+    "polarized",
+    "summer"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP039",
+   "slug": "aviator-sunglasses",
+   "name": "Aviator Sunglasses",
+   "brand": "Sphere Optics",
+   "department": "accessories",
+   "category": "sunglasses",
+   "subcategory": "sunglasses",
+   "gender": "unisex",
+   "price": 119.99,
+   "rating": 4.5,
+   "review_count": 980,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 3688030,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Lightweight metal aviators with UV400 protection.",
+   "tags": [
+    "sunglasses",
+    "aviator",
+    "summer",
+    "metal"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP040",
+   "slug": "minimalist-mesh-watch",
+   "name": "Minimalist Mesh Watch",
+   "brand": "Nordic Time",
+   "department": "accessories",
+   "category": "watches",
+   "subcategory": "watches",
+   "gender": "unisex",
+   "price": 99.99,
+   "rating": 4.5,
+   "review_count": 1104,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Gold",
+     "hex": "#c9a74a",
+     "photo": {
+      "pixabay_id": 4895499,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A slim minimalist watch with a stainless mesh strap.",
+   "tags": [
+    "watch",
+    "minimal",
+    "gift",
+    "stainless steel"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP041",
+   "slug": "classic-leather-strap-watch",
+   "name": "Classic Leather Strap Watch",
+   "brand": "Nordic Time",
+   "department": "accessories",
+   "category": "watches",
+   "subcategory": "watches",
+   "gender": "men",
+   "price": 129.99,
+   "rating": 4.6,
+   "review_count": 846,
+   "delivery_days": 4,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Brown",
+     "hex": "#7a4a2a",
+     "photo": {
+      "pixabay_id": 4895498,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Silver",
+     "hex": "#c0c3c7",
+     "photo": {
+      "pixabay_id": 4623183,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A clean dial on a genuine leather strap, water-resistant to 50 m.",
+   "tags": [
+    "watch",
+    "leather",
+    "classic",
+    "gift"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP042",
+   "slug": "classic-leather-belt",
+   "name": "Classic Leather Belt",
+   "brand": "Hartwell",
+   "department": "accessories",
+   "category": "accessories",
+   "subcategory": "belts",
+   "gender": "men",
+   "price": 39.99,
+   "rating": 4.4,
+   "review_count": 1290,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "belt",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 2146914,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Brown",
+     "hex": "#7a4a2a",
+     "photo": {
+      "pixabay_id": 139757,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A full-grain leather belt with a brushed metal buckle.",
+   "tags": [
+    "belt",
+    "leather",
+    "office",
+    "classic"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP043",
+   "slug": "marisol-cat-eye-sunglasses",
+   "name": "Marisol Cat-Eye Sunglasses",
+   "brand": "Marisol",
+   "department": "accessories",
+   "category": "sunglasses",
+   "subcategory": "sunglasses",
+   "gender": "women",
+   "price": 89.99,
+   "rating": 4.5,
+   "review_count": 3320,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 178153,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Brown",
+     "hex": "#7a4a2a",
+     "photo": {
+      "pixabay_id": 789897,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Retro cat-eye frames with gradient UV400 lenses.",
+   "tags": [
+    "sunglasses",
+    "retro",
+    "summer",
+    "cat-eye"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP044",
+   "slug": "evening-clutch-bag",
+   "name": "Evening Clutch Bag",
+   "brand": "Marisol",
+   "department": "accessories",
+   "category": "bags",
+   "subcategory": "bags",
+   "gender": "women",
+   "price": 59.99,
+   "rating": 4.6,
+   "review_count": 1410,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Gold",
+     "hex": "#c9a74a",
+     "photo": {
+      "pixabay_id": 215451,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A metallic clasp clutch for evenings out.",
+   "tags": [
+    "bag",
+    "evening",
+    "party",
+    "clutch"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP045",
+   "slug": "silk-print-scarf",
+   "name": "Silk Print Scarf",
+   "brand": "Marisol",
+   "department": "accessories",
+   "category": "accessories",
+   "subcategory": "scarves",
+   "gender": "women",
+   "price": 49.99,
+   "rating": 4.6,
+   "review_count": 688,
+   "delivery_days": 4,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Blue",
+     "hex": "#2f5fb3",
+     "photo": {
+      "pixabay_id": 281442,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A lightweight silk scarf in a painterly print.",
+   "tags": [
+    "scarf",
+    "silk",
+    "gift",
+    "printed"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP046",
+   "slug": "everyday-leather-wallet",
+   "name": "Everyday Leather Wallet",
+   "brand": "Hartwell",
+   "department": "accessories",
+   "category": "accessories",
+   "subcategory": "wallets",
+   "gender": "men",
+   "price": 44.99,
+   "rating": 4.4,
+   "review_count": 970,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 1934036,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Brown",
+     "hex": "#7a4a2a",
+     "photo": {
+      "pixabay_id": 1081310,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A slim bifold wallet in full-grain leather with RFID blocking.",
+   "tags": [
+    "wallet",
+    "leather",
+    "gift",
+    "rfid"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP047",
+   "slug": "sony-wh-1000xm5-headphones",
+   "name": "Sony WH-1000XM5 Headphones",
+   "brand": "Sony",
+   "department": "electronics",
+   "category": "electronics",
+   "subcategory": "headphones",
+   "gender": "unisex",
+   "price": 399.99,
+   "rating": 4.8,
+   "review_count": 7840,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 5596988,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 3661771,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Industry-leading noise cancelling with 30-hour battery life.",
+   "tags": [
+    "headphones",
+    "noise cancelling",
+    "wireless",
+    "travel"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP048",
+   "slug": "pulse-studio-wireless-headphones",
+   "name": "Pulse Studio Wireless Headphones",
+   "brand": "Pulse Audio",
+   "department": "electronics",
+   "category": "electronics",
+   "subcategory": "headphones",
+   "gender": "unisex",
+   "price": 179.99,
+   "rating": 4.5,
+   "review_count": 2140,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Navy",
+     "hex": "#1f2a44",
+     "photo": {
+      "pixabay_id": 15600,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Brown",
+     "hex": "#7a4a2a",
+     "photo": {
+      "pixabay_id": 1868612,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Comfortable over-ear wireless headphones with 40-hour battery.",
+   "tags": [
+    "headphones",
+    "wireless",
+    "comfortable",
+    "travel"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP049",
+   "slug": "apple-airpods-pro-2nd-gen",
+   "name": "Apple AirPods Pro (2nd Gen)",
+   "brand": "Apple",
+   "department": "electronics",
+   "category": "electronics",
+   "subcategory": "earbuds",
+   "gender": "unisex",
+   "price": 249.0,
+   "rating": 4.8,
+   "review_count": 15420,
+   "delivery_days": 2,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 5193970,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Active noise cancellation, adaptive audio and a USB-C MagSafe case.",
+   "tags": [
+    "earbuds",
+    "noise cancelling",
+    "wireless",
+    "apple"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP050",
+   "slug": "pulse-buds-pro",
+   "name": "Pulse Buds Pro",
+   "brand": "Pulse Audio",
+   "department": "electronics",
+   "category": "electronics",
+   "subcategory": "earbuds",
+   "gender": "unisex",
+   "price": 89.99,
+   "rating": 4.4,
+   "review_count": 1260,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Silver",
+     "hex": "#c0c3c7",
+     "photo": {
+      "pixabay_id": 5598952,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Noise-cancelling earbuds with 32 hours of total battery.",
+   "tags": [
+    "earbuds",
+    "noise cancelling",
+    "wireless",
+    "budget"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP051",
+   "slug": "pulse-reference-open-back-headphones",
+   "name": "Pulse Reference Open-Back Headphones",
+   "brand": "Pulse Audio",
+   "department": "electronics",
+   "category": "electronics",
+   "subcategory": "headphones",
+   "gender": "unisex",
+   "price": 299.99,
+   "rating": 4.6,
+   "review_count": 2210,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 7721777,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Silver",
+     "hex": "#c0c3c7",
+     "photo": {
+      "pixabay_id": 4602717,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Open-back studio headphones with a wide, natural soundstage.",
+   "tags": [
+    "headphones",
+    "studio",
+    "audiophile",
+    "wired"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP052",
+   "slug": "apple-iphone-15",
+   "name": "Apple iPhone 15",
+   "brand": "Apple",
+   "department": "electronics",
+   "category": "phones",
+   "subcategory": "phones",
+   "gender": "unisex",
+   "price": 799.0,
+   "rating": 4.8,
+   "review_count": 11230,
+   "delivery_days": 2,
+   "is_new": false,
+   "option_label": "Storage",
+   "sizes": "phone_storage",
+   "colors": [
+    {
+     "name": "Green",
+     "hex": "#3e7d4f",
+     "photo": {
+      "pixabay_id": 7481400,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Silver",
+     "hex": "#c0c3c7",
+     "photo": {
+      "pixabay_id": 3068617,
+      "mode": "largest"
+     }
+    }
+   ],
+   "description": "Dynamic Island, a 48MP camera and USB-C.",
+   "tags": [
+    "phone",
+    "smartphone",
+    "camera",
+    "apple"
+   ],
+   "out_of_stock": [
+    {
+     "size": "512GB",
+     "color": "Green"
+    }
+   ]
+  },
+  {
+   "product_id": "SSP053",
+   "slug": "samsung-galaxy-s24",
+   "name": "Samsung Galaxy S24",
+   "brand": "Samsung",
+   "department": "electronics",
+   "category": "phones",
+   "subcategory": "phones",
+   "gender": "unisex",
+   "price": 799.99,
+   "rating": 4.7,
+   "review_count": 6840,
+   "delivery_days": 2,
+   "is_new": false,
+   "option_label": "Storage",
+   "sizes": "phone_storage_2",
+   "colors": [
+    {
+     "name": "Silver",
+     "hex": "#c0c3c7",
+     "photo": {
+      "pixabay_id": 1844848,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Grey",
+     "hex": "#8e9196",
+     "photo": {
+      "pixabay_id": 2104312,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Galaxy AI built in, with a bright 6.2-inch display.",
+   "tags": [
+    "phone",
+    "smartphone",
+    "android",
+    "camera"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP054",
+   "slug": "apple-macbook-air-13-inch-m3",
+   "name": "Apple MacBook Air 13-inch (M3)",
+   "brand": "Apple",
+   "department": "electronics",
+   "category": "laptops",
+   "subcategory": "laptops",
+   "gender": "unisex",
+   "price": 1099.0,
+   "rating": 4.8,
+   "review_count": 5320,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Storage",
+   "sizes": "laptop_storage",
+   "colors": [
+    {
+     "name": "Silver",
+     "hex": "#c0c3c7",
+     "photo": {
+      "pixabay_id": 1282241,
+      "mode": "largest"
+     }
+    },
+    {
+     "name": "Gold",
+     "hex": "#c9a74a",
+     "photo": {
+      "pixabay_id": 3737334,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "Strikingly thin, fanless, with up to 18 hours of battery life.",
+   "tags": [
+    "laptop",
+    "apple",
+    "lightweight",
+    "work"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP055",
+   "slug": "aero-14-laptop",
+   "name": "Aero 14 Laptop",
+   "brand": "Sphere Tech",
+   "department": "electronics",
+   "category": "laptops",
+   "subcategory": "laptops",
+   "gender": "unisex",
+   "price": 899.0,
+   "rating": 4.5,
+   "review_count": 980,
+   "delivery_days": 4,
+   "is_new": false,
+   "option_label": "Storage",
+   "sizes": "laptop_storage_2",
+   "colors": [
+    {
+     "name": "Silver",
+     "hex": "#c0c3c7",
+     "photo": {
+      "pixabay_id": 5029868,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Graphite",
+     "hex": "#4a4d52",
+     "photo": {
+      "pixabay_id": 5141242,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A 14-inch aluminium ultrabook with a 2.8K display.",
+   "tags": [
+    "laptop",
+    "work",
+    "lightweight",
+    "student"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP056",
+   "slug": "apple-watch-series-9",
+   "name": "Apple Watch Series 9",
+   "brand": "Apple",
+   "department": "electronics",
+   "category": "watches",
+   "subcategory": "smartwatches",
+   "gender": "unisex",
+   "price": 399.0,
+   "rating": 4.7,
+   "review_count": 7710,
+   "delivery_days": 2,
+   "is_new": false,
+   "option_label": "Case size",
+   "sizes": "watch_case",
+   "colors": [
+    {
+     "name": "Tan",
+     "hex": "#c69c6d",
+     "photo": {
+      "pixabay_id": 2569185,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A brighter display, double-tap gesture and advanced health sensors.",
+   "tags": [
+    "smartwatch",
+    "fitness",
+    "health",
+    "apple"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP057",
+   "slug": "pulse-smartwatch-s2",
+   "name": "Pulse Smartwatch S2",
+   "brand": "Sphere Tech",
+   "department": "electronics",
+   "category": "watches",
+   "subcategory": "smartwatches",
+   "gender": "unisex",
+   "price": 199.99,
+   "rating": 4.4,
+   "review_count": 1320,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 889639,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A square-face smartwatch with GPS, heart rate and 5-day battery.",
+   "tags": [
+    "smartwatch",
+    "fitness",
+    "gps",
+    "notifications"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP058",
+   "slug": "pulse-fit-band",
+   "name": "Pulse Fit Band",
+   "brand": "Pulse Audio",
+   "department": "electronics",
+   "category": "electronics",
+   "subcategory": "fitness_trackers",
+   "gender": "unisex",
+   "price": 59.99,
+   "rating": 4.3,
+   "review_count": 1540,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "White",
+     "hex": "#f5f5f2",
+     "photo": {
+      "pixabay_id": 2059937,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A slim fitness band that tracks steps, sleep and heart rate.",
+   "tags": [
+    "fitness tracker",
+    "health",
+    "sleep",
+    "budget"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP059",
+   "slug": "jbl-flip-6-speaker",
+   "name": "JBL Flip 6 Speaker",
+   "brand": "JBL",
+   "department": "electronics",
+   "category": "electronics",
+   "subcategory": "speakers",
+   "gender": "unisex",
+   "price": 129.99,
+   "rating": 4.7,
+   "review_count": 9020,
+   "delivery_days": 3,
+   "is_new": false,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Black",
+     "hex": "#1c1c1e",
+     "photo": {
+      "pixabay_id": 5800162,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Red",
+     "hex": "#c0392b",
+     "photo": {
+      "pixabay_id": 5077789,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A rugged, waterproof portable speaker with bold JBL sound.",
+   "tags": [
+    "speaker",
+    "bluetooth",
+    "waterproof",
+    "portable"
+   ],
+   "out_of_stock": []
+  },
+  {
+   "product_id": "SSP060",
+   "slug": "sphere-sound-mini",
+   "name": "Sphere Sound Mini",
+   "brand": "Sphere Tech",
+   "department": "electronics",
+   "category": "electronics",
+   "subcategory": "speakers",
+   "gender": "unisex",
+   "price": 39.99,
+   "rating": 4.3,
+   "review_count": 760,
+   "delivery_days": 3,
+   "is_new": true,
+   "option_label": "Size",
+   "sizes": "one_size",
+   "colors": [
+    {
+     "name": "Blue",
+     "hex": "#2f5fb3",
+     "photo": {
+      "pixabay_id": 2557531,
+      "mode": "studio"
+     }
+    },
+    {
+     "name": "Pink",
+     "hex": "#e8a0b4",
+     "photo": {
+      "pixabay_id": 2557528,
+      "mode": "studio"
+     }
+    }
+   ],
+   "description": "A palm-sized Bluetooth speaker with 12-hour battery.",
+   "tags": [
+    "speaker",
+    "bluetooth",
+    "portable",
+    "budget"
+   ],
+   "out_of_stock": []
+  }
+ ]
+}

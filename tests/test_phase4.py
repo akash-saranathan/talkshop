@@ -19,7 +19,7 @@ from backend.payment import mock_processor
 
 def _checkout(
     checkout_id: str = "CHK_TEST100",
-    merchant_id: str = "MERCHANT_A",
+    merchant_id: str = "SHOPSPHERE",
     total: float = 89.99,
     checkout_hash: str = "abc123",
 ) -> CheckoutObject:
@@ -42,7 +42,7 @@ def _checkout(
 def _token(
     status: str = "active",
     agent_id: str = PAYIT.agent_id,
-    merchant_id: str = "MERCHANT_A",
+    merchant_id: str = "SHOPSPHERE",
     order_id: str = "CHK_TEST100",
     max_amount: float = 89.99,
     checkout_hash: str = "abc123",
@@ -68,7 +68,7 @@ def _token(
 def _request(
     token_id: str = "DPAT_TEST0001",
     agent_id: str = PAYIT.agent_id,
-    merchant_id: str = "MERCHANT_A",
+    merchant_id: str = "SHOPSPHERE",
     order_id: str = "CHK_TEST100",
     amount: float = 89.99,
     currency: str = "USD",
@@ -180,7 +180,7 @@ async def test_payit_processor_decline_is_not_a_guardrail_block():
 
 @pytest.mark.asyncio
 async def test_greenlight_token_is_scoped_to_payit():
-    checkout = _checkout(merchant_id="MERCHANT_A", total=89.99)
+    checkout = _checkout(merchant_id="SHOPSPHERE", total=89.99)
     from backend.agents.greenlight import request_dpat
     _, token_dict, error = await request_dpat(checkout, "USR001", "AUTH_P4_001")
     assert error is None
@@ -221,7 +221,7 @@ def client():
     return TestClient(app)
 
 
-def _create_and_approve(client, auth_headers, product_id="RW001", merchant_id="MERCHANT_A"):
+def _create_and_approve(client, auth_headers, product_id="SSP001", merchant_id="SHOPSPHERE"):
     resp = client.post("/api/checkout/create", json={
         "product_id": product_id, "merchant_id": merchant_id, "quantity": 1,
     }, headers=auth_headers)

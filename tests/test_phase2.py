@@ -25,19 +25,26 @@ def test_local_adapter_price_filter():
     assert all(p.price <= 90.0 for p in results)
 
 
-def test_local_adapter_out_of_stock_included():
+def test_seeded_stock_gaps_live_on_variants():
+    # Demo 1: stock is per variant. Products stay available while specific
+    # sizes/colours are sold out (e.g. Runner Pro X size 11, for the demo).
+    from sqlalchemy.orm import Session
+    from backend.db.init_db import get_engine
+    from backend.db.schema import ProductVariant
     from backend.merchants.local import search_products
-    results = search_products(category="running_shoes")
-    statuses = [p.available for p in results]
-    assert True in statuses  # at least one in stock
-    assert False in statuses  # at least one out of stock (seeded)
+    assert all(p.available for p in search_products(category="running_shoes"))
+    with Session(get_engine()) as s:
+        size_11 = s.query(ProductVariant).filter_by(product_id="SSP001", size="11").all()
+        size_8 = s.query(ProductVariant).filter_by(product_id="SSP001", size="8").all()
+    assert size_11 and all(v.stock == 0 for v in size_11)
+    assert size_8 and all(v.stock > 0 for v in size_8)
 
 
 def test_local_adapter_get_product_found():
     from backend.merchants.local import get_product
-    p = get_product("RW001")
+    p = get_product("SSP001")
     assert p is not None
-    assert p.product_id == "RW001"
+    assert p.product_id == "SSP001"
     assert p.price > 0
 
 
@@ -233,7 +240,7 @@ def test_llm_resolve_requires_api_key(monkeypatch):
 
 def test_mcp_check_inventory_found():
     result = asyncio.get_event_loop().run_until_complete(
-        _mcp_check_inventory("RW001")
+        _mcp_check_inventory("SSP001")
     )
     assert result["available"] is not None
     assert "delivery_days" in result
@@ -248,7 +255,7 @@ def test_mcp_check_inventory_not_found():
 
 def test_mcp_get_price():
     result = asyncio.get_event_loop().run_until_complete(
-        _mcp_get_price("RW001")
+        _mcp_get_price("SSP001")
     )
     assert "price" in result
     assert result["price"] > 0

@@ -77,24 +77,24 @@ def test_db_creates_all_tables(tmp_db):
     assert expected.issubset(set(tables))
 
 
-def test_db_seeds_three_merchants(tmp_db):
+def test_db_seeds_shopsphere_as_only_merchant(tmp_db):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
     from backend.db.schema import Merchant
     engine = create_engine(f"sqlite:///{tmp_db}")
     with Session(engine) as s:
         count = s.query(Merchant).count()
-    assert count == 3
+    assert count == 1
 
 
-def test_db_seeds_137_products(tmp_db):
+def test_db_seeds_60_products(tmp_db):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
     from backend.db.schema import Product
     engine = create_engine(f"sqlite:///{tmp_db}")
     with Session(engine) as s:
         count = s.query(Product).count()
-    assert count == 137
+    assert count == 60
 
 
 def test_db_seeds_six_agents(tmp_db):
@@ -115,44 +115,42 @@ def test_health_endpoint(client):
     assert r.json()["status"] == "ok"
 
 
-def test_merchants_returns_three(client):
+def test_merchants_returns_shopsphere(client):
     r = client.get("/api/merchants")
     assert r.status_code == 200
     data = r.json()
-    assert len(data) == 3
-    ids = {m["merchant_id"] for m in data}
-    assert ids == {"MERCHANT_A", "MERCHANT_B", "MERCHANT_C"}
+    assert [m["merchant_id"] for m in data] == ["SHOPSPHERE"]
 
 
-def test_products_returns_137(client):
+def test_products_returns_60(client):
     r = client.get("/api/products")
     assert r.status_code == 200
-    assert len(r.json()) == 137
+    assert len(r.json()) == 60
 
 
 def test_products_filter_by_category(client):
     r = client.get("/api/products?category=running_shoes")
     assert r.status_code == 200
     products = r.json()
-    assert len(products) == 30
+    assert len(products) == 7
     assert all(p["category"] == "running_shoes" for p in products)
 
 
 def test_products_filter_by_merchant(client):
-    r = client.get("/api/products?merchant_id=MERCHANT_B")
+    r = client.get("/api/products?merchant_id=SHOPSPHERE")
     assert r.status_code == 200
     products = r.json()
-    assert len(products) == 35
-    assert all(p["merchant_id"] == "MERCHANT_B" for p in products)
+    assert len(products) == 60
+    assert all(p["merchant_id"] == "SHOPSPHERE" for p in products)
 
 
 def test_product_get_by_id(client):
-    r = client.get("/api/products/RW001")
+    r = client.get("/api/products/SSP001")
     assert r.status_code == 200
     p = r.json()
-    assert p["product_id"] == "RW001"
-    assert p["name"] == "Nike Pegasus 41"
-    assert p["price"] == 109.00
+    assert p["product_id"] == "SSP001"
+    assert p["name"] == "Runner Pro X"
+    assert p["price"] == 129.00
 
 
 def test_product_not_found_returns_404(client):
@@ -189,9 +187,9 @@ def test_shopping_intent_valid():
 def test_normalized_product_available_flag():
     from backend.models.product import NormalizedProduct
     p = NormalizedProduct(
-        merchant_id="MERCHANT_A",
-        merchant_name="RunnerWorld",
-        product_id="RW001",
+        merchant_id="SHOPSPHERE",
+        merchant_name="ShopSphere",
+        product_id="SSP001",
         title="Nike Pegasus",
         category="running_shoes",
         price=109.0,
@@ -208,7 +206,7 @@ def test_dpat_token_defaults_single_use():
         authorization_id="AUTH001",
         customer_id="USR001",
         agent_id="GREENLIGHT_001",
-        merchant_id="MERCHANT_A",
+        merchant_id="SHOPSPHERE",
         order_id="ORD001",
         max_amount=117.99,
         checkout_hash="abc123",

@@ -20,8 +20,8 @@ async def test_generate_recommendation_falls_back_on_llm_error():
 
     intent = ShoppingIntent(category="running_shoes", raw_query="fast shoes")
     products = [{
-        "title": "Nike Pegasus 41", "price": 117.94, "rating": 4.5,
-        "merchant_name": "RunnerWorld", "available": True,
+        "title": "Runner Pro X", "price": 117.94, "rating": 4.5,
+        "merchant_name": "ShopSphere", "available": True,
     }]
 
     broken_llm = AsyncMock()
@@ -30,9 +30,9 @@ async def test_generate_recommendation_falls_back_on_llm_error():
     with patch("backend.agents.vibecheck.get_llm", return_value=broken_llm):
         text, _ = await generate_recommendation_text(intent, products)
 
-    assert "Nike Pegasus 41" in text
+    assert "Runner Pro X" in text
     assert "117.94" in text
-    assert "RunnerWorld" in text
+    assert "ShopSphere" in text
 
 
 @pytest.mark.asyncio
@@ -72,8 +72,8 @@ async def test_generate_recommendation_handles_list_shaped_content():
 
     intent = ShoppingIntent(category="running_shoes", raw_query="fast shoes")
     products = [{
-        "title": "Nike Pegasus 41", "price": 117.94, "rating": 4.5,
-        "merchant_name": "RunnerWorld", "available": True,
+        "title": "Runner Pro X", "price": 117.94, "rating": 4.5,
+        "merchant_name": "ShopSphere", "available": True,
     }]
 
     fake_response = AsyncMock()
@@ -140,7 +140,7 @@ def client():
     return TestClient(app)
 
 
-def _create_and_approve(client, auth_headers, product_id="RW001", merchant_id="MERCHANT_A"):
+def _create_and_approve(client, auth_headers, product_id="SSP001", merchant_id="SHOPSPHERE"):
     resp = client.post("/api/checkout/create", json={
         "product_id": product_id, "merchant_id": merchant_id, "quantity": 1,
     }, headers=auth_headers)

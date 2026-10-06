@@ -26,7 +26,7 @@ from backend.payment.guardrail_engine import run_guardrails
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _checkout(
-    merchant_id: str = "MERCHANT_A",
+    merchant_id: str = "SHOPSPHERE",
     total: float = 89.99,
     checkout_hash: str = "abc123",
 ) -> CheckoutObject:
@@ -49,7 +49,7 @@ def _checkout(
 def _token(
     status: str = "active",
     agent_id: str = "AGENT_GREENLIGHT_V1",
-    merchant_id: str = "MERCHANT_A",
+    merchant_id: str = "SHOPSPHERE",
     order_id: str = "CHK_TEST001",
     max_amount: float = 89.99,
     checkout_hash: str = "abc123",
@@ -75,7 +75,7 @@ def _token(
 def _request(
     token_id: str = "DPAT_TEST0001",
     agent_id: str = "AGENT_GREENLIGHT_V1",
-    merchant_id: str = "MERCHANT_A",
+    merchant_id: str = "SHOPSPHERE",
     order_id: str = "CHK_TEST001",
     amount: float = 89.99,
     currency: str = "USD",
@@ -93,7 +93,7 @@ def _request(
 # ── 1. Policy engine ──────────────────────────────────────────────────────────
 
 def test_policy_allows_valid_purchase():
-    result = evaluate_purchase("MERCHANT_A", 99.99, "USD")
+    result = evaluate_purchase("SHOPSPHERE", 99.99, "USD")
     assert result.decision == "ALLOW"
     assert result.reason_code == "POLICY_PASSED"
 
@@ -105,25 +105,25 @@ def test_policy_denies_unknown_merchant():
 
 
 def test_policy_denies_unsupported_currency():
-    result = evaluate_purchase("MERCHANT_A", 50.00, "EUR")
+    result = evaluate_purchase("SHOPSPHERE", 50.00, "EUR")
     assert result.decision == "DENY"
     assert result.reason_code == "CURRENCY_NOT_SUPPORTED"
 
 
 def test_policy_denies_zero_amount():
-    result = evaluate_purchase("MERCHANT_A", 0.0, "USD")
+    result = evaluate_purchase("SHOPSPHERE", 0.0, "USD")
     assert result.decision == "DENY"
     assert result.reason_code == "INVALID_AMOUNT"
 
 
 def test_policy_requires_step_up_at_limit():
-    result = evaluate_purchase("MERCHANT_A", MAX_PURCHASE_AMOUNT + 0.01, "USD")
+    result = evaluate_purchase("SHOPSPHERE", MAX_PURCHASE_AMOUNT + 0.01, "USD")
     assert result.decision == "REQUIRE_STEP_UP"
     assert result.reason_code == "AMOUNT_EXCEEDS_LIMIT"
 
 
 def test_policy_allows_exact_limit():
-    result = evaluate_purchase("MERCHANT_A", MAX_PURCHASE_AMOUNT, "USD")
+    result = evaluate_purchase("SHOPSPHERE", MAX_PURCHASE_AMOUNT, "USD")
     assert result.decision == "ALLOW"
 
 
@@ -136,25 +136,25 @@ def test_all_merchants_are_in_allowed_set():
 # ── 2. HMAC signing ───────────────────────────────────────────────────────────
 
 def test_sign_and_verify_roundtrip():
-    data = {"merchant_id": "MERCHANT_A", "amount": 99.99, "order_id": "ORD001"}
+    data = {"merchant_id": "SHOPSPHERE", "amount": 99.99, "order_id": "ORD001"}
     sig = sign_authorization(data)
     assert verify_authorization(data, sig) is True
 
 
 def test_tampered_data_fails_verification():
-    data = {"merchant_id": "MERCHANT_A", "amount": 99.99, "order_id": "ORD001"}
+    data = {"merchant_id": "SHOPSPHERE", "amount": 99.99, "order_id": "ORD001"}
     sig = sign_authorization(data)
     tampered = {**data, "amount": 1000.00}
     assert verify_authorization(tampered, sig) is False
 
 
 def test_wrong_signature_fails():
-    data = {"merchant_id": "MERCHANT_A", "amount": 10.00}
+    data = {"merchant_id": "SHOPSPHERE", "amount": 10.00}
     assert verify_authorization(data, "deadbeef" * 8) is False
 
 
 def test_sign_is_deterministic():
-    data = {"merchant_id": "MERCHANT_A", "amount": 50.00}
+    data = {"merchant_id": "SHOPSPHERE", "amount": 50.00}
     assert sign_authorization(data) == sign_authorization(data)
 
 
@@ -212,7 +212,7 @@ def test_check5_fails_on_agent_mismatch():
 
 def test_check6_fails_on_merchant_mismatch():
     token = _token(merchant_id="MERCHANT_B")
-    req = _request(merchant_id="MERCHANT_A")
+    req = _request(merchant_id="SHOPSPHERE")
     passed, events = run_guardrails(req, token, 89.99, "abc123", True)
     assert passed is False
     assert events[5].reason_code == "MERCHANT_NOT_AUTHORIZED"
@@ -279,7 +279,7 @@ def test_check12_fails_when_no_consent():
 @pytest.mark.asyncio
 async def test_cartup_builds_checkout_with_mocked_mcp():
     product = NormalizedProduct(
-        merchant_id="MERCHANT_A",
+        merchant_id="SHOPSPHERE",
         merchant_name="Test Merchant",
         product_id="PROD001",
         title="Test Shoe",
@@ -305,7 +305,7 @@ async def test_cartup_builds_checkout_with_mocked_mcp():
     assert error is None
     assert checkout is not None
     assert checkout.product_id == "PROD001"
-    assert checkout.merchant_id == "MERCHANT_A"
+    assert checkout.merchant_id == "SHOPSPHERE"
     assert checkout.subtotal == 79.99
     assert checkout.total == round(79.99 + round(79.99 * 0.082, 2), 2)
     assert len(checkout.checkout_hash) == 64  # SHA-256 hex
@@ -314,7 +314,7 @@ async def test_cartup_builds_checkout_with_mocked_mcp():
 @pytest.mark.asyncio
 async def test_cartup_returns_error_when_out_of_stock():
     product = NormalizedProduct(
-        merchant_id="MERCHANT_A",
+        merchant_id="SHOPSPHERE",
         merchant_name="Test Merchant",
         product_id="PROD002",
         title="Sold Out Shoe",
@@ -340,7 +340,7 @@ async def test_cartup_returns_error_when_out_of_stock():
 @pytest.mark.asyncio
 async def test_cartup_checkout_hash_is_deterministic():
     product = NormalizedProduct(
-        merchant_id="MERCHANT_A",
+        merchant_id="SHOPSPHERE",
         merchant_name="Test Merchant",
         product_id="PROD001",
         title="Test Shoe",
@@ -372,7 +372,7 @@ async def test_cartup_checkout_hash_is_deterministic():
 
 @pytest.mark.asyncio
 async def test_greenlight_issues_token_for_valid_checkout():
-    checkout = _checkout(merchant_id="MERCHANT_A", total=89.99)
+    checkout = _checkout(merchant_id="SHOPSPHERE", total=89.99)
     from backend.agents.greenlight import request_dpat
     token_id, token_dict, error = await request_dpat(checkout, "USR001", "AUTH_001")
 
@@ -382,7 +382,7 @@ async def test_greenlight_issues_token_for_valid_checkout():
     assert token_dict["status"] == "active"
     assert token_dict["max_amount"] == 89.99
     assert "signature" in token_dict
-    assert token_dict["merchant_id"] == "MERCHANT_A"
+    assert token_dict["merchant_id"] == "SHOPSPHERE"
 
 
 @pytest.mark.asyncio
@@ -398,7 +398,7 @@ async def test_greenlight_denies_unknown_merchant():
 
 @pytest.mark.asyncio
 async def test_greenlight_denies_over_limit():
-    checkout = _checkout(merchant_id="MERCHANT_A", total=MAX_PURCHASE_AMOUNT + 1)
+    checkout = _checkout(merchant_id="SHOPSPHERE", total=MAX_PURCHASE_AMOUNT + 1)
     from backend.agents.greenlight import request_dpat
     token_id, _, error = await request_dpat(checkout, "USR001", "AUTH_003")
 
@@ -408,7 +408,7 @@ async def test_greenlight_denies_over_limit():
 
 @pytest.mark.asyncio
 async def test_greenlight_token_signature_verifies():
-    checkout = _checkout(merchant_id="MERCHANT_A", total=89.99)
+    checkout = _checkout(merchant_id="SHOPSPHERE", total=89.99)
     from backend.agents.greenlight import request_dpat
     _, token_dict, _ = await request_dpat(checkout, "USR001", "AUTH_004")
 
@@ -434,22 +434,22 @@ def test_health_endpoint(client):
 
 def test_checkout_create_for_known_product(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "SSP001",
+        "merchant_id": "SHOPSPHERE",
         "quantity": 1,
     }, headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert "checkout_id" in data
     assert "checkout_hash" in data
-    assert data["product_id"] == "RW001"
+    assert data["product_id"] == "SSP001"
     assert data["total"] > 0
 
 
 def test_checkout_create_unknown_product(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
         "product_id": "NONEXISTENT_999",
-        "merchant_id": "MERCHANT_A",
+        "merchant_id": "SHOPSPHERE",
         "quantity": 1,
     }, headers=auth_headers)
     assert resp.status_code == 404
@@ -457,8 +457,8 @@ def test_checkout_create_unknown_product(client, auth_headers):
 
 def test_checkout_create_requires_auth(client):
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "SSP001",
+        "merchant_id": "SHOPSPHERE",
         "quantity": 1,
     })
     assert resp.status_code == 401
@@ -467,8 +467,8 @@ def test_checkout_create_requires_auth(client):
 def test_approve_then_revoke(client, auth_headers):
     # First create a checkout
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "SSP001",
+        "merchant_id": "SHOPSPHERE",
         "quantity": 1,
     }, headers=auth_headers)
     assert resp.status_code == 200
@@ -504,8 +504,8 @@ def test_approve_then_revoke(client, auth_headers):
 
 def test_revoke_already_revoked_is_idempotent(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "SSP001",
+        "merchant_id": "SHOPSPHERE",
         "quantity": 1,
     }, headers=auth_headers)
     co = resp.json()
@@ -532,8 +532,8 @@ def test_revoke_already_revoked_is_idempotent(client, auth_headers):
 
 def test_audit_trail_returns_events(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "SSP001",
+        "merchant_id": "SHOPSPHERE",
         "quantity": 1,
     }, headers=auth_headers)
     co = resp.json()

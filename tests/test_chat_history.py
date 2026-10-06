@@ -84,8 +84,8 @@ def test_save_turn_stores_products(client, auth_headers):
     session_id = uuid.uuid4().hex
     user_id = _user_id(client, auth_headers)
     product = NormalizedProduct(
-        merchant_id="MERCHANT_A", merchant_name="RunnerWorld", product_id="RW001",
-        title="Nike Pegasus 41", category="running_shoes", price=109.0,
+        merchant_id="SHOPSPHERE", merchant_name="ShopSphere", product_id="SSP001",
+        title="Runner Pro X", category="running_shoes", price=109.0,
         available=True, inventory=10, delivery_days=3, rating=4.8,
     )
 
@@ -93,7 +93,7 @@ def test_save_turn_stores_products(client, auth_headers):
 
     messages = client.get(f"/api/chat/sessions/{session_id}/messages", headers=auth_headers).json()
     assert len(messages[1]["products"]) == 1
-    assert messages[1]["products"][0]["product_id"] == "RW001"
+    assert messages[1]["products"][0]["product_id"] == "SSP001"
 
 
 def test_save_turn_stores_blocked_reason(client, auth_headers):

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.schema import AuditEvent
 
-DB_PATH = Path(__file__).parent / "commerce.db"
+from backend.db.config import DB_PATH
 
 
 def get_session() -> Session:

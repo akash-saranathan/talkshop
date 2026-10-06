@@ -1,0 +1,859 @@
+{
+ "essential-crew-tee-women": {
+  "Red": {
+   "pixabay_id": 5257444,
+   "mode": "diff",
+   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257444/",
+   "photographer": "MockupLab",
+   "license": "Pixabay Content License"
+  },
+  "Blue": {
+   "pixabay_id": 5257442,
+   "mode": "diff",
+   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257442/",
+   "photographer": "MockupLab",
+   "license": "Pixabay Content License"
+  },
+  "Black": {
+   "pixabay_id": 5257439,
+   "mode": "diff",
+   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257439/",
+   "photographer": "MockupLab",
+   "license": "Pixabay Content License"
+  }
+ },
+ "essential-crew-tee-men": {
+  "Black": {
+   "pixabay_id": 5257441,
+   "mode": "diff",
+   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257441/",
+   "photographer": "MockupLab",
+   "license": "Pixabay Content License"
+  },
+  "White": {
+   "pixabay_id": 5257434,
+   "mode": "diff",
+   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257434/",
+   "photographer": "MockupLab",
+   "license": "Pixabay Content License"
+  },
+  "Green": {
+   "pixabay_id": 5257443,
+   "mode": "diff",
+   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257443/",
+   "photographer": "MockupLab",
+   "license": "Pixabay Content License"
+  },
+  "Grey": {
+   "pixabay_id": 5257432,
+   "mode": "diff",
+   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257432/",
+   "photographer": "MockupLab",
+   "license": "Pixabay Content License"
+  }
+ },
+ "apple-iphone-15": {
+  "Green": {
+   "pixabay_id": 7481400,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/iphone-iphone13progreen-green-7481400/",
+   "photographer": "Photoshoot4You",
+   "license": "Pixabay Content License"
+  },
+  "Silver": {
+   "pixabay_id": 3068617,
+   "mode": "largest",
+   "page_url": "https://pixabay.com/photos/technology-iphone-x-iphone-phone-3068617/",
+   "photographer": "JessBaileyDesign",
+   "license": "Pixabay Content License"
+  }
+ },
+ "raglan-baseball-tee": {
+  "Red": {
+   "pixabay_id": 5206369,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5206369/",
+   "photographer": "MockupLab",
+   "license": "Pixabay Content License"
+  },
+  "Peach": {
+   "pixabay_id": 5206371,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5206371/",
+   "photographer": "MockupLab",
+   "license": "Pixabay Content License"
+  }
+ },
+ "runner-pro-x": {
+  "Black": {
+   "pixabay_id": 115150,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/sports-shoes-running-shoes-sneakers-115150/",
+   "photographer": "Hans",
+   "license": "Pixabay Content License"
+  },
+  "White": {
+   "pixabay_id": 77085,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/sneakers-sports-running-jog-shoes-77085/",
+   "photographer": "Hans",
+   "license": "Pixabay Content License"
+  },
+  "Blue": {
+   "pixabay_id": 5351339,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shoes-footwear-fitness-5351339/",
+   "photographer": "WebTechExperts",
+   "license": "Pixabay Content License"
+  }
+ },
+ "flexrun-5": {
+  "Orange": {
+   "pixabay_id": 2768733,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/sneaker-running-shoe-shoe-2768733/",
+   "photographer": "Alexas_Fotos",
+   "license": "Pixabay Content License"
+  },
+  "Green": {
+   "pixabay_id": 2768760,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/sneaker-running-shoe-shoe-2768760/",
+   "photographer": "Alexas_Fotos",
+   "license": "Pixabay Content License"
+  }
+ },
+ "daily-runner": {
+  "Blue": {
+   "pixabay_id": 371625,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/running-shoe-shoe-brooks-371625/",
+   "photographer": "stux",
+   "license": "Pixabay Content License"
+  },
+  "Pink": {
+   "pixabay_id": 371624,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/running-shoe-shoe-brooks-371624/",
+   "photographer": "stux",
+   "license": "Pixabay Content License"
+  }
+ },
+ "nike-pegasus-41": {
+  "Coral": {
+   "pixabay_id": 1324431,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shoe-sports-training-sneaker-1324431/",
+   "photographer": "stux",
+   "license": "Pixabay Content License"
+  },
+  "Teal": {
+   "pixabay_id": 2799608,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shoe-sports-shoe-running-shoe-2799608/",
+   "photographer": "Hans",
+   "license": "Pixabay Content License"
+  }
+ },
+ "adidas-ultraboost-light": {
+  "Grey": {
+   "pixabay_id": 2554690,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/adidas-pureboost-purebost-dpr-2554690/",
+   "photographer": "MBatty",
+   "license": "Pixabay Content License"
+  },
+  "White": {
+   "pixabay_id": 5418991,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/adidas-sneakers-shoes-5418991/",
+   "photographer": "marzuk",
+   "license": "Pixabay Content License"
+  }
+ },
+ "trail-blazer-gtx": {
+  "Green": {
+   "pixabay_id": 629643,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shoe-sports-shoe-trail-running-629643/",
+   "photographer": "stux",
+   "license": "Pixabay Content License"
+  },
+  "Black": {
+   "pixabay_id": 5351330,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shoes-footwear-fitness-5351330/",
+   "photographer": "WebTechExperts",
+   "license": "Pixabay Content License"
+  }
+ },
+ "lumen-cloud-glide": {
+  "White": {
+   "pixabay_id": 321199,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/running-shoe-shoe-asics-321199/",
+   "photographer": "stux",
+   "license": "Pixabay Content License"
+  },
+  "Silver": {
+   "pixabay_id": 77087,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/sneakers-sports-running-jog-shoes-77087/",
+   "photographer": "Hans",
+   "license": "Pixabay Content License"
+  }
+ },
+ "sphere-canvas-low": {
+  "Navy": {
+   "pixabay_id": 2743420,
+   "mode": "largest",
+   "page_url": "https://pixabay.com/photos/shoes-cloth-shoes-linen-shoes-2743420/",
+   "photographer": "Ralphs_Fotos",
+   "license": "Pixabay Content License"
+  }
+ },
+ "adidas-nmd_r1": {
+  "Black": {
+   "pixabay_id": 5418990,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/adidas-shoes-fashion-5418990/",
+   "photographer": "marzuk",
+   "license": "Pixabay Content License"
+  }
+ },
+ "converse-chuck-taylor-all-star": {
+  "Green": {
+   "pixabay_id": 2768263,
+   "mode": "largest",
+   "page_url": "https://pixabay.com/photos/sneakers-chucks-sneaker-shoe-green-2768263/",
+   "photographer": "Alexas_Fotos",
+   "license": "Pixabay Content License"
+  },
+  "Red": {
+   "pixabay_id": 2768218,
+   "mode": "largest",
+   "page_url": "https://pixabay.com/photos/sneakers-chucks-sneaker-shoe-red-2768218/",
+   "photographer": "Alexas_Fotos",
+   "license": "Pixabay Content License"
+  },
+  "Purple": {
+   "pixabay_id": 2768260,
+   "mode": "largest",
+   "page_url": "https://pixabay.com/photos/sneakers-chucks-sneaker-shoe-pink-2768260/",
+   "photographer": "Alexas_Fotos",
+   "license": "Pixabay Content License"
+  }
+ },
+ "urban-court-low": {
+  "White": {
+   "pixabay_id": 4762266,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/adidas-sports-shoes-sneaker-4762266/",
+   "photographer": "paulsteuber",
+   "license": "Pixabay Content License"
+  },
+  "Lilac": {
+   "pixabay_id": 2732693,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shoes-cloth-shoes-linen-shoes-2732693/",
+   "photographer": "Ralphs_Fotos",
+   "license": "Pixabay Content License"
+  }
+ },
+ "hartwell-chelsea-boot": {
+  "Brown": {
+   "pixabay_id": 3743542,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shoes-men-shoe-shine-monstrap-3743542/",
+   "photographer": "Mr-special",
+   "license": "Pixabay Content License"
+  }
+ },
+ "ridge-hiker-waterproof-boot": {
+  "Navy": {
+   "pixabay_id": 220499,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/walking-boots-hiking-boots-220499/",
+   "photographer": "No-longer-here",
+   "license": "Pixabay Content License"
+  },
+  "Brown": {
+   "pixabay_id": 3583017,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/walking-boots-boots-leather-3583017/",
+   "photographer": "Alexas_Fotos",
+   "license": "Pixabay Content License"
+  }
+ },
+ "coastline-flip-flop": {
+  "Light Blue": {
+   "pixabay_id": 4370860,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/slipper-flip-flops-slippers-sandals-4370860/",
+   "photographer": "jhoe-marttin",
+   "license": "Pixabay Content License"
+  },
+  "Pink": {
+   "pixabay_id": 251019,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/summer-vacations-bathing-fun-fun-251019/",
+   "photographer": "stux",
+   "license": "Pixabay Content License"
+  }
+ },
+ "hartwell-oxford-derby": {
+  "Tan": {
+   "pixabay_id": 6078951,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/oxford-shoes-leather-shoes-6078951/",
+   "photographer": "tylermike525",
+   "license": "Pixabay Content License"
+  },
+  "Brown": {
+   "pixabay_id": 2434210,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shoes-brown-leather-fashion-2434210/",
+   "photographer": "rydv151",
+   "license": "Pixabay Content License"
+  }
+ },
+ "marisol-classic-pump": {
+  "Red": {
+   "pixabay_id": 20085,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/elegance-elegant-fashion-female-20085/",
+   "photographer": "PublicDomainPictures",
+   "license": "Pixabay Content License"
+  },
+  "Black": {
+   "pixabay_id": 1460033,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shoes-woman-high-heel-shoes-black-1460033/",
+   "photographer": "prettyprincx28",
+   "license": "Pixabay Content License"
+  }
+ },
+ "tiered-denim-midi-dress": {
+  "Blue": {
+   "pixabay_id": 8568399,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/woman-dress-fashion-model-clothes-8568399/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  }
+ },
+ "linen-summer-sundress": {
+  "White": {
+   "pixabay_id": 107269,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/bride-jump-white-brides-feast-107269/",
+   "photographer": "Giada",
+   "license": "Pixabay Content License"
+  }
+ },
+ "high-rise-skinny-jeans": {
+  "Black": {
+   "pixabay_id": 4514891,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/fashion-textile-clothes-daily-4514891/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  },
+  "Blue": {
+   "pixabay_id": 4514892,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/fashion-textile-clothes-daily-4514892/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  }
+ },
+ "levis-501-original-jeans": {
+  "Light Blue": {
+   "pixabay_id": 2799490,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/woman-jeans-fashion-clothing-2799490/",
+   "photographer": "Marlon_Delibasic",
+   "license": "Pixabay Content License"
+  },
+  "Grey": {
+   "pixabay_id": 4514889,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/fashion-textile-clothes-daily-4514889/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  }
+ },
+ "oversized-knit-sweater": {
+  "Beige": {
+   "pixabay_id": 3847148,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/woman-model-fashion-textile-fabric-3847148/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  },
+  "Rose": {
+   "pixabay_id": 3847119,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/woman-model-fashion-textile-fabric-3847119/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  }
+ },
+ "quilted-moto-jacket": {
+  "Black": {
+   "pixabay_id": 2821961,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/jacket-mens-jackets-mens-jacket-2821961/",
+   "photographer": "derneuemann",
+   "license": "Pixabay Content License"
+  }
+ },
+ "ribbed-turtleneck-top": {
+  "Grey": {
+   "pixabay_id": 3847132,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/woman-model-fashion-textile-fabric-3847132/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  }
+ },
+ "breton-stripe-sweater": {
+  "Grey": {
+   "pixabay_id": 3740357,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/male-model-clothes-fashion-studio-3740357/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  }
+ },
+ "classic-oxford-shirt": {
+  "White": {
+   "pixabay_id": 3740340,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shirt-white-back-male-model-3740340/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  },
+  "Pink": {
+   "pixabay_id": 3740347,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shirt-denim-back-male-model-3740347/",
+   "photographer": "Engin_Akyurt",
+   "license": "Pixabay Content License"
+  },
+  "Navy": {
+   "pixabay_id": 2947549,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/shirt-men-blue-fashion-peru-2947549/",
+   "photographer": "renzonovoa1",
+   "license": "Pixabay Content License"
+  }
+ },
+ "pique-polo-shirt": {
+  "Red": {
+   "pixabay_id": 3183681,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/male-fashion-pole-modern-winter-3183681/",
+   "photographer": "Hifen",
+   "license": "Pixabay Content License"
+  },
+  "Olive": {
+   "pixabay_id": 1851571,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/adult-casual-caucasian-glasses-1851571/",
+   "photographer": "Pexels",
+   "license": "Pixabay Content License"
+  }
+ },
+ "slim-chino-pants": {
+  "Black": {
+   "pixabay_id": 7866,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/nanjing-studio-jeans-7866/",
+   "photographer": "qiye",
+   "license": "Pixabay Content License"
+  }
+ },
+ "denim-trucker-jacket": {
+  "Light Blue": {
+   "pixabay_id": 2566082,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/blue-denim-jacket-clothing-fashion-2566082/",
+   "photographer": "StockSnap",
+   "license": "Pixabay Content License"
+  }
+ },
+ "printed-camp-shirt": {
+  "Navy": {
+   "pixabay_id": 2563851,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/clothing-hanger-department-store-2563851/",
+   "photographer": "StockSnap",
+   "license": "Pixabay Content License"
+  }
+ },
+ "knit-fringe-poncho": {
+  "Cream": {
+   "pixabay_id": 2619832,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/clothes-fashion-poncho-hanger-2619832/",
+   "photographer": "StockSnap",
+   "license": "Pixabay Content License"
+  }
+ },
+ "hooded-fleece-sweatshirt": {
+  "Beige": {
+   "pixabay_id": 9260884,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/hoodie-woman-fashion-portrait-9260884/",
+   "photographer": "DigitalWithZama",
+   "license": "Pixabay Content License"
+  }
+ },
+ "satin-evening-gown": {
+  "Red": {
+   "pixabay_id": 5660012,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/model-portrait-woman-female-5660012/",
+   "photographer": "Sunriseforever",
+   "license": "Pixabay Content License"
+  }
+ },
+ "leather-crossbody-bag": {
+  "Red": {
+   "pixabay_id": 2661412,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/bag-clutch-bag-shopping-handbag-2661412/",
+   "photographer": "jaroslaw-igras",
+   "license": "Pixabay Content License"
+  },
+  "Brown": {
+   "pixabay_id": 407198,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/handbag-purse-bag-country-lane-407198/",
+   "photographer": "SplitShire",
+   "license": "Pixabay Content License"
+  },
+  "Navy": {
+   "pixabay_id": 1051714,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/purse-bag-handbag-fashion-female-1051714/",
+   "photographer": "GregMcMahan",
+   "license": "Pixabay Content License"
+  }
+ },
+ "trailhead-hiking-backpack": {
+  "Blue": {
+   "pixabay_id": 139758,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/bags-travel-bag-blue-luggage-139758/",
+   "photographer": "39839",
+   "license": "Pixabay Content License"
+  }
+ },
+ "structured-leather-handbag": {
+  "Black": {
+   "pixabay_id": 444171,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/handbag-black-gold-444171/",
+   "photographer": "Nikasucha",
+   "license": "Pixabay Content License"
+  },
+  "Coral": {
+   "pixabay_id": 229610,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/bag-crimson-product-photos-229610/",
+   "photographer": "sirocumo",
+   "license": "Pixabay Content License"
+  }
+ },
+ "ray-ban-wayfarer-classic": {
+  "Grey": {
+   "pixabay_id": 2110273,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/glasses-product-shot-product-shot-2110273/",
+   "photographer": "DanishArtist",
+   "license": "Pixabay Content License"
+  }
+ },
+ "aviator-sunglasses": {
+  "Black": {
+   "pixabay_id": 3688030,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/ray-ban-sunglasses-glasses-3688030/",
+   "photographer": "jeanvdmeulen",
+   "license": "Pixabay Content License"
+  }
+ },
+ "minimalist-mesh-watch": {
+  "Gold": {
+   "pixabay_id": 4895499,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/clock-dial-face-gold-hand-hour-4895499/",
+   "photographer": "jeanvdmeulen",
+   "license": "Pixabay Content License"
+  }
+ },
+ "classic-leather-strap-watch": {
+  "Brown": {
+   "pixabay_id": 4895498,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/alarm-black-classic-clock-dial-4895498/",
+   "photographer": "jeanvdmeulen",
+   "license": "Pixabay Content License"
+  },
+  "Silver": {
+   "pixabay_id": 4623183,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/gents-fossil-grant-4623183/",
+   "photographer": "jeanvdmeulen",
+   "license": "Pixabay Content License"
+  }
+ },
+ "classic-leather-belt": {
+  "Black": {
+   "pixabay_id": 2146914,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/belt-brown-leather-2146914/",
+   "photographer": "chansoncyril",
+   "license": "Pixabay Content License"
+  },
+  "Brown": {
+   "pixabay_id": 139757,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/belt-belt-buckle-metal-leather-139757/",
+   "photographer": "39839",
+   "license": "Pixabay Content License"
+  }
+ },
+ "marisol-cat-eye-sunglasses": {
+  "Black": {
+   "pixabay_id": 178153,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/sunglasses-for-women-fashion-summer-178153/",
+   "photographer": "lulek41",
+   "license": "Pixabay Content License"
+  },
+  "Brown": {
+   "pixabay_id": 789897,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/sunglasses-fashion-eyewear-modern-789897/",
+   "photographer": "Chillsoffear",
+   "license": "Pixabay Content License"
+  }
+ },
+ "evening-clutch-bag": {
+  "Gold": {
+   "pixabay_id": 215451,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/fashion-copper-215451/",
+   "photographer": "lucias",
+   "license": "Pixabay Content License"
+  }
+ },
+ "silk-print-scarf": {
+  "Blue": {
+   "pixabay_id": 281442,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/scarf-color-red-green-blue-spin-281442/",
+   "photographer": "qiye",
+   "license": "Pixabay Content License"
+  }
+ },
+ "everyday-leather-wallet": {
+  "Black": {
+   "pixabay_id": 1934036,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/money-wallet-banknotes-1934036/",
+   "photographer": "Andrew-Art",
+   "license": "Pixabay Content License"
+  },
+  "Brown": {
+   "pixabay_id": 1081310,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/wallet-leather-bag-bag-1081310/",
+   "photographer": "eak_kkk",
+   "license": "Pixabay Content License"
+  }
+ },
+ "sony-wh-1000xm5-headphones": {
+  "Black": {
+   "pixabay_id": 5596988,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/headphones-sony-music-headset-5596988/",
+   "photographer": "20twenty",
+   "license": "Pixabay Content License"
+  },
+  "White": {
+   "pixabay_id": 3661771,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/headphone-sony-earphone-laptop-3-3661771/",
+   "photographer": "iamkajla",
+   "license": "Pixabay Content License"
+  }
+ },
+ "pulse-studio-wireless-headphones": {
+  "Navy": {
+   "pixabay_id": 15600,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/headphones-wireless-technology-15600/",
+   "photographer": "PublicDomainPictures",
+   "license": "Pixabay Content License"
+  },
+  "Brown": {
+   "pixabay_id": 1868612,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/headphones-listening-music-sound-1868612/",
+   "photographer": "Pexels",
+   "license": "Pixabay Content License"
+  }
+ },
+ "apple-airpods-pro-2nd-gen": {
+  "White": {
+   "pixabay_id": 5193970,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/earphones-apple-airpods-pro-white-5193970/",
+   "photographer": "DrNickStafford",
+   "license": "Pixabay Content License"
+  }
+ },
+ "pulse-buds-pro": {
+  "Black": {
+   "pixabay_id": 1267605,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/handsfree-earphone-vote-microphone-1267605/",
+   "photographer": "EsaRiutta",
+   "license": "Pixabay Content License"
+  },
+  "Silver": {
+   "pixabay_id": 5598952,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/earphones-earbuds-music-sound-5598952/",
+   "photographer": "20twenty",
+   "license": "Pixabay Content License"
+  }
+ },
+ "pulse-reference-open-back-headphones": {
+  "Black": {
+   "pixabay_id": 7721777,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/headphones-music-white-isolated-7721777/",
+   "photographer": "www-erzetich-com",
+   "license": "Pixabay Content License"
+  },
+  "Silver": {
+   "pixabay_id": 4602717,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/headphones-headphone-audio-music-4602717/",
+   "photographer": "www-erzetich-com",
+   "license": "Pixabay Content License"
+  }
+ },
+ "samsung-galaxy-s24": {
+  "Silver": {
+   "pixabay_id": 1844848,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/andriod-phone-edge-plus-mobile-phone-1844848/",
+   "photographer": "Pexels",
+   "license": "Pixabay Content License"
+  },
+  "Grey": {
+   "pixabay_id": 2104312,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/mobile-smartphone-samsung-phone-2104312/",
+   "photographer": "Felix-Mittermeier",
+   "license": "Pixabay Content License"
+  }
+ },
+ "apple-macbook-air-13-inch-m3": {
+  "Silver": {
+   "pixabay_id": 1282241,
+   "mode": "largest",
+   "page_url": "https://pixabay.com/photos/apple-smartphone-desk-laptop-1282241/",
+   "photographer": "Pexels",
+   "license": "Pixabay Content License"
+  },
+  "Gold": {
+   "pixabay_id": 3737334,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/isolated-laptop-primebook-3737334/",
+   "photographer": "jeanvdmeulen",
+   "license": "Pixabay Content License"
+  }
+ },
+ "aero-14-laptop": {
+  "Silver": {
+   "pixabay_id": 5029868,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/laptop-computer-notebook-isolated-5029868/",
+   "photographer": "jeanvdmeulen",
+   "license": "Pixabay Content License"
+  },
+  "Graphite": {
+   "pixabay_id": 5141242,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/black-blank-business-communication-5141242/",
+   "photographer": "jeanvdmeulen",
+   "license": "Pixabay Content License"
+  }
+ },
+ "apple-watch-series-9": {
+  "Tan": {
+   "pixabay_id": 2569185,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/lifestyle-gadget-digital-watch-2569185/",
+   "photographer": "StockSnap",
+   "license": "Pixabay Content License"
+  }
+ },
+ "pulse-smartwatch-s2": {
+  "Black": {
+   "pixabay_id": 889639,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/smart-watch-smartwatch-fitness-889639/",
+   "photographer": "hawkHD",
+   "license": "Pixabay Content License"
+  }
+ },
+ "pulse-fit-band": {
+  "White": {
+   "pixabay_id": 2059937,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/polar-a360-fitness-tracker-2059937/",
+   "photographer": "stevepb",
+   "license": "Pixabay Content License"
+  }
+ },
+ "jbl-flip-6-speaker": {
+  "Black": {
+   "pixabay_id": 5800162,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/speaker-music-sound-audio-bass-5800162/",
+   "photographer": "Nejko",
+   "license": "Pixabay Content License"
+  },
+  "Red": {
+   "pixabay_id": 5077789,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/brand-jbl-music-speakers-stereo-5077789/",
+   "photographer": "doungtepro",
+   "license": "Pixabay Content License"
+  }
+ },
+ "sphere-sound-mini": {
+  "Blue": {
+   "pixabay_id": 2557531,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/blue-bluetooth-speaker-electronic-2557531/",
+   "photographer": "StockSnap",
+   "license": "Pixabay Content License"
+  },
+  "Pink": {
+   "pixabay_id": 2557528,
+   "mode": "studio",
+   "page_url": "https://pixabay.com/photos/pink-bluetooth-speaker-electronic-2557528/",
+   "photographer": "StockSnap",
+   "license": "Pixabay Content License"
+  }
+ }
+}
