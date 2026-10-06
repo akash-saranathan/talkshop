@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.agents.cartup import build_checkout
-from backend.auth.dependencies import CurrentUser, get_current_user
+from backend.auth.dependencies import CurrentUser, get_current_user, require_customer
 from backend.agents.greenlight import request_dpat, summarize_authorization
 from backend.db.schema import AuditEvent, DelegatedToken, PaymentAuthorization, Product, Merchant
 from backend.db.session_utils import get_session as _session, now_utc as _now, write_audit_event as _audit
@@ -83,7 +83,7 @@ class RevokeRequest(BaseModel):
 @router.post("/api/checkout/create")
 async def create_checkout_endpoint(
     req: CreateCheckoutRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_customer),
 ) -> dict:
     """
     CartUp builds a CheckoutObject from a selected product.
@@ -125,7 +125,7 @@ async def create_checkout_endpoint(
 @router.post("/api/authorizations/approve", response_model=ApproveResponse)
 async def approve_authorization(
     req: ApproveRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_customer),
 ):
     """
     Records explicit user consent and issues a DPAT token.

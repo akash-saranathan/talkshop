@@ -4,7 +4,7 @@ Points are awarded by the payments router on each successful purchase (1 pt per 
 """
 from fastapi import APIRouter, Depends
 
-from backend.auth.dependencies import CurrentUser, get_current_user
+from backend.auth.dependencies import CurrentUser, get_current_user, require_customer
 from backend.db.schema import LoyaltyPoints, LoyaltyTransaction
 from backend.db.session_utils import get_session
 
@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.get("/api/loyalty")
-async def get_loyalty_balance(current_user: CurrentUser = Depends(get_current_user)):
+async def get_loyalty_balance(current_user: CurrentUser = Depends(require_customer)):
     """Current loyalty balance and lifetime total for the logged-in user."""
     with get_session() as session:
         lp = session.query(LoyaltyPoints).filter(LoyaltyPoints.user_id == current_user.user_id).first()
@@ -23,7 +23,7 @@ async def get_loyalty_balance(current_user: CurrentUser = Depends(get_current_us
 
 
 @router.get("/api/loyalty/history")
-async def get_loyalty_history(current_user: CurrentUser = Depends(get_current_user)):
+async def get_loyalty_history(current_user: CurrentUser = Depends(require_customer)):
     """Last 20 loyalty transactions for the logged-in user."""
     with get_session() as session:
         txns = (

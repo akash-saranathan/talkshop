@@ -10,7 +10,7 @@ It's a working prototype of the same problem Stripe's [Agentic Commerce Protocol
 
 ## Demo 1 — ShopSphere × Talkshop (branch: `demo-1-merchant-chat-assistant`)
 
-**ShopSphere** is a merchant website; **Talkshop** is its built-in shopping assistant, docked on the right of every page. The customer is already logged in. Talkshop understands the request and decides what should happen; ShopSphere's own services (catalog, inventory, cart, checkout, payment, orders) do it. Payment only ever runs when the customer taps **GO AHEAD**.
+**ShopSphere** is a merchant website; **Talkshop** is its built-in shopping assistant, docked on the right of every page. Anyone can browse, fill a cart and chat with Talkshop without an account. Logging in (or signing up) is needed only to check out, and the visitor's cart and conversation come along. Talkshop understands the request and decides what should happen; ShopSphere's own services (catalog, inventory, cart, checkout, payment, orders) do it. Payment only ever runs when the customer taps **GO AHEAD**.
 
 Full plan, phases, decisions and checklist: [`docs/demo-1-shopsphere-talkshop-plan.md`](docs/demo-1-shopsphere-talkshop-plan.md).
 
@@ -30,7 +30,7 @@ python -m uvicorn backend.main:app --port 8000
 cd frontend; npm run dev                   # http://localhost:5173
 ```
 
-Log in with the demo account (**Use demo account** on the login page): `kaajal@shopsphere.demo` / `demo1234`. Kaajal has two saved addresses and two cards: **Visa •••• 4821** (approves) and **Mastercard •••• 0019** (always declines, for the decline demo).
+Open http://localhost:5173: the store opens straight away, no login needed. Log in from the header, or at checkout, with the demo account (**Use demo account**): `kaajal@shopsphere.demo` / `demo1234`. Kaajal has two saved addresses and two cards: **Visa •••• 4821** (approves) and **Mastercard •••• 0019** (always declines, for the decline demo).
 
 To reset between demos: stop the backend, run `python -m backend.db.reset_demo --yes` with the same `COMMERCE_DB_PATH`, start it again.
 
@@ -40,6 +40,7 @@ To reset between demos: stop the backend, run `python -m backend.db.reset_demo -
 |---|---|---|
 | **A: the spec** | In Talkshop: *"I need running shoes under $150 for everyday running."* → **Select** Runner Pro X → size **8** → **Black** → **Yes, checkout** → **GO AHEAD** | Top 3 on the chat and the page, size/colour checked against stock, ShopSphere cart, review card ($129 + $10.64 = **$139.64**), authorized, order **SS-#####** |
 | **B: declined card** | As A, then on the review card **Change** payment → Mastercard •••• 0019 → GO AHEAD → change back to Visa → GO AHEAD | Payment not authorized, **no order created**, retry on the same checkout |
+| **D: no account yet** | Open the store logged out → add a wallet → in Talkshop pick Runner Pro X, 8, Black → **Yes, checkout** → sign-in card → **Use demo account** → **Log in & continue** → GO AHEAD | Browsing, cart and chat without an account; login only at checkout; the cart and conversation carry over and Talkshop continues straight to Review |
 | **C: site + Talkshop** | Shoes → FlexRun 5 → **Ask Talkshop about this** → size/colour in chat → Keep shopping → add a wallet on the website → Cart: select only the wallet → Checkout selected → Place order | One cart for both, page-aware chat, website checkout of selected items, both orders in My Orders |
 
 Things worth pointing out: typing *"go ahead"* never pays (only the button does) · the header cart badge moves when Talkshop adds items · **ⓘ How Talkshop works** in the panel shows the live agent trace (VibeCheck → SneakPeek → CartUp → GreenLight → PayIt → TrackIt) · light/dark toggle in the header.

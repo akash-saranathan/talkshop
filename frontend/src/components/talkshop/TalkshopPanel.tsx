@@ -13,7 +13,7 @@ import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 import Composer from "./Composer";
 import {
   CartUpdatedCard, OptionChips, OrderConfirmedCard, PaymentStatusCard, QuickReplies,
-  RecommendationCards, ReviewOrderCard, SelectedProduct,
+  RecommendationCards, ReviewOrderCard, SelectedProduct, SignInCard,
 } from "./cards";
 import { cx } from "../ui";
 
@@ -154,6 +154,7 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
   const lastOffer = lastIndex(events, "offer_checkout");
   const lastReview = lastIndex(events, "checkout_ready");
   const lastSuggest = lastIndex(events, "suggestions");
+  const lastLogin = lastIndex(events, "login_required");
 
   return (
     <div ref={scroller} className="absolute inset-0 overflow-y-auto ss-scroll px-4 py-4 flex flex-col gap-3 [&>*]:shrink-0">
@@ -193,6 +194,8 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
               onPick={(c) => act({ type: c.value === "checkout" ? "checkout" : "keep_shopping", label: c.label })} />;
           case "order_confirmed":
             return <OrderConfirmedCard key={i} order={ev.order} />;
+          case "login_required":
+            return <SignInCard key={i} active={it.index === lastLogin && lastReview < it.index} />;
           default:
             return null;
         }

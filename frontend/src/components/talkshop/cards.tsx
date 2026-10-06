@@ -1,13 +1,15 @@
 /** The cards Talkshop draws inside the panel (plan §6.1). Each renders a
  *  server event as-is — prices, stock, totals and order ids are never
  *  computed here. Only the latest card of a kind is interactive. */
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Check, CheckCircle2, CreditCard, Loader2, Lock, MapPin, ShieldCheck, ShoppingBag, Truck, XCircle } from "lucide-react";
+import { ArrowUpRight, Check, CheckCircle2, CreditCard, Loader2, Lock, MapPin, ShieldCheck, ShoppingBag, Truck, UserRound, XCircle } from "lucide-react";
 import type { OptionChoice, TalkAction, TalkEvent } from "../../api/talkshop";
 import { money, niceDate, type Cart, type Checkout, type Order, type Product } from "../../api/shop";
 import { AddressForm, CardForm } from "../shopsphere/CheckoutForms";
-import { Button, Rating, Stepper, cx } from "../ui";
+import { Button, Field, Notice, Rating, Stepper, cx } from "../ui";
+import { useAuth } from "../../auth/AuthContext";
+import { RESUME_KEY } from "../../talkshop/TalkshopContext";
 
 type Act = (action: TalkAction & { label?: string }) => void;
 
@@ -317,6 +319,68 @@ export function OrderConfirmedCard({ order }: { order: Order }) {
           View in My Orders <ArrowUpRight size={14} />
         </Link>
       </div>
+    </Shell>
+  );
+}
+
+/* ── Sign in to check out (visitors) ───────────────────────────────────── */
+const DEMO = { email: "kaajal@shopsphere.demo", password: "demo1234" };
+
+export function SignInCard({ active }: { active: boolean }) {
+  const { login, register, isCustomer, user } = useAuth();
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (isCustomer) {
+    return <p className="self-start text-xs text-good inline-flex items-center gap-1.5"><Check size={13} /> Signed in as {user?.name}</p>;
+  }
+  if (!active) return null;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setError(null);
+    try {
+      // After sign-in the panel reloads this conversation and continues to checkout.
+      sessionStorage.setItem(RESUME_KEY, "checkout");
+      if (mode === "login") await login(email, password); else await register(name, email, password);
+    } catch (err) {
+      sessionStorage.removeItem(RESUME_KEY);
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Shell className="border-talk/50 shadow-card">
+      <div className="px-4 py-3 bg-panel flex items-center gap-2">
+        <UserRound size={15} className="text-talk" /><p className="text-xs font-bold tracking-[0.16em]">SIGN IN TO CHECK OUT</p>
+      </div>
+      <form onSubmit={submit} className="p-4 flex flex-col gap-3">
+        <div className="grid grid-cols-2 rounded-full bg-panel p-1 text-xs font-medium">
+          {(["login", "register"] as const).map((m) => (
+            <button key={m} type="button" onClick={() => { setMode(m); setError(null); }}
+              className={cx("h-8 rounded-full", mode === m ? "bg-canvas shadow-card text-ink" : "text-muted")}>
+              {m === "login" ? "Log in" : "Create account"}
+            </button>
+          ))}
+        </div>
+        {mode === "register" && <Field label="Full name" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />}
+        <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+        <Field label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8}
+          autoComplete={mode === "login" ? "current-password" : "new-password"} />
+        {error && <Notice>{error}</Notice>}
+        <Button type="submit" variant="talk" loading={busy}>{mode === "login" ? "Log in & continue" : "Create account & continue"}</Button>
+        {mode === "login" && (
+          <button type="button" onClick={() => { setEmail(DEMO.email); setPassword(DEMO.password); }} className="text-xs text-muted hover:text-ink">
+            Use demo account ({DEMO.email})
+          </button>
+        )}
+        <p className="text-[11px] text-muted text-center">Your cart and this conversation come with you.</p>
+      </form>
     </Shell>
   );
 }

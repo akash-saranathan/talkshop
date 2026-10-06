@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend.auth.dependencies import CurrentUser, get_current_user
+from backend.auth.dependencies import CurrentUser, get_current_user, require_customer
 from backend.db.init_db import get_engine
 from backend.shop import cart as cart_service
 from backend.shop import checkout as checkout_service
@@ -115,12 +115,12 @@ class CardRequest(BaseModel):
 
 
 @router.get("/api/me/addresses")
-def get_addresses(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_addresses(user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
     return [profile_service.address_dict(a) for a in profile_service.list_addresses(db, user.user_id)]
 
 
 @router.post("/api/me/addresses")
-def add_address(req: AddressRequest, user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def add_address(req: AddressRequest, user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
     try:
         a = profile_service.add_address(db, user.user_id, **req.model_dump())
     except profile_service.ProfileError as exc:
@@ -129,12 +129,12 @@ def add_address(req: AddressRequest, user: CurrentUser = Depends(get_current_use
 
 
 @router.get("/api/me/payment-methods")
-def get_cards(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_cards(user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
     return [profile_service.card_dict(c) for c in profile_service.list_cards(db, user.user_id)]
 
 
 @router.post("/api/me/payment-methods")
-def add_card(req: CardRequest, user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def add_card(req: CardRequest, user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
     try:
         card = profile_service.add_card(db, user.user_id, **req.model_dump())
     except profile_service.ProfileError as exc:
@@ -160,7 +160,7 @@ class ConfirmRequest(BaseModel):
 
 
 @router.post("/api/checkouts")
-def create_checkout(req: CreateCheckoutRequest, user: CurrentUser = Depends(get_current_user),
+def create_checkout(req: CreateCheckoutRequest, user: CurrentUser = Depends(require_customer),
                     db: Session = Depends(get_db)):
     try:
         co = checkout_service.create_checkout(db, user.user_id, req.line_ids)
@@ -170,7 +170,7 @@ def create_checkout(req: CreateCheckoutRequest, user: CurrentUser = Depends(get_
 
 
 @router.get("/api/checkouts/{checkout_id}")
-def get_checkout(checkout_id: str, user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_checkout(checkout_id: str, user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
     try:
         return checkout_service.snapshot(db, checkout_service.get_checkout(db, user.user_id, checkout_id))
     except checkout_service.CheckoutError as exc:
@@ -178,7 +178,7 @@ def get_checkout(checkout_id: str, user: CurrentUser = Depends(get_current_user)
 
 
 @router.patch("/api/checkouts/{checkout_id}")
-def update_checkout(checkout_id: str, req: UpdateCheckoutRequest, user: CurrentUser = Depends(get_current_user),
+def update_checkout(checkout_id: str, req: UpdateCheckoutRequest, user: CurrentUser = Depends(require_customer),
                     db: Session = Depends(get_db)):
     try:
         co = checkout_service.update_checkout(db, user.user_id, checkout_id, **req.model_dump())
@@ -188,7 +188,7 @@ def update_checkout(checkout_id: str, req: UpdateCheckoutRequest, user: CurrentU
 
 
 @router.post("/api/checkouts/{checkout_id}/cancel")
-def cancel_checkout(checkout_id: str, user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def cancel_checkout(checkout_id: str, user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
     try:
         co = checkout_service.cancel_checkout(db, user.user_id, checkout_id)
     except checkout_service.CheckoutError as exc:
@@ -197,7 +197,7 @@ def cancel_checkout(checkout_id: str, user: CurrentUser = Depends(get_current_us
 
 
 @router.post("/api/checkouts/{checkout_id}/confirm")
-async def confirm_checkout(checkout_id: str, req: ConfirmRequest, user: CurrentUser = Depends(get_current_user)):
+async def confirm_checkout(checkout_id: str, req: ConfirmRequest, user: CurrentUser = Depends(require_customer)):
     try:
         return await payment_service.confirm(user, checkout_id, req.consent)
     except checkout_service.CheckoutError as exc:

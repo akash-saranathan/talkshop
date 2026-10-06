@@ -1,54 +1,52 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { authFetch, clearToken, getToken, setToken } from "../api/client";
+/**
+ * Who is shopping. Everyone gets an identity straight away: a browser with no
+ * login becomes an anonymous *visitor* (Demo 1, Phase 8), so the cart and
+ * Talkshop work without an account. Logging in or signing up turns the
+ * visitor into a customer — the server moves their cart and Talkshop
+ * conversation into the account and reports how cart line ids changed.
+ */
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { clearToken, getToken, setToken } from "../api/client";
 
 export interface User {
   user_id: string;
   name: string;
   email: string;
+  is_visitor: boolean;
 }
+
+interface AuthResult { merged_lines: Record<string, string> }
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  isGuest: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
-  loginAsGuest: (name: string, email: string) => Promise<void>;
-  logout: () => void;
+  isCustomer: boolean;
+  login: (email: string, password: string) => Promise<AuthResult>;
+  register: (name: string, email: string, password: string) => Promise<AuthResult>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const GUEST_KEY = "talkshop_guest";
-// The server never stores a guest's name/email (only customers' details are
-// persisted), so the guest's own copy lives here — browser only — to keep
-// showing their name after a page reload.
-const GUEST_PROFILE_KEY = "talkshop_guest_profile";
-
-function readGuestProfile(): Pick<User, "name" | "email"> | null {
-  try { return JSON.parse(localStorage.getItem(GUEST_PROFILE_KEY) ?? "null"); } catch { return null; }
-}
-
-// Chat keeps the open conversation (and its in-progress checkout / guest
-// card) in this tab's sessionStorage so navigating to Cart and back resumes
-// it. Any login/logout wipes that, so every sign-in starts on a fresh chat
-// and nothing carries over between accounts. Past chats stay in the sidebar.
-function clearChatSessionState() {
+/** Per-tab shopping state (the Talkshop conversation, a pending checkout). */
+function clearTabState() {
   try {
     Object.keys(sessionStorage)
-      .filter((k) => k.startsWith("talkshop_"))
+      .filter((k) => k.startsWith("talkshop_") || k.startsWith("ss_"))
       .forEach((k) => sessionStorage.removeItem(k));
-  } catch { /* noop */ }
+  } catch { /* private mode */ }
 }
 
-// Thrown by loginAsGuest when the email belongs to a registered account, so
-// the login page can offer "Log in instead" rather than a generic error.
-export class ExistingCustomerError extends Error {}
-
-async function parseAuthResponse(res: Response): Promise<{ access_token: string; user: User }> {
+async function authCall(url: string, body?: unknown): Promise<{ access_token: string; user: User; merged_lines: Record<string, string> }> {
+  const token = getToken();
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || "Authentication failed");
+    throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong — please try again.");
   }
   return res.json();
 }
@@ -56,88 +54,57 @@ async function parseAuthResponse(res: Response): Promise<{ access_token: string;
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isGuest, setIsGuest] = useState(() => {
-    try { return localStorage.getItem(GUEST_KEY) === "1"; } catch { return false; }
-  });
+  // Bumped on every login/logout. A visitor session that comes back after the
+  // shopper has already logged in is stale and must not replace the login.
+  const identity = useRef(0);
+  const started = useRef(false);
 
-  // Restore session on load, if a token was persisted from a previous visit.
-  useEffect(() => {
-    if (!getToken()) {
-      setLoading(false);
-      return;
-    }
-    authFetch("/api/auth/me")
-      .then((res) => {
-        if (!res.ok) throw new Error("session expired");
-        return res.json();
-      })
-      .then((data: User) => setUser(isGuest ? { ...data, ...readGuestProfile() } : data))
-      .catch(() => clearToken())
-      .finally(() => setLoading(false));
+  const startVisitor = useCallback(async () => {
+    const mine = identity.current;
+    const data = await authCall("/api/auth/visitor");
+    if (identity.current !== mine) return;
+    setToken(data.access_token);
+    setUser(data.user);
   }, []);
 
-  async function login(email: string, password: string) {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await parseAuthResponse(res);
-    clearChatSessionState();
+  // Restore the saved session, or start a visitor one — never a login wall.
+  useEffect(() => {
+    if (started.current) return;          // once per page load (dev mode runs effects twice)
+    started.current = true;
+    const token = getToken();
+    const restore = token
+      ? fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+          .then((r) => (r.ok ? r.json() : Promise.reject()))
+          .then((u: User) => setUser(u))
+      : Promise.reject();
+    restore.catch(() => startVisitor()).catch(() => setUser(null)).finally(() => setLoading(false));
+  }, [startVisitor]);
+
+  const signIn = useCallback(async (url: string, body: unknown): Promise<AuthResult> => {
+    const wasCustomer = user && !user.is_visitor;
+    const data = await authCall(url, body);
+    identity.current += 1;
+    // Same shopper going from visitor → customer keeps their conversation;
+    // switching accounts starts clean.
+    if (wasCustomer) clearTabState();
     setToken(data.access_token);
     setUser(data.user);
-    setIsGuest(false);
-    try { localStorage.removeItem(GUEST_KEY); localStorage.removeItem(GUEST_PROFILE_KEY); } catch { /* noop */ }
-  }
+    return { merged_lines: data.merged_lines ?? {} };
+  }, [user]);
 
-  async function register(name: string, email: string, password: string) {
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    });
-    const data = await parseAuthResponse(res);
-    clearChatSessionState();
-    setToken(data.access_token);
-    setUser(data.user);
-    setIsGuest(false);
-    try { localStorage.removeItem(GUEST_KEY); localStorage.removeItem(GUEST_PROFILE_KEY); } catch { /* noop */ }
-  }
+  const login = useCallback((email: string, password: string) => signIn("/api/auth/login", { email, password }), [signIn]);
+  const register = useCallback((name: string, email: string, password: string) =>
+    signIn("/api/auth/register", { name, email, password }), [signIn]);
 
-  async function loginAsGuest(name: string, email: string) {
-    // Fresh guest session (nothing about the guest is stored server-side); an
-    // email that belongs to a registered customer is refused (409) so they're
-    // sent to log in instead.
-    const res = await fetch("/api/auth/guest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email }),
-    });
-    if (res.status === 409) {
-      const d = await res.json().catch(() => ({}));
-      throw new ExistingCustomerError(d.detail || "You're already a customer with this email. Please log in instead.");
-    }
-    const data = await parseAuthResponse(res);
-    clearChatSessionState();
-    setToken(data.access_token);
-    setUser(data.user);
-    setIsGuest(true);
-    try {
-      localStorage.setItem(GUEST_KEY, "1");
-      localStorage.setItem(GUEST_PROFILE_KEY, JSON.stringify({ name: data.user.name, email: data.user.email }));
-    } catch { /* noop */ }
-  }
-
-  function logout() {
-    clearChatSessionState();
+  const logout = useCallback(async () => {
+    clearTabState();                 // a fresh chat and an empty visitor cart
+    identity.current += 1;
     clearToken();
-    setUser(null);
-    setIsGuest(false);
-    try { localStorage.removeItem(GUEST_KEY); localStorage.removeItem(GUEST_PROFILE_KEY); } catch { /* noop */ }
-  }
+    await startVisitor().catch(() => { clearToken(); setUser(null); });
+  }, [startVisitor]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isGuest, login, register, loginAsGuest, logout }}>
+    <AuthContext.Provider value={{ user, loading, isCustomer: !!user && !user.is_visitor, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

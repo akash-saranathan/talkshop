@@ -3,6 +3,7 @@ import StoreHeader, { Wordmark } from "../components/shopsphere/StoreHeader";
 import { DEPARTMENTS } from "../api/shop";
 import TalkshopPanel from "../components/talkshop/TalkshopPanel";
 import { TalkshopProvider } from "../talkshop/TalkshopContext";
+import { useAuth } from "../auth/AuthContext";
 
 /**
  * Every ShopSphere page: header, the page itself, footer — with the Talkshop
@@ -10,8 +11,11 @@ import { TalkshopProvider } from "../talkshop/TalkshopContext";
  * its conversation) stays mounted while the shopper moves between pages.
  */
 export default function StoreLayout() {
+  const { user } = useAuth();
+  // Keyed by identity: after a visitor logs in, Talkshop reloads the same
+  // conversation (now owned by the account) and carries on.
   return (
-    <TalkshopProvider>
+    <TalkshopProvider key={user?.user_id ?? "anonymous"}>
       <div className="ss-app min-h-screen flex flex-col">
         <StoreHeader />
         <div className="flex-1 flex">

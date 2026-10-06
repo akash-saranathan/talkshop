@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { CartProvider } from "./store/cart";
 import StoreLayout from "./layouts/StoreLayout";
@@ -12,10 +12,18 @@ import CartPage from "./pages/store/Cart";
 import CheckoutPage from "./pages/store/Checkout";
 import { OrderDetailPage, OrdersPage } from "./pages/store/Orders";
 
-function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+/** Waits until the shopper has an identity (a visitor session at least). */
+function AuthReady({ children }: { children: ReactNode }) {
+  const { loading } = useAuth();
   if (loading) return <div className="ss-app min-h-screen"><Spinner /></div>;
-  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+/** Checkout and orders need an account: visitors log in, then come back. */
+function RequireCustomer({ children }: { children: ReactNode }) {
+  const { isCustomer } = useAuth();
+  const location = useLocation();
+  if (!isCustomer) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
   return <>{children}</>;
 }
 
@@ -24,23 +32,25 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <CartProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            {/* Every store page shares one layout, so the Talkshop panel stays mounted across pages */}
-            <Route element={<RequireAuth><StoreLayout /></RequireAuth>}>
-              <Route path="/" element={<StoreHome />} />
-              <Route path="/c/:slug" element={<Category />} />
-              <Route path="/search" element={<Category />} />
-              <Route path="/p/:productId" element={<ProductPage />} />
-              <Route path="/cart" element={<CartPage />} />
-              <Route path="/checkout/:checkoutId" element={<CheckoutPage />} />
-              <Route path="/orders" element={<OrdersPage />} />
-              <Route path="/orders/:orderId" element={<OrderDetailPage />} />
-            </Route>
-            <Route path="/dashboard" element={<Navigate to="/orders" replace />} />
-            <Route path="/assistant" element={<Navigate to="/" replace />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <AuthReady>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              {/* The store is open to everyone; one layout keeps Talkshop mounted across pages */}
+              <Route element={<StoreLayout />}>
+                <Route path="/" element={<StoreHome />} />
+                <Route path="/c/:slug" element={<Category />} />
+                <Route path="/search" element={<Category />} />
+                <Route path="/p/:productId" element={<ProductPage />} />
+                <Route path="/cart" element={<CartPage />} />
+                <Route path="/checkout/:checkoutId" element={<RequireCustomer><CheckoutPage /></RequireCustomer>} />
+                <Route path="/orders" element={<RequireCustomer><OrdersPage /></RequireCustomer>} />
+                <Route path="/orders/:orderId" element={<RequireCustomer><OrderDetailPage /></RequireCustomer>} />
+              </Route>
+              <Route path="/dashboard" element={<Navigate to="/orders" replace />} />
+              <Route path="/assistant" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </AuthReady>
         </CartProvider>
       </AuthProvider>
     </BrowserRouter>

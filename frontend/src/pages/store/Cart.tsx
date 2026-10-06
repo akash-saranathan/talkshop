@@ -4,6 +4,8 @@ import { Check, ShoppingBag, Trash2 } from "lucide-react";
 import { money, shop, ShopError, type CartLine } from "../../api/shop";
 import { Button, Empty, Notice, Spinner, Stepper, cx } from "../../components/ui";
 import { useCart } from "../../store/cart";
+import { useAuth } from "../../auth/AuthContext";
+import { rememberCheckout } from "../../auth/afterSignIn";
 
 function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
   return (
@@ -17,6 +19,7 @@ function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: ()
 
 export default function CartPage() {
   const { cart, setCart, refresh } = useCart();
+  const { isCustomer } = useAuth();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<string> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -56,6 +59,11 @@ export default function CartPage() {
   };
 
   const checkout = async () => {
+    if (!isCustomer) {                         // log in first, then straight to checkout
+      rememberCheckout(chosen.map((l) => l.line_id));
+      navigate("/login?next=checkout");
+      return;
+    }
     setCheckingOut(true); setError(null);
     try {
       const co = await shop.createCheckout(chosen.map((l) => l.line_id));
@@ -126,6 +134,7 @@ export default function CartPage() {
           <Button size="lg" onClick={checkout} loading={checkingOut} disabled={!chosen.length || blocked}>
             {chosen.length ? `Checkout selected (${chosen.length})` : "Select items to check out"}
           </Button>
+          {!isCustomer && <p className="text-center text-xs text-muted -mt-1">You'll log in or create an account at checkout. Your cart is saved.</p>}
           <Link to="/" className="text-center text-sm text-muted hover:text-ink">Continue shopping</Link>
         </aside>
       </div>

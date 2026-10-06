@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
-import { ChevronDown, LogOut, Menu, Moon, Package, Search, ShoppingBag, Sun, X } from "lucide-react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { ChevronDown, LogOut, Menu, Moon, Package, Search, ShoppingBag, Sun, User as UserIcon, X } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCart } from "../../store/cart";
 import { DEPARTMENTS } from "../../api/shop";
@@ -25,7 +25,9 @@ function useTheme(): [boolean, () => void] {
 }
 
 export default function StoreHeader() {
-  const { user, logout } = useAuth();
+  const { user, isCustomer, logout } = useAuth();
+  const location = useLocation();
+  const loginHref = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
   const { count, bumpKey } = useCart();
   const navigate = useNavigate();
   const [dark, toggleTheme] = useTheme();
@@ -53,7 +55,7 @@ export default function StoreHeader() {
   );
 
   return (
-    <header className="sticky top-0 z-40 bg-canvas/90 backdrop-blur border-b border-line">
+    <header className="sticky top-0 z-[60] bg-canvas/90 backdrop-blur border-b border-line">
       <div className="mx-auto max-w-[1400px] px-3 sm:px-6 h-16 flex items-center gap-1.5 sm:gap-6">
         <button className="lg:hidden -ml-1 p-2 text-ink" aria-label="Menu" onClick={() => setMenuOpen((o) => !o)}>
           {menuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -85,7 +87,12 @@ export default function StoreHeader() {
           )}
         </Link>
 
-        {user && (
+        {!isCustomer && (
+          <Link to={loginHref} className="hidden sm:inline-flex items-center gap-2 h-10 px-4 rounded-full border border-line-strong text-sm font-medium hover:border-ink">
+            <UserIcon size={16} /> Log in
+          </Link>
+        )}
+        {isCustomer && user && (
           <div ref={accountRef} className="relative hidden sm:block">
             <button onClick={() => setAccountOpen((o) => !o)} className="flex items-center gap-2 pl-1 pr-2 h-10 rounded-full hover:bg-panel">
               <span className="w-8 h-8 rounded-full bg-ink text-canvas grid place-items-center text-sm font-semibold">
@@ -99,7 +106,7 @@ export default function StoreHeader() {
                 <Link to="/orders" onClick={() => setAccountOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel">
                   <Package size={16} /> My orders
                 </Link>
-                <button onClick={() => { logout(); navigate("/login"); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel text-left">
+                <button onClick={() => { setAccountOpen(false); logout(); navigate("/"); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel text-left">
                   <LogOut size={16} /> Log out
                 </button>
               </div>
@@ -119,8 +126,14 @@ export default function StoreHeader() {
               <NavLink key={d.slug} to={`/c/${d.slug}`} onClick={() => setMenuOpen(false)}
                 className={({ isActive }) => cx("py-3 border-b border-line text-[15px]", isActive ? "font-semibold" : "text-ink-soft")}>{d.label}</NavLink>
             ))}
-            <Link to="/orders" onClick={() => setMenuOpen(false)} className="py-3 border-b border-line text-[15px] text-ink-soft">My orders</Link>
-            <button onClick={() => { logout(); navigate("/login"); }} className="py-3 text-left text-[15px] text-ink-soft">Log out</button>
+            {isCustomer ? (
+              <>
+                <Link to="/orders" onClick={() => setMenuOpen(false)} className="py-3 border-b border-line text-[15px] text-ink-soft">My orders</Link>
+                <button onClick={() => { setMenuOpen(false); logout(); navigate("/"); }} className="py-3 text-left text-[15px] text-ink-soft">Log out</button>
+              </>
+            ) : (
+              <Link to={loginHref} onClick={() => setMenuOpen(false)} className="py-3 text-[15px] font-medium">Log in or create an account</Link>
+            )}
           </nav>
         </div>
       )}

@@ -16,7 +16,7 @@
 
 ### Progress
 
-**Phases approved: 7 / 8 · Steps done: 64 / 64** · Phase 7 👀 ready for your review (final)
+**Phases approved: 7 / 9 · Steps done: 73 / 73** · Phases 7 and 8 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
@@ -28,6 +28,7 @@
 | 5 | Talkshop panel (inside ShopSphere) | 11 / 11 | ✅ Approved |
 | 6 | Connecting ShopSphere and Talkshop | 6 / 6 | ✅ Approved |
 | 7 | Polish, quality and demo readiness | 6 / 6 | 👀 Ready for your review |
+| 8 | Shop without logging in (login only at checkout) | 9 / 9 | 👀 Ready for your review |
 
 Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review · ✅ Approved
 
@@ -125,6 +126,19 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 7.5 All tests green *(234 passed)*
 - [x] 7.6 README "Demo 1" section
 - [x] **Checkpoint:** all demo scripts run end to end with no manual fixes
+- [ ] **Approved, proceed to Phase 8**
+
+### Phase 8: Shop without logging in (login only at checkout)
+- [x] 8.1 Visitor identity: anyone can browse; the store gives each new browser an anonymous visitor session
+- [x] 8.2 Login required on the server only for checkout, payment, saved addresses/cards and My Orders
+- [x] 8.3 Logging in or signing up merges the visitor's cart into the account and carries the Talkshop conversation over
+- [x] 8.4 Talkshop: a visitor saying "Yes, checkout" gets a sign-in card; after signing in it continues straight to Review
+- [x] 8.5 Frontend auth: store opens without login; header shows Log in for visitors; logout starts a fresh visitor
+- [x] 8.6 Website checkout: visitor → login page → straight to checkout with the selected items
+- [x] 8.7 My Orders and checkout pages ask visitors to log in
+- [x] 8.8 Tests: visitor, login gates, cart merge, Talkshop sign-in flow
+- [x] 8.9 Browser check + demo scripts re-run (incl. a new visitor script D)
+- [x] **Checkpoint:** a visitor can browse, chat and fill a cart, and logs in only to check out (website and Talkshop) *(new script D + A, B, C × 3 fresh rounds: 12/12 passed; D also in dark and on phone; 246 tests)*
 - [ ] **Approved: Demo 1 complete 🎉**
 
 ---
@@ -168,13 +182,18 @@ Talkshop must never make up a product, price, rating, stock level, cart, tax, de
 | D14 | Saved address and card | Demo customer has **2 addresses and 2 cards**. Review shows the defaults with a **Change** link |
 | D15 | Delivery | **Standard (free) preselected + Express (+$9.99)**, selectable on the Review card. Total and date update from the server |
 | D16 | New sign-ups (no saved data) | **Add address and card inline in the Review card.** GO AHEAD unlocks once saved, and they're kept for next time |
-| D17 | Login | **ShopSphere login + sign up. No guest** (spec assumes a logged-in customer) |
+| D17 | Login | **ShopSphere login + sign up. No guest checkout.** ~~Login required for everything~~ → changed in Phase 8 (D25) |
 | D18 | Declined-payment demo | **Yes**: the second saved card (**Mastercard •••• 0019**) always declines. No order is created |
 | D19 | Agent pipeline trace | **Hidden from customers.** A **"How Talkshop works"** toggle for presenters opens it as an overlay |
 | D20 | Talkshop input features | Keep **voice (mic)**, **image search (paste a photo)** and **autocorrect** |
 | D21 | Brand naming | **Mix**: real brands only where a matching or logo-free photo exists (Nike, Adidas, Converse, Levi's, Ray-Ban, Sony, Apple, Samsung, JBL: 13 products). Everything else is ShopSphere-style fictional brands (Kinetic, Northpace, Lumen, Hartwell, Marisol, Sphere Basics, Pulse Audio…). A request for a brand ShopSphere doesn't carry gets "we don't carry X, here are similar" |
 | D22 | Photo source | **Pixabay** (free licence, no attribution). Pexels has paused new API keys. Every photo is **hand-picked and checked by eye** |
 | D23 | Photo style | **Studio style**: background removed, product centred on one soft neutral backdrop with a floor shadow, square **800×800** WebP (square fits wide items like shoes and laptops better than the planned 4:5) |
+| D25 | When login is needed (Phase 8) | **Only at checkout.** Anyone can browse, add to cart and chat with Talkshop. Login (or sign up) is needed to check out, pay, see saved addresses/cards and see My Orders |
+| D26 | Cart on login | **Merge**: what the visitor added moves into the account's cart, combined with anything already there (quantities add up, capped by stock) |
+| D27 | Talkshop login | **Sign-in card inside the chat.** After signing in, the conversation continues straight to Review Your Order |
+| D28 | Website login | **Login page, then straight to checkout** with the items the visitor selected |
+| D29 | Chat after login | Logging in **from a visitor session keeps the conversation** (same shopper). Logging **out** still starts a fresh chat (earlier request) |
 | D24 | Colours follow photos | A product offers only colours it has a convincing photo for. Result: 26 products × 1 colour, 30 × 2, 3 × 3, 1 × 4 (99 photos, 400 SKUs). Fewer colours than D4's 2–4 target, but no wrong photos. Where possible the colours are **the same model** (e.g. FlexRun 5, Converse, men's tees) |
 
 ## 3. Assumptions (not yet confirmed; tell me if any are wrong)
@@ -664,6 +683,32 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
 | 7.6 | **README**: a "Demo 1" section on how to run, reset and present it (including the presenter toggle) |
 
 ✅ **Checkpoint:** all three demo scripts run start to finish with no manual fixes.
+
+---
+
+### Phase 8: Shop without logging in (login only at checkout)
+**Goal:** like a real store, ShopSphere and Talkshop work for anyone; an account is needed only to check out (D25–D29).
+
+| Step | Work | How it works |
+|---|---|---|
+| 8.1 | **Visitor identity** | `POST /api/auth/visitor` creates an anonymous visitor (no name or email stored) and returns a token. The browser gets one automatically when it has no login, so the cart and Talkshop work exactly as for customers |
+| 8.2 | **Login gates (server)** | Checkout, confirm/payment, saved addresses/cards and orders answer visitors with **403 `LOGIN_REQUIRED`**. Browsing, cart and Talkshop stay open |
+| 8.3 | **Merge on login/sign-up** | Login and register accept the visitor's token: its cart lines move to the account (same SKU → quantities added, capped by stock), Talkshop conversations are carried over, and the visitor record is removed. The response maps old → new cart line ids |
+| 8.4 | **Talkshop sign-in card** | A visitor's checkout emits `login_required`. The panel shows a Log in / Sign up card (with the demo account shortcut). After signing in, Talkshop continues to the Review card automatically |
+| 8.5 | **Frontend auth** | The store opens on Home (no login wall). The header shows **Log in** for visitors and the name + menu for customers. Logout → a new visitor (empty cart, fresh chat) |
+| 8.6 | **Website checkout** | A visitor's **Checkout selected** → login page ("Log in to check out — your cart is saved") → straight to checkout with the selected items |
+| 8.7 | **Customer-only pages** | `/orders`, `/orders/:id` and `/checkout/:id` send visitors to log in and then back |
+| 8.8 | **Tests** | Visitor creation, every gate, cart merge (incl. same-SKU), Talkshop visitor checkout → sign-in → review |
+| 8.9 | **Browser check** | New visitor script D (browse → chat → cart → sign in at checkout → order), plus scripts A–C again |
+
+✅ **Checkpoint:** a visitor can browse, chat and fill a cart, and is asked to log in only to check out, on the website and in Talkshop.
+
+**As built (Phase 8):**
+- **Backend:** `POST /api/auth/visitor`, a `require_customer` guard (403 `LOGIN_REQUIRED`) on checkouts, confirm, addresses, cards, orders, wallet and loyalty, and `merge_carts` plus Talkshop `rekey` when a visitor logs in or signs up.
+- **Frontend:** `AuthContext` starts a visitor automatically. `auth/afterSignIn.ts` finishes a website checkout after login. Talkshop has a `SignInCard`, and the panel remounts per identity and resumes checkout.
+- **Bugs found while testing and fixed:**
+  - **Account menu behind the panel:** it dropped down behind the Talkshop panel and couldn't be clicked.
+  - **Login race:** a late visitor-session response could undo a fresh login on a cold start.
 
 ---
 

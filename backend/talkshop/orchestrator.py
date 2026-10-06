@@ -270,6 +270,13 @@ async def _confirm_variant(t: Turn, lead: str = "") -> None:
 
 async def _checkout(t: Turn) -> None:
     s = t.s
+    if s.is_visitor:
+        # Browsing and the cart are open to everyone; checking out needs an
+        # account. The panel shows a sign-in card and resumes here afterwards.
+        t.say("To check out, please log in or create a ShopSphere account. Your cart comes with you.")
+        t.emit("login_required", reason="checkout")
+        t.stage(Stage.OFFER_CHECKOUT)
+        return
     cart_ids = {ln["line_id"] for ln in tools.get_cart(s.user_id)["lines"]}
     lines = [lid for lid in s.line_ids if lid in cart_ids]   # only what Talkshop added in this chat
     if not lines:
@@ -384,6 +391,7 @@ async def run_turn(user: CurrentUser, session_id: str, *, text: Optional[str] = 
                    action: Optional[dict] = None, page: Optional[dict] = None,
                    image_base64: Optional[str] = None) -> AsyncIterator[dict]:
     s = state.get(user.user_id, session_id)
+    s.is_visitor = user.is_visitor
     if page is not None:
         s.page = page
     t = Turn(s)
@@ -419,7 +427,8 @@ async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
         t.emit("user_message", text=str(action["label"])[:120])
         s.history.append({"role": "user", "text": str(action["label"])[:120]})
     if kind == "greet":
-        text, chips, chip_actions = greeting(s, user.name.split()[0] if user.name else "there")
+        name = "there" if user.is_visitor or not user.name else user.name.split()[0]
+        text, chips, chip_actions = greeting(s, name)
         t.say(text)
         t.emit("suggestions", chips=chips, chip_actions=chip_actions)
     elif kind in ("select", "ask_about"):

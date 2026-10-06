@@ -17,6 +17,7 @@ import { useTalkshop, type Page, type Talkshop } from "./useTalkshop";
 import { TALKSHOP_ASK_EVENT } from "./bridge";
 
 const OPEN_KEY = "talkshop_panel_open";
+export const RESUME_KEY = "talkshop_resume";
 
 export function pageFromLocation(pathname: string, search: string): Page {
   const parts = pathname.split("/").filter(Boolean);
@@ -74,6 +75,17 @@ export function TalkshopProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [ts.events, ts.ready, setCart, refreshCart]);
+
+  // Signed in from Talkshop's sign-in card: carry on to checkout.
+  useEffect(() => {
+    if (!ts.ready) return;
+    try {
+      if (sessionStorage.getItem(RESUME_KEY) === "checkout") {
+        sessionStorage.removeItem(RESUME_KEY);
+        ts.send({ action: { type: "checkout" } });
+      }
+    } catch { /* private mode */ }
+  }, [ts.ready]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // A fresh conversation follows the shopper: greet again for the new page
   // until they've actually said something.

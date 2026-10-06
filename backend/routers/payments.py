@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import update
 
 from backend.agents import payit, trackit
-from backend.auth.dependencies import CurrentUser, get_current_user
+from backend.auth.dependencies import CurrentUser, get_current_user, require_customer
 from backend.config.agents import PAYIT, TRACKIT
 from backend.db.schema import AuditEvent, CartItem, DelegatedToken, LoyaltyPoints, LoyaltyTransaction, Merchant, Order, PaymentAuthorization, Product, Wallet
 from backend.db.session_utils import get_session, now_utc, write_audit_event
@@ -74,7 +74,7 @@ def _insert_order_if_absent(session, fields: dict):
 @router.post("/api/payments/execute", response_model=ExecutePaymentResponse)
 async def execute_payment_endpoint(
     req: ExecutePaymentRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_customer),
 ):
     """
     PayIt runs the 12-check guardrail engine, then charges via the mock
@@ -304,7 +304,7 @@ def _delivery_fields(order: Order, product: Optional[Product], cart_fallback: Op
 
 
 @router.get("/api/orders")
-async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
+async def list_orders(current_user: CurrentUser = Depends(require_customer)):
     """Order list for the Dashboard — collapses status to 'paid' | 'blocked'."""
     with get_session() as session:
         rows = (
@@ -343,7 +343,7 @@ async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
 
 
 @router.get("/api/orders/{order_id}")
-async def get_order(order_id: str, current_user: CurrentUser = Depends(get_current_user)):
+async def get_order(order_id: str, current_user: CurrentUser = Depends(require_customer)):
     """One of the caller's own orders, by internal id or public id (SS-48291)."""
     with get_session() as session:
         row = (
@@ -375,7 +375,7 @@ async def get_order(order_id: str, current_user: CurrentUser = Depends(get_curre
 
 
 @router.get("/api/wallet")
-async def get_wallet(current_user: CurrentUser = Depends(get_current_user)):
+async def get_wallet(current_user: CurrentUser = Depends(require_customer)):
     """Current wallet balance for the Dashboard's hero card."""
     with get_session() as session:
         wallet = session.query(Wallet).filter(Wallet.user_id == current_user.user_id).first()

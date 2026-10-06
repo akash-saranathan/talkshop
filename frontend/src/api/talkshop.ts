@@ -24,6 +24,7 @@ export type TalkEvent =
   | { type: "checkout_ready" | "checkout_updated"; checkout: Checkout }
   | { type: "payment_status"; state: "processing" | "authorizing" | "authorized" | "declined" | "failed"; payment: string | null; reason?: string; message?: string }
   | { type: "order_confirmed"; order: Order }
+  | { type: "login_required"; reason: string }
   | { type: "stage"; stage: Stage; step: string }
   | { type: "status"; agent: string; message: string }
   | { type: "done"; stage: Stage; step: string };

@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Eye, EyeOff, Sparkles } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { afterSignIn } from "../auth/afterSignIn";
 import { Wordmark } from "../components/shopsphere/StoreHeader";
 import { Button, Field, Notice, cx } from "../components/ui";
 
@@ -19,6 +20,8 @@ const COLLAGE = [
 export default function Login() {
   const navigate = useNavigate();
   const { login, register } = useAuth();
+  const [params] = useSearchParams();
+  const next = params.get("next");
   const [screen, setScreen] = useState<Screen>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -35,8 +38,10 @@ export default function Login() {
     e.preventDefault();
     setError(null); setSuccess(null); setLoading(true);
     try {
-      if (screen === "login") { await login(email, password); navigate("/"); }
-      else if (screen === "register") { await register(name, email, password); navigate("/"); }
+      if (screen === "login" || screen === "register") {
+        const r = screen === "login" ? await login(email, password) : await register(name, email, password);
+        navigate(await afterSignIn(next, r.merged_lines), { replace: true });
+      }
       else {
         const res = await fetch("/api/auth/reset-password", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -87,6 +92,11 @@ export default function Login() {
             </>
           ) : (
             <>
+              {next && (
+                <Notice tone="talk">
+                  {next === "checkout" ? "Log in or create an account to check out. Your cart is saved." : "Log in to continue."}
+                </Notice>
+              )}
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight">{screen === "login" ? "Welcome back" : "Create your account"}</h1>
                 <p className="text-muted text-sm mt-1">{screen === "login" ? "Log in to ShopSphere to keep shopping." : "Save your details for faster checkout."}</p>
@@ -126,6 +136,9 @@ export default function Login() {
           {screen === "login" && (
             <>
               <button onClick={() => go("reset")} className="text-sm text-muted hover:text-ink">Forgot password?</button>
+              <Link to={next === "checkout" ? "/cart" : "/"} className="text-center text-sm font-medium hover:underline -mt-3">
+                {next === "checkout" ? "Back to cart" : "Continue shopping without logging in"}
+              </Link>
               <div className="rounded-2xl border border-dashed border-line-strong p-4 text-sm">
                 <p className="font-medium">Demo account</p>
                 <p className="text-muted mt-0.5">{DEMO.email} · {DEMO.password}</p>

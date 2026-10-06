@@ -70,6 +70,7 @@ class Session:
     added_qty: dict[str, int] = field(default_factory=dict)  # how many of each line Talkshop added
     checkout_id: Optional[str] = None
     order_id: Optional[str] = None
+    is_visitor: bool = False                                # not logged in yet (Phase 8)
     history: list[dict] = field(default_factory=list)       # [{"role": "user"|"assistant", "text": ...}] for the LLM
     transcript: list[dict] = field(default_factory=list)    # every event sent, so the panel can rebuild itself
 
@@ -96,3 +97,11 @@ def peek(user_id: str, session_id: str) -> Optional[Session]:
 
 def drop(user_id: str, session_id: str) -> None:
     _sessions.pop((user_id, session_id), None)
+
+
+def rekey(old_user: str, new_user: str) -> None:
+    """A visitor logged in: their conversations now belong to the account."""
+    for (uid, sid) in [k for k in _sessions if k[0] == old_user]:
+        sess = _sessions.pop((uid, sid))
+        sess.user_id = new_user
+        _sessions[(new_user, sid)] = sess

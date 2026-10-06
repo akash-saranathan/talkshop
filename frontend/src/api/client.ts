@@ -25,13 +25,13 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   }
   const res = await fetch(url, { ...options, headers });
 
-  // A missing/expired/invalid token used to surface as a confusing
-  // "is the backend running?" error on whatever page made the call —
-  // the real problem was the session, not the server. Send the user
-  // back to log in instead of showing a misleading error.
-  if (res.status === 401 && !window.location.pathname.startsWith("/login")) {
+  // An expired/invalid session: drop it and reload the page — the store
+  // starts a fresh visitor session (no login wall), and the shopper can log
+  // in again from the header or at checkout. (403 LOGIN_REQUIRED, for a
+  // visitor reaching a customer-only action, is handled by the caller.)
+  if (res.status === 401 && token && !window.location.pathname.startsWith("/login")) {
     clearToken();
-    window.location.href = "/login";
+    window.location.reload();
   }
 
   return res;

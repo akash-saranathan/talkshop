@@ -112,3 +112,22 @@ def remove_line(db: Session, user_id: str, line_id: str) -> dict:
     db.delete(_own_line(db, user_id, line_id))
     db.commit()
     return get_cart(db, user_id)
+
+
+def merge_carts(db: Session, from_user: str, to_user: str) -> dict[str, str]:
+    """Move a visitor's cart into a customer's (no commit). Same SKU → the
+    quantities add up, capped by stock. Returns old line id → new line id."""
+    mapping: dict[str, str] = {}
+    for item in db.query(CartItem).filter(CartItem.user_id == from_user).all():
+        existing = (db.query(CartItem).filter_by(user_id=to_user, sku=item.sku).first()
+                    if item.sku else None)
+        if existing:
+            variant = db.query(ProductVariant).filter_by(sku=item.sku).first()
+            cap = variant.stock if variant else existing.quantity + item.quantity
+            existing.quantity = max(existing.quantity, min(existing.quantity + item.quantity, cap))
+            mapping[item.cart_item_id] = existing.cart_item_id
+            db.delete(item)
+        else:
+            item.user_id = to_user
+            mapping[item.cart_item_id] = item.cart_item_id
+    return mapping
