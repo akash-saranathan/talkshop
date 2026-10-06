@@ -16,7 +16,7 @@
 
 ### Progress
 
-**Phases approved: 4 / 8 · Steps done: 41 / 64** · Phase 4 👀 ready for your review
+**Phases approved: 5 / 8 · Steps done: 52 / 64** · Phase 5 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
@@ -24,8 +24,8 @@
 | 1 | ShopSphere catalog and data foundation | 7 / 7 | ✅ Approved |
 | 2 | ShopSphere merchant services (APIs) | 8 / 8 | ✅ Approved |
 | 3 | Talkshop orchestrator (AI layer) | 12 / 12 | ✅ Approved |
-| 4 | ShopSphere storefront (website) | 10 / 10 | 👀 Ready for your review |
-| 5 | Talkshop panel (inside ShopSphere) | 0 / 11 | ⬜ Not started |
+| 4 | ShopSphere storefront (website) | 10 / 10 | ✅ Approved |
+| 5 | Talkshop panel (inside ShopSphere) | 11 / 11 | 👀 Ready for your review |
 | 6 | Connecting ShopSphere and Talkshop | 0 / 6 | ⬜ Not started |
 | 7 | Polish, quality and demo readiness | 0 / 6 | ⬜ Not started |
 
@@ -90,21 +90,21 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 4.9 ShopSphere login and sign up (no guest)
 - [x] 4.10 Routing
 - [x] **Checkpoint:** full website purchase without Talkshop, in light and dark *(browser-automated: login → Shoes → FlexRun 5 orange/9 → cart select → Express → Place order → SS-##### in My orders, light + dark, no console errors; no horizontal overflow at 390 px)*
-- [ ] **Approved, proceed to Phase 5**
+- [x] **Approved, proceed to Phase 5**
 
 ### Phase 5: Talkshop panel (inside ShopSphere)
-- [ ] 5.1 Panel shell: docked, minimise to button, phone bottom sheet, persists across pages
-- [ ] 5.2 Header + journey stepper + presenter toggle
-- [ ] 5.3 Composer: voice, image paste, autocorrect
-- [ ] 5.4 Top 3 cards (Select, View on ShopSphere)
-- [ ] 5.5 Option chips (sizes, colour swatches, unavailable greyed out)
-- [ ] 5.6 Cart-updated card + checkout quick replies
-- [ ] 5.7 Review Your Order card (qty, delivery, Change, inline add, GO AHEAD)
-- [ ] 5.8 Payment status card
-- [ ] 5.9 Order confirmed card + View in My Orders
-- [ ] 5.10 Presenter overlay (agent trace)
-- [ ] 5.11 Old full-screen chat removed from navigation
-- [ ] **Checkpoint:** whole §6 flow completes in the panel, in light and dark
+- [x] 5.1 Panel shell: docked, minimise to button, phone bottom sheet, persists across pages
+- [x] 5.2 Header + journey stepper + presenter toggle
+- [x] 5.3 Composer: voice, image paste, autocorrect
+- [x] 5.4 Top 3 cards (Select, View on ShopSphere)
+- [x] 5.5 Option chips (sizes, colour swatches, unavailable greyed out)
+- [x] 5.6 Cart-updated card + checkout quick replies
+- [x] 5.7 Review Your Order card (qty, delivery, Change, inline add, GO AHEAD)
+- [x] 5.8 Payment status card
+- [x] 5.9 Order confirmed card + View in My Orders
+- [x] 5.10 Presenter overlay (agent trace) *(built new inside the panel; the old AgentTrailPanel was retired with the old chat)*
+- [x] 5.11 Old full-screen chat removed from navigation *(frontend page and its components deleted, `/assistant` redirects to the store. The backend `/api/chat` endpoints stay because the test suite still covers that pipeline)*
+- [x] **Checkpoint:** whole §6 flow completes in the panel, in light and dark *(browser-automated in light, dark and phone: greeting → top 3 → Select → 8 → Black → cart → review $139.64 → typed "go ahead" refused → GO AHEAD → SS-##### → conversation kept across pages → View in My Orders → presenter view; no console errors)*
 - [ ] **Approved, proceed to Phase 6**
 
 ### Phase 6: Connecting ShopSphere and Talkshop
@@ -620,6 +620,15 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
 | 5.11 | Retire the old full-screen chat page from navigation | `pages/Chat.tsx`, `App.tsx` |
 
 ✅ **Checkpoint:** the whole §6 flow completes in the panel, with every card drawn from server events, in light and dark.
+
+**As built (Phase 5):** `components/talkshop/` holds `TalkshopPanel.tsx` (shell, header, stepper, conversation, presenter view), `cards.tsx` (all chat cards in one file) and `Composer.tsx`. `talkshop/useTalkshop.ts` holds the stream and session state, and `api/talkshop.ts` the client. The store is now a **layout route**, so the panel stays mounted across pages.
+- **Backend additions:** photo search (`image_base64` on a turn → LLM describes it → normal search), and tapped buttons recorded as the shopper's reply.
+- **Bugs found while testing and fixed:**
+  - **Duplicate purchase:** an item already in the cart made the chat buy 2. The chat now buys only what it added, and a purchase now *reduces* the cart line instead of deleting it.
+  - **Dead end:** when the cart already held all the stock, every chip was disabled. Talkshop now explains and asks for another colour.
+  - **Squashed cards:** cards shrank as the chat grew, hiding GO AHEAD.
+  - **Page scrolling:** auto-scroll moved the whole store page. It now scrolls only the chat.
+  - **Duplicate review card:** typing "go ahead" stacked a second review card. The card now moves down instead.
 
 ---
 
