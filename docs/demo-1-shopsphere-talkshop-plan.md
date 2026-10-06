@@ -16,7 +16,7 @@
 
 ### Progress
 
-**Phases approved: 6 / 8 · Steps done: 58 / 64** · Phase 6 👀 ready for your review
+**Phases approved: 7 / 8 · Steps done: 64 / 64** · Phase 7 👀 ready for your review (final)
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
@@ -26,8 +26,8 @@
 | 3 | Talkshop orchestrator (AI layer) | 12 / 12 | ✅ Approved |
 | 4 | ShopSphere storefront (website) | 10 / 10 | ✅ Approved |
 | 5 | Talkshop panel (inside ShopSphere) | 11 / 11 | ✅ Approved |
-| 6 | Connecting ShopSphere and Talkshop | 6 / 6 | 👀 Ready for your review |
-| 7 | Polish, quality and demo readiness | 0 / 6 | ⬜ Not started |
+| 6 | Connecting ShopSphere and Talkshop | 6 / 6 | ✅ Approved |
+| 7 | Polish, quality and demo readiness | 6 / 6 | 👀 Ready for your review |
 
 Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review · ✅ Approved
 
@@ -115,16 +115,16 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 6.5 Selection sync + View on ShopSphere
 - [x] 6.6 Orders link + My Orders refresh
 - [x] **Checkpoint:** connections I1–I9 (§5) checked in the browser *(automated in light + dark: greeting by name, page-aware greeting, picks row, selection highlight, badge 0→1→2→3→1 across chat + website adds and the chat order, View on ShopSphere, Ask Talkshop about this, chat checkout limited to chat items, My Orders refreshes live; no console errors)*
-- [ ] **Approved, proceed to Phase 7**
+- [x] **Approved, proceed to Phase 7**
 
 ### Phase 7: Polish, quality and demo readiness
-- [ ] 7.1 Visual pass (every page and card, light and dark)
-- [ ] 7.2 Ease-of-use pass (§4.3 rules)
-- [ ] 7.3 Responsive pass (desktop, tablet, phone)
-- [ ] 7.4 All three demo scripts run from a reset, several times
-- [ ] 7.5 All tests green
-- [ ] 7.6 README "Demo 1" section
-- [ ] **Checkpoint:** all demo scripts run end to end with no manual fixes
+- [x] 7.1 Visual pass (every page and card, light and dark) *(streaks removed from FlexRun 5, Sphere Canvas Low and Converse; men's crew tee re-shot from a clean source, Black only)*
+- [x] 7.2 Ease-of-use pass (§4.3 rules) *(chips for every choice, one primary action per card, no dead ends, unavailable options visible with reason, status while waiting, all amounts from the server)*
+- [x] 7.3 Responsive pass (desktop, tablet, phone) *(9 pages × 3 sizes × 2 themes captured and reviewed; fixed phone checkout overflow, cramped phone order cards, room for the floating Ask Talkshop button; 0 overflow at every size)*
+- [x] 7.4 All three demo scripts run from a reset, several times *(A, B, C × 3 fresh rounds, 9/9 passed with the real LLM, no console errors)*
+- [x] 7.5 All tests green *(234 passed)*
+- [x] 7.6 README "Demo 1" section
+- [x] **Checkpoint:** all demo scripts run end to end with no manual fixes
 - [ ] **Approved: Demo 1 complete 🎉**
 
 ---
@@ -767,6 +767,6 @@ Browse **Shoes** → open **FlexRun 5** → **✦ Ask Talkshop about this** → 
 | **"Forgot password" changes a password with only an email** (account-takeover risk) | `POST /api/auth/reset-password` | Out of Demo 1 scope. Needs an emailed reset link |
 | ~~Payment policy capped purchases at $500~~ | `backend/payment/policy.py` | ✅ Resolved in Phase 2: limit $2,500 (step-up above) |
 | ~~Tax was 8.2%~~ | `backend/payment/policy.py` | ✅ Resolved in Phase 2: 8.25% ($129 → $10.64) |
-| Men's crew-tee photos (mock-up flat-lays) show a faint line where props covered the hem. Two Converse photos keep a thin source streak | `frontend/public/catalog/` | Phase 7 visual pass |
+| ~~Streaky / ragged photos~~ | `frontend/public/catalog/` | ✅ Fixed in Phase 7 |
 | The `rembg` photo tool needs numpy 2, which conflicts with the app's packages. It was removed from the global Python and must be run in `.venv-photos` | `scripts/fetch_catalog_photos.py` | Documented in the script header |
-| Some older dev databases still hold pre-Demo-1 data. The website runs on a separate `backend/db/demo1.db` (set with `COMMERCE_DB_PATH`) until you approve resetting `commerce.db` | `backend/db/` | Waiting for your go-ahead |
+| The demo runs on its own `backend/db/demo1.db` (`COMMERCE_DB_PATH`), so the older `commerce.db` with pre-Demo-1 data is left untouched. Resetting `commerce.db` is optional | `backend/db/` | Your call. Not needed for the demo |

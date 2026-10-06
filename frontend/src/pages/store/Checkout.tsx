@@ -162,17 +162,20 @@ export default function CheckoutPage() {
           <Section n={4} title={`Items (${co.item_count})`} icon={null}>
             <ul className="divide-y divide-line">
               {co.lines.map((l) => (
-                <li key={l.line_id} className="py-4 first:pt-0 last:pb-0 flex gap-4 items-center">
-                  <div className="w-20 h-20 rounded-2xl bg-photo overflow-hidden shrink-0">
+                <li key={l.line_id} className="py-4 first:pt-0 last:pb-0 flex gap-3 sm:gap-4 items-center">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-photo overflow-hidden shrink-0">
                     {l.image_url && <img src={l.image_url} alt={l.name} className="h-full w-full object-cover" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium line-clamp-1">{l.name}</p>
+                    <p className="font-medium line-clamp-2 sm:line-clamp-1">{l.name}</p>
                     <p className="text-sm text-muted">{l.size ? `${l.option_label} ${l.size} · ` : ""}{l.color}</p>
                     {!l.in_stock && <p className="text-sm text-bad">Not enough stock for this quantity.</p>}
                   </div>
-                  <Stepper value={l.quantity} busy={busy} onChange={(n) => change({ quantities: { [l.line_id]: n } })} />
-                  <p className="w-20 text-right font-semibold tabular-nums">{money(l.line_total)}</p>
+                  {/* Price above the quantity on phones; side by side on wider screens */}
+                  <div className="flex flex-col-reverse sm:flex-row items-end sm:items-center gap-2 sm:gap-4 shrink-0">
+                    <Stepper value={l.quantity} busy={busy} onChange={(n) => change({ quantities: { [l.line_id]: n } })} />
+                    <p className="sm:w-20 text-right font-semibold tabular-nums">{money(l.line_total)}</p>
+                  </div>
                 </li>
               ))}
             </ul>

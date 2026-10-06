@@ -57,7 +57,8 @@ function StoreFooter() {
           </ul>
         </div>
       </div>
-      <div className="border-t border-line py-5 text-center text-xs text-faint">© ShopSphere · Demo store</div>
+      {/* Extra room on phones so the floating "Ask Talkshop" button never covers content */}
+      <div className="border-t border-line pt-5 pb-24 lg:pb-5 text-center text-xs text-faint">© ShopSphere · Demo store</div>
     </footer>
   );
 }

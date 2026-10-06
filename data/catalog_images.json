@@ -24,31 +24,10 @@
  },
  "essential-crew-tee-men": {
   "Black": {
-   "pixabay_id": 5257441,
-   "mode": "diff",
-   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257441/",
-   "photographer": "MockupLab",
-   "license": "Pixabay Content License"
-  },
-  "White": {
-   "pixabay_id": 5257434,
-   "mode": "diff",
-   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257434/",
-   "photographer": "MockupLab",
-   "license": "Pixabay Content License"
-  },
-  "Green": {
-   "pixabay_id": 5257443,
-   "mode": "diff",
-   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257443/",
-   "photographer": "MockupLab",
-   "license": "Pixabay Content License"
-  },
-  "Grey": {
-   "pixabay_id": 5257432,
-   "mode": "diff",
-   "page_url": "https://pixabay.com/photos/mockup-t-shirt-shirt-tshirt-wear-5257432/",
-   "photographer": "MockupLab",
+   "pixabay_id": 1886001,
+   "mode": "largest",
+   "page_url": "https://pixabay.com/photos/blank-tshirt-male-fashion-top-1886001/",
+   "photographer": "nattyjeff",
    "license": "Pixabay Content License"
   }
  },
@@ -110,14 +89,14 @@
  "flexrun-5": {
   "Orange": {
    "pixabay_id": 2768733,
-   "mode": "studio",
+   "mode": "largest",
    "page_url": "https://pixabay.com/photos/sneaker-running-shoe-shoe-2768733/",
    "photographer": "Alexas_Fotos",
    "license": "Pixabay Content License"
   },
   "Green": {
    "pixabay_id": 2768760,
-   "mode": "studio",
+   "mode": "largest",
    "page_url": "https://pixabay.com/photos/sneaker-running-shoe-shoe-2768760/",
    "photographer": "Alexas_Fotos",
    "license": "Pixabay Content License"

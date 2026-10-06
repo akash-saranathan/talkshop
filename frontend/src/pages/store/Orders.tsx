@@ -50,21 +50,22 @@ export function OrdersPage() {
             const status = STATUS[o.delivery_status ?? "processing"] ?? STATUS.processing;
             return (
               <li key={o.id}>
-                <Link to={`/orders/${o.id}`} className="flex items-center gap-5 rounded-3xl border border-line p-5 hover:border-line-strong transition-colors">
-                  <div className="flex -space-x-4">
-                    {o.lines.slice(0, 3).map((l) => (
-                      <div key={l.sku} className="w-16 h-16 rounded-2xl bg-photo overflow-hidden border-2 border-canvas">
+                <Link to={`/orders/${o.id}`} className="flex items-center gap-3 sm:gap-5 rounded-3xl border border-line p-4 sm:p-5 hover:border-line-strong transition-colors">
+                  <div className="flex -space-x-4 shrink-0">
+                    {o.lines.slice(0, 3).map((l, i) => (
+                      <div key={l.sku} className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-photo overflow-hidden border-2 border-canvas ${i > 0 ? "hidden sm:block" : ""}`}>
                         {l.image_url && <img src={l.image_url} alt="" className="h-full w-full object-cover" />}
                       </div>
                     ))}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2"><p className="font-semibold">Order {o.id}</p><Badge tone={status.tone}>{status.label}</Badge></div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="font-semibold">Order {o.id}</p><Badge tone={status.tone}>{status.label}</Badge></div>
                     <p className="text-sm text-muted line-clamp-1">{o.lines.map((l) => l.name).join(", ")}</p>
-                    <p className="text-sm text-muted">{o.created_at ? `Placed ${niceDate(o.created_at)}` : ""}{o.delivery_date ? ` · Arrives ${niceDate(o.delivery_date)}` : ""}</p>
+                    <p className="text-sm text-muted">{o.delivery_date ? `Arrives ${niceDate(o.delivery_date)}` : o.created_at ? `Placed ${niceDate(o.created_at)}` : ""}</p>
+                    <p className="sm:hidden font-semibold tabular-nums mt-1">{money(o.total)}</p>
                   </div>
-                  <p className="font-semibold tabular-nums">{money(o.total)}</p>
-                  <ChevronRight size={18} className="text-muted" />
+                  <p className="hidden sm:block font-semibold tabular-nums">{money(o.total)}</p>
+                  <ChevronRight size={18} className="text-muted shrink-0" />
                 </Link>
               </li>
             );

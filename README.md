@@ -8,6 +8,50 @@ It's a working prototype of the same problem Stripe's [Agentic Commerce Protocol
 
 ---
 
+## Demo 1 — ShopSphere × Talkshop (branch: `demo-1-merchant-chat-assistant`)
+
+**ShopSphere** is a merchant website; **Talkshop** is its built-in shopping assistant, docked on the right of every page. The customer is already logged in. Talkshop understands the request and decides what should happen; ShopSphere's own services (catalog, inventory, cart, checkout, payment, orders) do it. Payment only ever runs when the customer taps **GO AHEAD**.
+
+Full plan, phases, decisions and checklist: [`docs/demo-1-shopsphere-talkshop-plan.md`](docs/demo-1-shopsphere-talkshop-plan.md).
+
+### Run it
+
+```powershell
+pip install -r requirements.txt            # once
+cd frontend; npm install; cd ..            # once
+# .env needs GOOGLE_API_KEY (see .env.example)
+
+# Backend, on its own demo database (your other local data is untouched)
+$env:COMMERCE_DB_PATH = "backend/db/demo1.db"
+python -m backend.db.reset_demo --yes      # fresh catalog, Kaajal's saved details, no orders
+python -m uvicorn backend.main:app --port 8000
+
+# Frontend, in a second terminal
+cd frontend; npm run dev                   # http://localhost:5173
+```
+
+Log in with the demo account (**Use demo account** on the login page): `kaajal@shopsphere.demo` / `demo1234`. Kaajal has two saved addresses and two cards: **Visa •••• 4821** (approves) and **Mastercard •••• 0019** (always declines, for the decline demo).
+
+To reset between demos: stop the backend, run `python -m backend.db.reset_demo --yes` with the same `COMMERCE_DB_PATH`, start it again.
+
+### Demo scripts
+
+| Script | What to do | What it shows |
+|---|---|---|
+| **A: the spec** | In Talkshop: *"I need running shoes under $150 for everyday running."* → **Select** Runner Pro X → size **8** → **Black** → **Yes, checkout** → **GO AHEAD** | Top 3 on the chat and the page, size/colour checked against stock, ShopSphere cart, review card ($129 + $10.64 = **$139.64**), authorized, order **SS-#####** |
+| **B: declined card** | As A, then on the review card **Change** payment → Mastercard •••• 0019 → GO AHEAD → change back to Visa → GO AHEAD | Payment not authorized, **no order created**, retry on the same checkout |
+| **C: site + Talkshop** | Shoes → FlexRun 5 → **Ask Talkshop about this** → size/colour in chat → Keep shopping → add a wallet on the website → Cart: select only the wallet → Checkout selected → Place order | One cart for both, page-aware chat, website checkout of selected items, both orders in My Orders |
+
+Things worth pointing out: typing *"go ahead"* never pays (only the button does) · the header cart badge moves when Talkshop adds items · **ⓘ How Talkshop works** in the panel shows the live agent trace (VibeCheck → SneakPeek → CartUp → GreenLight → PayIt → TrackIt) · light/dark toggle in the header.
+
+### Notes
+
+- Catalog: 60 products / 385 SKUs in `data/shopsphere_catalog.json`, built by `scripts/build_shopsphere_catalog.py`; one studio photo per colour in `frontend/public/catalog/` (Pixabay licence, sources in `data/catalog_images.json`). Regenerating photos needs its own virtualenv — see `scripts/fetch_catalog_photos.py`.
+- Product search reads only the ShopSphere catalog (`CATALOG_SOURCES=shopsphere`); the Shopify/BestBuy/DummyJSON adapters are kept but switched off.
+- Tests run on their own temporary database: `python -m pytest tests/`.
+
+---
+
 ## Version 2 — Conversational Commerce (current branch: `v2-upgrade`)
 
 Version 2 transforms TalkShop into a fully conversational single-screen experience. The entire purchase flow — search → add to cart → checkout → pay → order confirmation — happens inline in the chat. The right panel shows a live real-time trace of the 6-agent pipeline as it runs.

@@ -178,7 +178,8 @@
      "hex": "#e07b39",
      "photo": {
       "pixabay_id": 2768733,
-      "mode": "studio"
+      "mode": "largest",
+      "kernel": 25
      }
     },
     {
@@ -186,7 +187,8 @@
      "hex": "#3e7d4f",
      "photo": {
       "pixabay_id": 2768760,
-      "mode": "studio"
+      "mode": "largest",
+      "kernel": 25
      }
     }
    ],
@@ -445,7 +447,7 @@
      "photo": {
       "pixabay_id": 2743420,
       "mode": "largest",
-      "kernel": 17
+      "kernel": 25
      }
     }
    ],
@@ -516,7 +518,7 @@
      "photo": {
       "pixabay_id": 2768263,
       "mode": "largest",
-      "kernel": 17
+      "kernel": 25
      }
     },
     {
@@ -525,7 +527,7 @@
      "photo": {
       "pixabay_id": 2768218,
       "mode": "largest",
-      "kernel": 17
+      "kernel": 25
      }
     },
     {
@@ -534,7 +536,7 @@
      "photo": {
       "pixabay_id": 2768260,
       "mode": "largest",
-      "kernel": 17
+      "kernel": 25
      }
     }
    ],
@@ -1265,36 +1267,9 @@
      "name": "Black",
      "hex": "#1c1c1e",
      "photo": {
-      "pixabay_id": 5257441,
-      "mode": "diff",
-      "ref_pixabay_id": 5257434
-     }
-    },
-    {
-     "name": "White",
-     "hex": "#f5f5f2",
-     "photo": {
-      "pixabay_id": 5257434,
-      "mode": "diff",
-      "ref_pixabay_id": 5257441
-     }
-    },
-    {
-     "name": "Green",
-     "hex": "#3e7d4f",
-     "photo": {
-      "pixabay_id": 5257443,
-      "mode": "diff",
-      "ref_pixabay_id": 5257434
-     }
-    },
-    {
-     "name": "Grey",
-     "hex": "#8e9196",
-     "photo": {
-      "pixabay_id": 5257432,
-      "mode": "diff",
-      "ref_pixabay_id": 5257434
+      "pixabay_id": 1886001,
+      "mode": "largest",
+      "kernel": 17
      }
     }
    ],

@@ -17,6 +17,7 @@ Processing modes per photo:
   largest  same, then keep only the largest shape (drops separate props)
   diff     for a photo shoot repeated in several colours: the pixels that differ
            from the reference photo are exactly the product — no guessing
+  onblack  product on a plain black backdrop: separate by brightness
 
 Run it in its OWN virtual environment — rembg needs numpy 2, which conflicts
 with the app's packages (pandas/scikit-learn/pyarrow need numpy 1.x):
@@ -111,6 +112,21 @@ def diff_cut(img: Image.Image, ref: Image.Image) -> Image.Image:
     return out
 
 
+def black_cut(img: Image.Image, kernel: int) -> Image.Image:
+    """Product shot on a plain black backdrop: anything clearly brighter than
+    black is the product. Openings in both directions drop the thin
+    stretched-edge streaks some sources have."""
+    a = np.asarray(img, dtype=np.int16)
+    mask = a.max(axis=2) > 45
+    mask = ndimage.binary_opening(mask, structure=np.ones((kernel, 1)))
+    mask = ndimage.binary_opening(mask, structure=np.ones((1, kernel)))
+    mask = keep_largest(ndimage.binary_fill_holes(ndimage.binary_closing(mask, iterations=3)))
+    alpha = Image.fromarray((mask * 255).astype("uint8")).filter(ImageFilter.GaussianBlur(1.0))
+    out = img.convert("RGBA")
+    out.putalpha(alpha)
+    return out
+
+
 def compose(cut: Image.Image) -> Image.Image:
     """Centre the cut-out on the studio backdrop with a soft floor shadow."""
     bbox = cut.getchannel("A").point(lambda v: 255 if v > 20 else 0).getbbox()
@@ -157,7 +173,9 @@ def main():
                 if dest.exists() and not refresh and done.get("pixabay_id") == photo["pixabay_id"]:
                     continue
                 hit, img = fetch(client, key, photo["pixabay_id"])
-                if photo["mode"] == "diff":
+                if photo["mode"] == "onblack":
+                    cut = black_cut(img, photo.get("kernel", 25))
+                elif photo["mode"] == "diff":
                     _, ref = fetch(client, key, photo["ref_pixabay_id"])
                     cut = diff_cut(img, ref)
                 else:
