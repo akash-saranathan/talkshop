@@ -16,7 +16,7 @@
 
 ### Progress
 
-**Phases approved: 7 / 9 · Steps done: 73 / 73** · Phases 7 and 8 👀 ready for your review
+**Phases approved: 7 / 10 · Steps done: 81 / 81** · Phases 7, 8 and 9 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
@@ -29,6 +29,7 @@
 | 6 | Connecting ShopSphere and Talkshop | 6 / 6 | ✅ Approved |
 | 7 | Polish, quality and demo readiness | 6 / 6 | 👀 Ready for your review |
 | 8 | Shop without logging in (login only at checkout) | 9 / 9 | 👀 Ready for your review |
+| 9 | Secure checkout details in Talkshop | 8 / 8 | 👀 Ready for your review |
 
 Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review · ✅ Approved
 
@@ -139,6 +140,18 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 8.8 Tests: visitor, login gates, cart merge, Talkshop sign-in flow
 - [x] 8.9 Browser check + demo scripts re-run (incl. a new visitor script D)
 - [x] **Checkpoint:** a visitor can browse, chat and fill a cart, and logs in only to check out (website and Talkshop) *(new script D + A, B, C × 3 fresh rounds: 12/12 passed; D also in dark and on phone; 246 tests)*
+- [ ] **Approved, proceed to Phase 9**
+
+### Phase 9: Secure checkout details in Talkshop
+- [x] 9.1 Checkout checks whether the customer has a shipping address and a saved card (merchant data)
+- [x] 9.2 Missing address: an inline **Secure ShopSphere Checkout** form that posts straight to ShopSphere's profile API
+- [x] 9.3 Missing card: an inline **Secure Payment** form that posts straight to ShopSphere's card tokenization. Talkshop gets back only the card id, brand and last 4 digits
+- [x] 9.4 After each save, checkout resumes automatically. ShopSphere recalculates the order, and Review shows one GO AHEAD
+- [x] 9.5 Card details typed into the chat are masked in the browser and again on the server, and never reach the LLM. Addresses typed during checkout are withheld from the chat
+- [x] 9.6 Edge cases: save/tokenization failures, someone else's address, an order failing after payment approval (payment released), a declined card
+- [x] 9.7 Tests: 23 new; full suite 300
+- [x] 9.8 Browser check (light, dark, phone) + demo scripts A–D on a fresh database
+- [x] **Checkpoint:** a new customer checks out entirely in Talkshop. Address and card go only to ShopSphere, and the AI never sees them *(secure flow ×3 views passed; the raw card number reached only `/api/me/payment-methods`; A–D 4/4 on fresh data)*
 - [ ] **Approved: Demo 1 complete 🎉**
 
 ---
@@ -718,6 +731,37 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
     - Tabs follow each other's login and logout.
     - A request with no token reloads the page to restore the identity.
     - Starting a visitor session retries while the backend restarts.
+
+---
+
+### Phase 9: Secure checkout details in Talkshop
+**Goal:** when a logged-in customer has no saved address or card, collect them inside the Talkshop panel through ShopSphere-owned secure components. These are clearly separate from the AI conversation, and the AI never sees the details.
+
+**Who owns what:**
+- **Talkshop (LLM):** intent, conversation, which merchant step comes next, and presenting results.
+- **ShopSphere:** profile, addresses, cart, prices, tax, inventory, checkout and orders.
+- **Payment partner** (the card form + tokenization): raw card data in, a token reference out.
+
+| Step | Work | How it works |
+|---|---|---|
+| 9.1 | **Completeness check** | `_checkout` creates the checkout, then checks its address and payment method. Both present → Review as before |
+| 9.2 | **Secure ShopSphere Checkout** | Event `checkout_details_needed {needs}` → the panel renders the address form (Full name, Address, Apt optional, City, State, ZIP). It posts to `POST /api/me/addresses`. Note: "This information is sent directly to ShopSphere checkout and is not processed as chat content." |
+| 9.3 | **Secure Payment** | Card form → `POST /api/me/payment-methods`. ShopSphere tokenizes (stores a `tok_…` vault reference, brand, last 4, expiry), and the response is masked only. The form wipes its fields after saving |
+| 9.4 | **Resume** | The form sends action `details_added {address_id | payment_method_id}`, ids only. Talkshop attaches it (ShopSphere checks the id belongs to the customer), re-reads the checkout, and either asks for the next detail or shows Review with one GO AHEAD. If the total changed, it says so |
+| 9.5 | **Nothing sensitive in the chat** | Browser (`talkshop/redact.ts`) and server (`parse.redact_payment_data`) mask Luhn-valid card numbers, CVCs and expiry dates before the message is shown, stored, guard-railed or read by the LLM. Talkshop answers without the LLM and points back to the secure form. Addresses typed during checkout are withheld |
+| 9.6 | **Edge cases** | Address/card validation errors stay in the form (server-side: required fields, 2-letter state, ZIP, Luhn, expiry, CVC). Someone else's id → refused, form shown again. Order creation failing after authorization → the authorization is voided, the shopper is told they weren't charged, and they can retry. Declined card → as before |
+| 9.7 | **Tests** | `tests/test_demo1_secure_checkout.py`: both/one missing, resume, ownership, typed card/address, validation, the void path |
+| 9.8 | **Browser check** | New customer, light/dark/phone: address → payment → review → GO AHEAD → confirmed. The raw card number is sent only to the card endpoint |
+
+✅ **Checkpoint:** a new customer completes checkout inside Talkshop; address and card go only to ShopSphere; the AI never sees them.
+
+**As built (Phase 9):**
+- **Stage:** new `CHECKOUT_DETAILS` stage (stepper shows "Review"). GO AHEAD only works from `AWAITING_CONSENT`.
+- **Panel:** new `SecureDetailsCard`.
+- **Payment:** `mock_processor.void_authorization`. `payment.confirm` returns `order_failed` when the order can't be created.
+- **Address validation:** `profile.add_address` now also checks the state code and field lengths.
+- **Not changed:** the website's own checkout page keeps its forms; it also handles `order_failed`. Tax is a flat rate today, so adding an address doesn't change the total. The "total recalculated" message is there for when it does.
+- **For a production build:** the card fields would sit in a payment provider's hosted iframe (e.g. Stripe Elements), so the store's own page couldn't read them. Here they are a local, ShopSphere-only React component that posts straight to the tokenization endpoint.
 
 ---
 

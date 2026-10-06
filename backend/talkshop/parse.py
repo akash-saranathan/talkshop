@@ -149,6 +149,52 @@ def gender_of(text: str) -> Optional[str]:
     return None
 
 
+# ── Payment and address data typed into the chat ─────────────────────────────
+# Card details belong in the Secure Payment form only. If a shopper types them
+# anyway, they are masked before the message is shown, stored or read by the LLM.
+
+_CARD_RUN = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
+_CVC = re.compile(r"\b(cvv2?|cvc2?|cid|security code)\s*(?:is|:|#)?\s*\d{3,4}\b", re.I)
+_EXPIRY = re.compile(r"\b(exp(?:iry|ires|iration)?(?: date)?)\s*(?:is|:)?\s*\d{1,2}\s*/\s*\d{2,4}\b", re.I)
+_ADDRESS = re.compile(r"\b\d{1,6}\s+[a-z0-9 .'-]{2,40}\b(st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|"
+                      r"way|ct|court|pl|place|pkwy|parkway|hwy|highway|cir|circle|ter|terrace)\b", re.I)
+_ZIP = re.compile(r"\b\d{5}(?:-\d{4})?\b")
+_MASKED = re.compile(r"•••• \d{4}|\b(?:cvv2?|cvc2?|cid|security code) •••|••/••", re.I)
+
+
+def _luhn(digits: str) -> bool:
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        d = int(ch) * (2 if i % 2 else 1)
+        total += d - 9 if d > 9 else d
+    return total % 10 == 0
+
+
+def redact_payment_data(text: str) -> tuple[str, bool]:
+    """Mask card numbers (Luhn-valid runs of 13–19 digits), CVCs and expiry
+    dates. Returns (masked text, whether anything was masked)."""
+    found = False
+
+    def card(m: re.Match) -> str:
+        nonlocal found
+        digits = re.sub(r"\D", "", m.group(0))
+        if 13 <= len(digits) <= 19 and _luhn(digits):
+            found = True
+            return f"•••• {digits[-4:]}"
+        return m.group(0)
+
+    out = _CARD_RUN.sub(card, text)
+    out, n_cvc = _CVC.subn(lambda m: f"{m.group(1)} •••", out)
+    out, n_exp = _EXPIRY.subn(lambda m: f"{m.group(1)} ••/••", out)
+    already = bool(_MASKED.search(out))      # the browser masks first (frontend/src/talkshop/redact.ts)
+    return out, found or bool(n_cvc or n_exp) or already
+
+
+def looks_like_address(text: str) -> bool:
+    """"12 Oak Street, Austin TX 78704" — a street line, or a street number plus a ZIP."""
+    return bool(_ADDRESS.search(text)) or (bool(_ZIP.search(text)) and bool(re.match(r"\s*\d{1,6}\s+[a-z]", text, re.I)))
+
+
 # ── Clear shopping requests (skip the LLM round-trip) ────────────────────────
 
 _CATEGORY_WORDS = [  # longest/most specific first

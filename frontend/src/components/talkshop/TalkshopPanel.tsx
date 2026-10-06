@@ -13,14 +13,14 @@ import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 import Composer from "./Composer";
 import {
   CartUpdatedCard, OptionChips, OrderConfirmedCard, PaymentStatusCard, QuickReplies,
-  RecommendationCards, ReviewOrderCard, SelectedProduct, SignInCard,
+  RecommendationCards, ReviewOrderCard, SecureDetailsCard, SelectedProduct, SignInCard,
 } from "./cards";
 import { cx } from "../ui";
 
 const STEPS = ["Search", "Choose", "Size", "Colour", "Cart", "Review", "Done"];
 const STEP_OF: Record<Stage, number> = {
   GREETING: 0, SEARCHING: 0, RECOMMENDED: 1, PRODUCT_SELECTED: 1, ASK_SIZE: 2, ASK_COLOR: 3, VARIANT_CONFIRMED: 3,
-  IN_CART: 4, OFFER_CHECKOUT: 4, AWAITING_CONSENT: 5, PAYING: 5, ORDER_CONFIRMED: 6,
+  IN_CART: 4, OFFER_CHECKOUT: 4, CHECKOUT_DETAILS: 5, AWAITING_CONSENT: 5, PAYING: 5, ORDER_CONFIRMED: 6,
 };
 const AGENTS: Record<string, string> = {
   VibeCheck: "Understands the request", SneakPeek: "Searches the ShopSphere catalog",
@@ -155,6 +155,7 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
   const lastReview = lastIndex(events, "checkout_ready");
   const lastSuggest = lastIndex(events, "suggestions");
   const lastLogin = lastIndex(events, "login_required");
+  const lastDetails = lastIndex(events, "checkout_details_needed");
 
   return (
     <div ref={scroller} className="absolute inset-0 overflow-y-auto ss-scroll px-4 py-4 flex flex-col gap-3 [&>*]:shrink-0">
@@ -180,7 +181,7 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
               onPick={(c) => { const a = ev.chip_actions?.[c.label]; ts.send(a ? { action: { ...a, label: c.label } } : { text: c.label }); }} />;
           case "recommendations":
             return <RecommendationCards key={i} products={ev.products} onAct={act}
-              active={it.index === lastRecs && !busy && !["AWAITING_CONSENT", "PAYING"].includes(stage)} />;
+              active={it.index === lastRecs && !busy && !["CHECKOUT_DETAILS", "AWAITING_CONSENT", "PAYING"].includes(stage)} />;
           case "product_selected":
             return <SelectedProduct key={i} event={ev} />;
           case "ask_option":
@@ -194,6 +195,9 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
               onPick={(c) => act({ type: c.value === "checkout" ? "checkout" : "keep_shopping", label: c.label })} />;
           case "order_confirmed":
             return <OrderConfirmedCard key={i} order={ev.order} />;
+          case "checkout_details_needed":
+            return <SecureDetailsCard key={i} needs={ev.needs} onAct={act}
+              active={it.index === lastDetails && stage === "CHECKOUT_DETAILS" && !busy} />;
           case "login_required":
             return <SignInCard key={i} active={it.index === lastLogin && lastReview < it.index} />;
           default:

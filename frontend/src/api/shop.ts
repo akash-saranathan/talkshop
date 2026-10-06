@@ -56,7 +56,7 @@ export interface Order {
 }
 export type ConfirmResult =
   | { status: "authorized"; order: Order; transaction_id: string }
-  | { status: "declined" | "blocked"; reason: string; message: string; checkout: Checkout };
+  | { status: "declined" | "blocked" | "order_failed"; reason: string; message: string; checkout: Checkout };
 
 export class ShopError extends Error {
   code: string; status: number; detail: Record<string, unknown>;

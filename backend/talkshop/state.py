@@ -23,6 +23,7 @@ class Stage(str, Enum):
     VARIANT_CONFIRMED = "VARIANT_CONFIRMED"
     IN_CART = "IN_CART"
     OFFER_CHECKOUT = "OFFER_CHECKOUT"
+    CHECKOUT_DETAILS = "CHECKOUT_DETAILS"  # address/card missing — the secure forms collect them, not the chat
     AWAITING_CONSENT = "AWAITING_CONSENT"  # review card shown — only GO AHEAD can pay
     PAYING = "PAYING"
     ORDER_CONFIRMED = "ORDER_CONFIRMED"
@@ -32,7 +33,7 @@ class Stage(str, Enum):
 STEPPER = {
     Stage.GREETING: "Search", Stage.SEARCHING: "Search", Stage.RECOMMENDED: "Choose",
     Stage.PRODUCT_SELECTED: "Choose", Stage.ASK_SIZE: "Size", Stage.ASK_COLOR: "Colour",
-    Stage.VARIANT_CONFIRMED: "Colour", Stage.IN_CART: "Cart", Stage.OFFER_CHECKOUT: "Cart",
+    Stage.VARIANT_CONFIRMED: "Colour", Stage.IN_CART: "Cart", Stage.OFFER_CHECKOUT: "Cart", Stage.CHECKOUT_DETAILS: "Review",
     Stage.AWAITING_CONSENT: "Review", Stage.PAYING: "Review", Stage.ORDER_CONFIRMED: "Done",
 }
 
@@ -48,6 +49,7 @@ ALLOWED = {
     Stage.VARIANT_CONFIRMED: {"search", "answer"},
     Stage.IN_CART: {"checkout", "search", "answer", "select_product"},
     Stage.OFFER_CHECKOUT: {"checkout", "keep_shopping", "search", "answer", "select_product"},
+    Stage.CHECKOUT_DETAILS: {"cancel_checkout", "answer", "search"},
     Stage.AWAITING_CONSENT: {"update_checkout", "cancel_checkout", "answer", "search"},
     Stage.PAYING: set(),
     Stage.ORDER_CONFIRMED: {"search", "answer", "select_product"},

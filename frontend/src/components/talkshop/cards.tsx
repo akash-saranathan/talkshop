@@ -326,6 +326,45 @@ export function OrderConfirmedCard({ order }: { order: Order }) {
 /* ── Sign in to check out (visitors) ───────────────────────────────────── */
 const DEMO = { email: "kaajal@shopsphere.demo", password: "demo1234" };
 
+/** ShopSphere's own secure forms, shown when an order is missing an address or
+ *  a card. They post straight to ShopSphere (profile API / card tokenization)
+ *  and hand Talkshop only the saved id, never the address or card details, so
+ *  nothing typed here reaches the chat history or the LLM. */
+export function SecureDetailsCard({ needs, active, onAct }:
+  { needs: { address: boolean; payment: boolean }; active: boolean; onAct: Act }) {
+  const { user } = useAuth();
+  const step = needs.address ? "address" : "payment";
+  if (!active) {
+    return <p className="self-start text-xs text-muted inline-flex items-center gap-1.5"><Lock size={12} />
+      {step === "address" ? "Shipping address" : "Card"} handled in ShopSphere's secure form</p>;
+  }
+  return (
+    <Shell className="border-talk/50 shadow-card">
+      <div className="px-4 py-3 bg-panel flex items-center justify-between gap-2">
+        <p className="flex items-center gap-2 text-xs font-bold tracking-[0.16em]">
+          <ShieldCheck size={15} className="text-talk" /> {step === "address" ? "SECURE SHOPSPHERE CHECKOUT" : "SECURE PAYMENT"}
+        </p>
+        {needs.address && needs.payment && <span className="text-[11px] text-muted shrink-0">Step 1 of 2</span>}
+      </div>
+      <div className="p-4 flex flex-col gap-3">
+        <p className="text-sm font-medium">{step === "address" ? "Shipping address" : "Add a card"}</p>
+        {step === "address"
+          ? <AddressForm defaultName={user?.name}
+              onSaved={(a) => onAct({ type: "details_added", address_id: a.address_id, label: "Shipping address added" })} />
+          : <CardForm onSaved={(c) => onAct({ type: "details_added", payment_method_id: c.payment_method_id, label: `Card added · ${c.display}` })} />}
+        <p className="flex items-start gap-1.5 text-[11px] text-muted leading-snug">
+          <ShieldCheck size={13} className="shrink-0" />
+          {step === "address"
+            ? "This information is sent directly to ShopSphere checkout and is not processed as chat content."
+            : "Card details go directly to ShopSphere's payment partner and are replaced with a secure token. Talkshop only sees the card type and last 4 digits."}
+        </p>
+        <button type="button" onClick={() => onAct({ type: "cancel_checkout", label: "Not now" })}
+          className="text-xs text-muted hover:text-ink">Not now</button>
+      </div>
+    </Shell>
+  );
+}
+
 export function SignInCard({ active }: { active: boolean }) {
   const { login, register, isCustomer, user } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");

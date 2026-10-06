@@ -55,6 +55,10 @@ def add_address(db: Session, user_id: str, *, full_name: str, line1: str, city: 
                          ("state", state), ("postal_code", postal_code)):
         if not (value or "").strip():
             raise ProfileError("MISSING_FIELD", f"Please fill in {field.replace('_', ' ')}.")
+    if not re.fullmatch(r"[A-Za-z]{2}", state.strip()):
+        raise ProfileError("INVALID_STATE", "State should be a 2-letter code, like TX.")
+    if any(len(v or "") > 120 for v in (full_name, line1, line2, city)):
+        raise ProfileError("FIELD_TOO_LONG", "One of the address fields is too long.")
     if not re.fullmatch(r"\d{5}(-\d{4})?", postal_code.strip()):
         raise ProfileError("INVALID_POSTAL_CODE", "ZIP code should look like 78704.")
     first = not list_addresses(db, user_id)

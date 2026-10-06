@@ -64,7 +64,7 @@ export default function CheckoutPage() {
         return;
       }
       setCo(res.checkout);
-      setError(`Payment wasn't authorized: ${res.message} No order was created.`);
+      setError(res.status === "order_failed" ? res.message : `Payment wasn't authorized: ${res.message} No order was created.`);
     } catch (e) {
       setError(e instanceof ShopError ? e.message : "Couldn't place your order. Please try again.");
     } finally {

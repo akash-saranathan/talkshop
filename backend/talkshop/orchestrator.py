@@ -347,7 +347,52 @@ async def _checkout(t: Turn) -> None:
         t.say(exc.message)
         return
     s.checkout_id = co["checkout_id"]
+    if _missing(co):
+        return _ask_for_details(t, co)
     t.say("Here's your order. Review it, then tap GO AHEAD to place it.")
+    t.emit("checkout_ready", checkout=co)
+    t.stage(Stage.AWAITING_CONSENT)
+
+
+def _missing(co: dict) -> dict:
+    """What ShopSphere still needs before this order can be reviewed."""
+    need = {"address": not co.get("address"), "payment": not co.get("payment_method")}
+    return need if any(need.values()) else {}
+
+
+def _ask_for_details(t: Turn, co: dict, lead: str = "") -> None:
+    """Missing address/card: the panel shows ShopSphere's secure forms. They post
+    straight to ShopSphere (profile API / card tokenization) and hand Talkshop
+    back only ids — the details never pass through the chat or the LLM."""
+    need = _missing(co)
+    if need["address"]:
+        what = "a shipping address and a payment card" if need["payment"] else "a shipping address"
+        t.say(f"{lead} Almost there: ShopSphere needs {what} for this order. Please add the address in the "
+              "secure form below. It goes straight to ShopSphere checkout, not into our chat.".strip())
+    else:
+        t.say(f"{lead} Last step: please add a card in the Secure Payment form below. Card details go straight "
+              "to ShopSphere's payment partner. I only ever see the card type and last 4 digits.".strip())
+    t.emit("checkout_details_needed", checkout_id=co["checkout_id"], needs=need)
+    t.stage(Stage.CHECKOUT_DETAILS)
+
+
+async def _details_added(t: Turn, action: dict) -> None:
+    """A secure form saved an address or card on ShopSphere: attach it by id,
+    recalculate the order on the merchant side, and resume checkout."""
+    s = t.s
+    changes = {k: str(action[k]) for k in ("address_id", "payment_method_id") if action.get(k)}
+    before = tools.get_checkout(s.user_id, s.checkout_id)
+    try:
+        co = tools.update_checkout(s.user_id, s.checkout_id, **changes)   # ownership checked by ShopSphere
+    except CheckoutError as exc:
+        t.say(exc.message)
+        return _ask_for_details(t, before)
+    if _missing(co):
+        return _ask_for_details(t, co, "✓ Address saved." if "address_id" in changes else "")
+    lead = "Thanks, ShopSphere has everything it needs."
+    if co["total"] != before["total"]:
+        lead += f" Your total was recalculated to ${co['total']:.2f}."
+    t.say(f"{lead} Review your order, then tap GO AHEAD to place it.")
     t.emit("checkout_ready", checkout=co)
     t.stage(Stage.AWAITING_CONSENT)
 
@@ -392,6 +437,12 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str]) -> N
         t.emit("payment_status", state="failed", payment=card, reason=exc.code, message=exc.message)
         t.say(exc.message)
         t.emit("checkout_updated", checkout=tools.get_checkout(s.user_id, s.checkout_id))
+        t.stage(Stage.AWAITING_CONSENT)
+        return
+    if result["status"] == "order_failed":           # authorized, then ShopSphere couldn't create the order
+        t.emit("payment_status", state="failed", payment=card, reason=result["reason"], message=result["message"])
+        t.say(result["message"])
+        t.emit("checkout_updated", checkout=result["checkout"])
         t.stage(Stage.AWAITING_CONSENT)
         return
     if result["status"] != "authorized":
@@ -501,7 +552,9 @@ async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
         t.stage(Stage.IN_CART)
     elif kind == "update_checkout" and s.stage == Stage.AWAITING_CONSENT:
         await _update_checkout(t, action)
-    elif kind == "cancel_checkout" and s.stage == Stage.AWAITING_CONSENT:
+    elif kind == "details_added" and s.stage == Stage.CHECKOUT_DETAILS and s.checkout_id:
+        await _details_added(t, action)
+    elif kind == "cancel_checkout" and s.stage in (Stage.AWAITING_CONSENT, Stage.CHECKOUT_DETAILS):
         await _cancel_checkout(t)
     elif kind == "go_ahead":
         await _go_ahead(t, user, action.get("checkout_id"))
@@ -527,6 +580,22 @@ async def _handle_image(t: Turn, image_base64: str, note: str) -> None:
 
 async def _handle_text(t: Turn, text: str) -> None:
     s = t.s
+    # Card details never enter the conversation: masked before the message is
+    # shown, stored, guard-railed or read by the LLM.
+    text, had_card = parse.redact_payment_data(text)
+    if had_card:
+        t.emit("user_message", text=text)
+        s.history.append({"role": "user", "text": "[card details withheld]"})
+        t.say("For your security I didn't keep that. Please never type card details in the chat.")
+        if s.stage == Stage.CHECKOUT_DETAILS and s.checkout_id:
+            return _ask_for_details(t, tools.get_checkout(s.user_id, s.checkout_id))
+        t.say("When you check out, the Secure Payment form sends your card straight to ShopSphere's payment partner.")
+        return
+    if s.stage == Stage.CHECKOUT_DETAILS and s.checkout_id and parse.looks_like_address(text):
+        t.emit("user_message", text="📍 (address hidden)")
+        s.history.append({"role": "user", "text": "[address withheld]"})
+        t.say("Thanks! To keep it safe, I don't take addresses in the chat.")
+        return _ask_for_details(t, tools.get_checkout(s.user_id, s.checkout_id))
     t.emit("user_message", text=text)
     s.history.append({"role": "user", "text": text})
 

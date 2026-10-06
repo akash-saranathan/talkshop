@@ -49,8 +49,12 @@ export function CardForm({ onSaved, onCancel }: { onSaved: (c: Card) => void; on
     if (!m) { setError("Expiry should look like 08/29."); return; }
     setSaving(true); setError(null);
     try {
-      onSaved(await shop.addCard({ number: f.number, exp_month: Number(m[1]), exp_year: Number(m[2]), cvc: f.cvc,
-        cardholder_name: f.cardholder_name, make_default: true }));
+      // The card goes straight to ShopSphere for tokenization; only the masked
+      // result (id, brand, last 4) comes back. Wipe the raw fields at once.
+      const saved = await shop.addCard({ number: f.number, exp_month: Number(m[1]), exp_year: Number(m[2]), cvc: f.cvc,
+        cardholder_name: f.cardholder_name, make_default: true });
+      setF({ number: "", expiry: "", cvc: "", cardholder_name: "" });
+      onSaved(saved);
     } catch (err) { setError(err instanceof ShopError ? err.message : "Couldn't save that card."); }
     finally { setSaving(false); }
   };

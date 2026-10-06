@@ -60,6 +60,18 @@ def _saved_card_result(request: PaymentRequest) -> PaymentResult:
     )
 
 
+VOIDED: set[str] = set()     # transactions released (demo stand-in for the processor's void API)
+
+
+def void_authorization(transaction_id: Optional[str]) -> bool:
+    """Release an authorization that won't be captured (e.g. the order couldn't
+    be created). Nothing is charged for a voided authorization."""
+    if not transaction_id:
+        return False
+    VOIDED.add(transaction_id)
+    return True
+
+
 async def process_payment(
     request: PaymentRequest, wallet: Optional[dict] = None
 ) -> PaymentResult:

@@ -146,6 +146,14 @@ def test_visitor_chats_then_signs_in_at_checkout_and_continues(client, fake_llm)
     body, _ = new_customer(client, h)                                # signs up from the chat
     ch = {"Authorization": f"Bearer {body['access_token']}"}
     ev = turn(ch, action={"type": "checkout"})                       # the panel resumes
+    need = next(e for e in ev if e["type"] == "checkout_details_needed")   # a new account has no address/card yet
+    assert need["needs"] == {"address": True, "payment": True}
+    addr = client.post("/api/me/addresses", headers=ch, json={
+        "full_name": "New Shopper", "line1": "1 Main St", "city": "Austin", "state": "TX", "postal_code": "78701"}).json()
+    turn(ch, action={"type": "details_added", "address_id": addr["address_id"]})
+    card = client.post("/api/me/payment-methods", headers=ch, json={
+        "number": "4242 4242 4242 4242", "exp_month": 12, "exp_year": 2030, "cvc": "123", "cardholder_name": "New"}).json()
+    ev = turn(ch, action={"type": "details_added", "payment_method_id": card["payment_method_id"]})
     co = next(e for e in ev if e["type"] == "checkout_ready")["checkout"]
     assert [l["sku"] for l in co["lines"]] == ["SSP001-BLACK-8"] and co["total"] == 139.64
     snap = client.get(f"/api/talkshop/sessions/{sid}", headers=ch).json()

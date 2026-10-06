@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSession, resetSession, streamTurn, type Stage, type TalkEvent, type TurnInput } from "../api/talkshop";
+import { maskPaymentData } from "./redact";
 
 const SESSION_KEY = "talkshop_panel_session";   // cleared on login/logout (AuthContext)
 
@@ -42,7 +43,8 @@ export function useTalkshop(getPage: () => Page) {
     busyRef.current = true;
     setBusy(true); setError(null); setStatus(null);
     try {
-      await streamTurn(sid.current, { page: pageRef.current(), ...input }, (ev) => {
+      const safe = input.text ? { ...input, text: maskPaymentData(input.text) } : input;   // card details never leave as chat
+      await streamTurn(sid.current, { page: pageRef.current(), ...safe }, (ev) => {
         if (ev.type === "status") {
           setStatus(ev.message);
           setTrace((t) => [...t.slice(-60), { agent: ev.agent, message: ev.message, at: Date.now() }]);

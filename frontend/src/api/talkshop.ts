@@ -7,7 +7,7 @@ import type { Cart, Checkout, Order, Product, ProductDetail } from "./shop";
 
 export type Stage =
   | "GREETING" | "SEARCHING" | "RECOMMENDED" | "PRODUCT_SELECTED" | "ASK_SIZE" | "ASK_COLOR" | "VARIANT_CONFIRMED"
-  | "IN_CART" | "OFFER_CHECKOUT" | "AWAITING_CONSENT" | "PAYING" | "ORDER_CONFIRMED";
+  | "IN_CART" | "OFFER_CHECKOUT" | "CHECKOUT_DETAILS" | "AWAITING_CONSENT" | "PAYING" | "ORDER_CONFIRMED";
 
 export interface OptionChoice { value: string; available: boolean; hex?: string; image_url?: string | null }
 
@@ -25,6 +25,7 @@ export type TalkEvent =
   | { type: "payment_status"; state: "processing" | "authorizing" | "authorized" | "declined" | "failed"; payment: string | null; reason?: string; message?: string }
   | { type: "order_confirmed"; order: Order }
   | { type: "login_required"; reason: string }
+  | { type: "checkout_details_needed"; checkout_id: string; needs: { address: boolean; payment: boolean } }
   | { type: "stage"; stage: Stage; step: string }
   | { type: "status"; agent: string; message: string }
   | { type: "done"; stage: Stage; step: string };
@@ -35,7 +36,9 @@ export type TalkAction =
   | { type: "choose_size" | "choose_color"; value: string }
   | { type: "checkout" } | { type: "keep_shopping" } | { type: "cancel_checkout" }
   | { type: "update_checkout"; delivery_method?: string; address_id?: string; payment_method_id?: string; quantities?: Record<string, number> }
-  | { type: "go_ahead"; checkout_id: string };
+  | { type: "go_ahead"; checkout_id: string }
+  // A secure form saved the detail on ShopSphere; Talkshop gets only the id.
+  | { type: "details_added"; address_id?: string; payment_method_id?: string };
 
 export interface TurnInput {
   text?: string;

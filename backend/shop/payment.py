@@ -12,6 +12,8 @@ Amounts always come from the server-held checkout, never from the caller.
 Each attempt gets its own payment reference (CHK_…-1, -2 …) so a declined
 card can be swapped and retried on the same checkout.
 """
+import logging
+
 from fastapi import HTTPException
 
 from backend.auth.dependencies import CurrentUser
@@ -21,6 +23,8 @@ from backend.shop import checkout as checkout_service
 from backend.shop import orders as order_service
 
 MERCHANT_ID, MERCHANT_NAME = "SHOPSPHERE", "ShopSphere"
+
+log = logging.getLogger(__name__)
 
 DECLINE_MESSAGES = {
     "CARD_DECLINED": "Your card was declined. Try a different card.",
@@ -92,9 +96,18 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool) -> dict:
         outcome = "declined" if reason in DECLINE_MESSAGES else "blocked"
         return reopen(outcome, reason, DECLINE_MESSAGES.get(reason, "Payment wasn't authorized."))
 
-    # 3. Authorized → create the order
-    with get_session() as db:
-        co = db.query(Checkout).filter_by(checkout_id=checkout_id).one()
-        order = order_service.finalize(db, co, payment_ref)
-        return {"status": "authorized", "order": order_service.order_dict(db, order),
-                "transaction_id": result.transaction_id}
+    # 3. Authorized → create the order. If that fails, release the payment so
+    # the shopper is never charged for an order that doesn't exist.
+    try:
+        with get_session() as db:
+            co = db.query(Checkout).filter_by(checkout_id=checkout_id).one()
+            order = order_service.finalize(db, co, payment_ref)
+            return {"status": "authorized", "order": order_service.order_dict(db, order),
+                    "transaction_id": result.transaction_id}
+    except Exception:
+        log.exception("order creation failed after authorization (%s); voiding", payment_ref)
+        from backend.payment.mock_processor import void_authorization
+        void_authorization(result.transaction_id)
+        return reopen("order_failed", "ORDER_CREATION_FAILED",
+                      "Your payment was approved, but ShopSphere couldn't create the order, so the payment "
+                      "was released and you haven't been charged. Please try again.")
