@@ -1,0 +1,144 @@
+"""
+Talkshop's LLM calls. Two jobs only:
+
+  decide()     — read a free-text message in context and choose an action
+                 (search / select / choose option / checkout / answer …) with
+                 its arguments, e.g. the structured search intent.
+  recommend()  — one-line reasons for the top 3, written only from the
+                 product facts ShopSphere returned.
+
+The model never produces prices, stock, totals or order numbers that get
+shown as fact — those come from tool results. Every call has a
+deterministic fallback so a model hiccup can't stall the conversation.
+"""
+import asyncio
+import json
+import logging
+from typing import Optional
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from backend.agents.vibecheck import _content_text
+from backend.guardrails.validators import extract_json_from_llm
+from backend.talkshop.tools import LLM_TOOLS
+
+log = logging.getLogger(__name__)
+
+CATEGORIES = ["running_shoes", "sneakers", "boots", "shoes", "clothing", "accessories", "bags", "sunglasses",
+              "watches", "electronics", "phones", "laptops"]
+
+
+# A shopper is waiting: fail fast to the deterministic fallback rather than
+# sit in the client's default retry backoff (seen at 200s+ on rate limits).
+LLM_TIMEOUT = 10.0
+
+
+def _llm(temperature: float = 0.1):
+    from backend.config.llm import get_llm
+    return get_llm(temperature=temperature, timeout=LLM_TIMEOUT, max_retries=1)
+
+
+async def _ask(llm, messages):
+    return await asyncio.wait_for(llm.ainvoke(messages), timeout=LLM_TIMEOUT + 2)
+
+
+_DECIDE_SYSTEM = """You are Talkshop, the shopping assistant built into the ShopSphere store.
+You read the shopper's message and choose ONE action for ShopSphere's systems to perform.
+You never invent products, prices, stock, delivery dates or order numbers.
+
+Actions you may choose (only from the allowed list you are given):
+{tools}
+
+Return ONLY a JSON object:
+{{
+  "action": "<one allowed action>",
+  "args": {{
+    "query": "<for search: the shopper's need in a few words, e.g. 'everyday running'>",
+    "category": "<for search: one of {categories} or null>",
+    "brand": "<brand named by the shopper or null>",
+    "max_price": <number or null>,
+    "gender": "<women | men | null>",
+    "color": "<colour named or null>",
+    "product_index": <for select_product: 0-based index into SHOWN PRODUCTS, or null>,
+    "size": "<for choose_option: exactly one of the offered sizes, or null>",
+    "color_choice": "<for choose_option: exactly one of the offered colours, or null>",
+    "delivery_method": "<for update_checkout: standard | express | null>",
+    "quantity": <for update_checkout: number or null>
+  }},
+  "reply": "<for answer only: 1-3 friendly sentences using ONLY the facts provided>"
+}}
+
+Rules:
+- A new product request ("I need…", "show me…", "do you have…") is "search", even mid-flow.
+- Do NOT ask for size or colour before searching — search with what you have.
+- A question about a product shown ("is it good for flat feet?") is "answer", using only the facts given.
+- If the shopper agrees to check out, choose "checkout"; if they decline, "keep_shopping".
+- Greetings and thanks are "answer".
+- Never choose an action that is not in the allowed list."""
+
+
+def _context_block(ctx: dict) -> str:
+    return json.dumps(ctx, ensure_ascii=False, default=str)
+
+
+async def decide(message: str, *, stage: str, allowed: list[str], context: dict, history: list[dict]) -> dict:
+    """Returns {"action", "args", "reply"}; falls back to a plain search/answer on any failure."""
+    tools = "\n".join(f"- {name}: {LLM_TOOLS[name]}" for name in allowed if name in LLM_TOOLS)
+    recent = "\n".join(f"{h['role']}: {h['text']}" for h in history[-6:])
+    prompt = (f"STAGE: {stage}\nALLOWED ACTIONS: {', '.join(allowed)}\n"
+              f"CONTEXT (facts from ShopSphere): {_context_block(context)}\n"
+              f"RECENT CONVERSATION:\n{recent or '(none)'}\n\nSHOPPER: {message}")
+    try:
+        resp = await _ask(_llm(), [
+            SystemMessage(content=_DECIDE_SYSTEM.format(tools=tools, categories=", ".join(CATEGORIES))),
+            HumanMessage(content=prompt),
+        ])
+        out = json.loads(extract_json_from_llm(_content_text(resp.content)))
+        action = out.get("action")
+        if action not in allowed:
+            raise ValueError(f"action {action!r} not allowed in {stage}")
+        args = out.get("args") or {}
+        if args.get("category") not in CATEGORIES:
+            args["category"] = None
+        try:
+            args["max_price"] = float(args["max_price"]) if args.get("max_price") not in (None, "") else None
+        except (TypeError, ValueError):
+            args["max_price"] = None
+        return {"action": action, "args": args, "reply": (out.get("reply") or "").strip()}
+    except Exception as exc:  # model/network/parse failure → safe deterministic default
+        log.warning("talkshop.decide fallback: %s", exc)
+        if "search" in allowed:
+            return {"action": "search", "args": {"query": message}, "reply": ""}
+        return {"action": "answer", "args": {},
+                "reply": "Sorry, I didn't quite catch that — could you say it another way?"}
+
+
+_RECOMMEND_SYSTEM = """You write short product recommendation copy for the ShopSphere store.
+Use ONLY the facts given (name, brand, price, rating, tags, description). Never invent features,
+discounts, stock or delivery promises. Do not repeat prices — the cards already show them.
+Return ONLY JSON: {"intro": "<one friendly sentence>", "reasons": {"<product_id>": "<max 12 words why it fits>"}}"""
+
+
+def fallback_reasons(products: list[dict]) -> dict:
+    return {p["product_id"]: f"Rated {p['rating']}★ — {', '.join(p['tags'][:2])}." for p in products}
+
+
+async def recommend(request: str, products: list[dict]) -> dict:
+    facts = [{"product_id": p["product_id"], "name": p["name"], "brand": p["brand"], "rating": p["rating"],
+              "review_count": p["review_count"], "tags": p["tags"], "description": p["description"]}
+             for p in products]
+    default = {"intro": f"I found {len(products)} option{'s' if len(products) != 1 else ''} for you:",
+               "reasons": fallback_reasons(products)}
+    try:
+        resp = await _ask(_llm(0.3), [
+            SystemMessage(content=_RECOMMEND_SYSTEM),
+            HumanMessage(content=f"Shopper asked: {request}\nProducts: {json.dumps(facts)}"),
+        ])
+        out = json.loads(extract_json_from_llm(_content_text(resp.content)))
+        reasons = {pid: str(r)[:120] for pid, r in (out.get("reasons") or {}).items()
+                   if pid in default["reasons"] and "$" not in str(r)}   # no invented prices
+        return {"intro": str(out.get("intro") or default["intro"])[:200],
+                "reasons": {**default["reasons"], **reasons}}
+    except Exception as exc:
+        log.warning("talkshop.recommend fallback: %s", exc)
+        return default

@@ -1,0 +1,285 @@
+"""
+Demo 1, Phase 3 — Talkshop orchestrator. Scripted conversations through
+POST /api/talkshop/turn with the LLM replaced by fakes, so these test
+Talkshop's own logic: stages, tool calls, events, and the consent gate.
+"""
+import json
+import uuid
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from backend.db.init_db import get_engine
+from backend.db.schema import Order, PaymentMethod
+from backend.main import app
+from backend.talkshop import brain
+from backend.talkshop.state import ALLOWED, Stage
+
+REAL_DECIDE = brain.decide          # kept before the autouse fake replaces it
+SPEC_REQUEST = "I need running shoes under $150 for everyday running."
+VISA = {"number": "4242 4242 4242 4242", "exp_month": 12, "exp_year": 2030, "cvc": "123", "cardholder_name": "Test"}
+HOME = {"full_name": "Test Shopper", "line1": "1 Main St", "city": "Austin", "state": "TX", "postal_code": "78701"}
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+@pytest.fixture
+def shopper(client, auth_headers):
+    client.post("/api/me/addresses", json=HOME, headers=auth_headers)
+    client.post("/api/me/payment-methods", json=VISA, headers=auth_headers)
+    return auth_headers
+
+
+@pytest.fixture(autouse=True)
+def fake_llm(monkeypatch):
+    """Deterministic stand-ins for the two LLM calls."""
+    calls = {"decide": []}
+
+    async def decide(message, *, stage, allowed, context, history):
+        calls["decide"].append({"message": message, "stage": stage, "allowed": allowed})
+        m = message.lower()
+        if "flat feet" in m:
+            return {"action": "answer", "args": {}, "reply": "It has cushioned, breathable support for everyday runs."}
+        if "gucci" in m:
+            return {"action": "search", "args": {"query": "shoes", "category": "shoes", "brand": "Gucci"}, "reply": ""}
+        if "running" in m:
+            return {"action": "search", "args": {"query": "everyday running", "category": "running_shoes",
+                                                 "max_price": 150.0}, "reply": ""}
+        return {"action": "answer", "args": {}, "reply": "Happy to help!"}
+
+    async def recommend(request, products):
+        return {"intro": "I found three options for you:", "reasons": brain.fallback_reasons(products)}
+
+    monkeypatch.setattr(brain, "decide", decide)
+    monkeypatch.setattr(brain, "recommend", recommend)
+    return calls
+
+
+def turn(client, headers, sid, *, text=None, action=None, page=None):
+    r = client.post("/api/talkshop/turn", json={"session_id": sid, "text": text, "action": action, "page": page},
+                    headers=headers)
+    assert r.status_code == 200, r.text
+    events = [json.loads(line[6:]) for block in r.text.split("\n\n") for line in block.splitlines()
+              if line.startswith("data: ")]
+    assert events[-1]["type"] == "done"
+    return events
+
+
+def of(events, kind):
+    return [e for e in events if e["type"] == kind]
+
+
+def stage(events):
+    return events[-1]["stage"]
+
+
+def orders_for(checkout_id):
+    with Session(get_engine()) as s:
+        return s.query(Order).filter(Order.order_id.like(f"{checkout_id}%")).count()
+
+
+def _to_review(client, h, sid):
+    """Drive the spec conversation up to the review card; returns the checkout."""
+    turn(client, h, sid, text=SPEC_REQUEST)
+    turn(client, h, sid, action={"type": "select", "product_id": "SSP001"})
+    turn(client, h, sid, text="Size 8.")
+    turn(client, h, sid, text="Black.")
+    ev = turn(client, h, sid, text="Yes.")
+    return of(ev, "checkout_ready")[0]["checkout"]
+
+
+# ── The spec's happy path ────────────────────────────────────────────────────
+
+def test_spec_conversation_end_to_end(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    ev = turn(client, shopper, sid, action={"type": "greet"}, page={"type": "home"})
+    assert of(ev, "message")[0]["text"].startswith("Hi ") and of(ev, "suggestions")
+
+    ev = turn(client, shopper, sid, text=SPEC_REQUEST)
+    recs = of(ev, "recommendations")[0]["products"]
+    assert [p["name"] for p in recs] == ["Runner Pro X", "FlexRun 5", "Daily Runner"]
+    assert all(p["reason"] for p in recs) and stage(ev) == "RECOMMENDED"
+    assert not of(ev, "ask_option")                       # no size/colour questions before searching
+
+    ev = turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    ask = of(ev, "ask_option")[0]
+    assert ask["option"] == "size" and {"value": "11", "available": False} in ask["choices"]
+    assert stage(ev) == "ASK_SIZE"
+
+    ev = turn(client, shopper, sid, text="Size 8.")
+    assert "Size 8 is available" in of(ev, "message")[0]["text"]
+    assert of(ev, "ask_option")[0]["option"] == "color" and stage(ev) == "ASK_COLOR"
+
+    ev = turn(client, shopper, sid, text="Black.")
+    assert of(ev, "variant_confirmed")[0]["sku"] == "SSP001-BLACK-8"
+    cart = of(ev, "cart_updated")[0]["cart"]
+    assert any(l["sku"] == "SSP001-BLACK-8" for l in cart["lines"])
+    assert of(ev, "offer_checkout") and stage(ev) == "OFFER_CHECKOUT"
+
+    ev = turn(client, shopper, sid, text="Yes.")
+    co = of(ev, "checkout_ready")[0]["checkout"]
+    assert (co["subtotal"], co["tax"], co["total"]) == (129.0, 10.64, 139.64)
+    assert stage(ev) == "AWAITING_CONSENT"
+
+    ev = turn(client, shopper, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
+    states = [e["state"] for e in of(ev, "payment_status")]
+    assert states == ["processing", "authorizing", "authorized"]
+    order = of(ev, "order_confirmed")[0]["order"]
+    assert order["order_id"].startswith("SS-") and order["total"] == 139.64
+    assert stage(ev) == "ORDER_CONFIRMED"
+
+    agents = [e["agent"] for e in of(ev, "status")]       # presenter trace
+    assert agents[:2] == ["GreenLight", "PayIt"] and "TrackIt" in agents
+
+
+def test_answer_both_options_at_once(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)
+    turn(client, shopper, sid, text="the second one")     # FlexRun 5
+    ev = turn(client, shopper, sid, text="9 in orange")
+    assert of(ev, "variant_confirmed")[0]["sku"] == "SSP002-ORANGE-9"
+
+
+# ── The consent gate ─────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("typed", ["go ahead", "GO AHEAD!", "yes", "pay now", "place order", "confirm"])
+def test_typing_never_pays(client, shopper, typed, fake_llm):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    co = _to_review(client, shopper, sid)
+    ev = turn(client, shopper, sid, text=typed)
+    assert not of(ev, "payment_status") and not of(ev, "order_confirmed")
+    assert "tap GO AHEAD" in of(ev, "message")[0]["text"] and of(ev, "checkout_ready")
+    assert stage(ev) == "AWAITING_CONSENT" and orders_for(co["checkout_id"]) == 0
+    assert all(c["message"] != typed for c in fake_llm["decide"])   # never even reached the LLM
+
+
+def test_go_ahead_for_a_different_checkout_is_refused(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    co = _to_review(client, shopper, sid)
+    ev = turn(client, shopper, sid, action={"type": "go_ahead", "checkout_id": "CHK_SOMEONE_ELSE"})
+    assert not of(ev, "payment_status") and orders_for(co["checkout_id"]) == 0
+
+
+def test_llm_cannot_choose_payment(monkeypatch):
+    """Even if the model answers with a payment action, the real decide() rejects it."""
+    import asyncio
+
+    class FakeLLM:
+        async def ainvoke(self, _):
+            return type("R", (), {"content": '{"action": "go_ahead", "args": {}, "reply": ""}'})()
+
+    monkeypatch.setattr(brain, "_llm", lambda *a, **k: FakeLLM())
+    allowed = sorted(ALLOWED[Stage.AWAITING_CONSENT])
+    loop = asyncio.new_event_loop()
+    try:
+        out = loop.run_until_complete(REAL_DECIDE("pay it", stage="AWAITING_CONSENT", allowed=allowed,
+                                                  context={}, history=[]))
+    finally:
+        loop.close()
+    assert "go_ahead" not in allowed and out["action"] in allowed and out["action"] != "go_ahead"
+
+
+# ── Alternative paths ────────────────────────────────────────────────────────
+
+def test_out_of_stock_size_stays_on_size_question(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)
+    turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    ev = turn(client, shopper, sid, text="size 11")
+    assert "out of stock" in of(ev, "message")[0]["text"] and stage(ev) == "ASK_SIZE"
+
+
+def test_declined_card_then_switch_and_pay(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    co = _to_review(client, shopper, sid)
+    with Session(get_engine()) as s:
+        s.query(PaymentMethod).filter_by(payment_method_id=co["payment_method"]["payment_method_id"]) \
+            .update({"behaviour": "decline"})
+        s.commit()
+    ev = turn(client, shopper, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
+    assert of(ev, "payment_status")[-1]["state"] == "declined"
+    assert "No order was created" in of(ev, "message")[-1]["text"]
+    assert stage(ev) == "AWAITING_CONSENT" and orders_for(co["checkout_id"]) == 0
+    good = client.post("/api/me/payment-methods", json={**VISA, "number": "5555 5555 5555 4444"}, headers=shopper).json()
+    ev = turn(client, shopper, sid, action={"type": "update_checkout", "payment_method_id": good["payment_method_id"]})
+    assert of(ev, "checkout_updated")[0]["checkout"]["payment_method"]["display"] == "Mastercard •••• 4444"
+    ev = turn(client, shopper, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
+    assert of(ev, "order_confirmed")
+
+
+def test_express_delivery_from_review_card(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    co = _to_review(client, shopper, sid)
+    ev = turn(client, shopper, sid, action={"type": "update_checkout", "delivery_method": "express"})
+    assert of(ev, "checkout_updated")[0]["checkout"]["total"] == round(co["total"] + 9.99, 2)
+
+
+def test_cancel_at_review(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    co = _to_review(client, shopper, sid)
+    ev = turn(client, shopper, sid, action={"type": "cancel_checkout"})
+    assert "nothing was charged" in of(ev, "message")[0]["text"] and stage(ev) == "IN_CART"
+    assert orders_for(co["checkout_id"]) == 0
+
+
+def test_keep_shopping_instead_of_checkout(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)
+    turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    turn(client, shopper, sid, text="8")
+    turn(client, shopper, sid, text="white")
+    ev = turn(client, shopper, sid, text="no thanks")
+    assert "saved in your ShopSphere cart" in of(ev, "message")[0]["text"] and stage(ev) == "IN_CART"
+
+
+def test_question_mid_flow_keeps_the_stage(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)
+    turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    turn(client, shopper, sid, text="8")
+    ev = turn(client, shopper, sid, text="Is it good for flat feet?")
+    assert "cushioned" in of(ev, "message")[0]["text"] and stage(ev) == "ASK_COLOR"
+
+
+def test_brand_shopsphere_does_not_carry(client, shopper):
+    ev = turn(client, shopper, f"t-{uuid.uuid4().hex[:8]}", text="Show me Gucci shoes")
+    assert "doesn't carry Gucci" in of(ev, "message")[0]["text"] and of(ev, "recommendations")
+
+
+def test_ask_about_from_product_page_skips_search(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    ev = turn(client, shopper, sid, action={"type": "ask_about", "product_id": "SSP002"},
+              page={"type": "product", "product_id": "SSP002"})
+    assert of(ev, "product_selected")[0]["from_page"] and of(ev, "ask_option")[0]["option"] == "size"
+
+
+def test_single_option_product_skips_questions(client, shopper):
+    ev = turn(client, shopper, f"t-{uuid.uuid4().hex[:8]}", action={"type": "select", "product_id": "SSP049"})
+    assert not of(ev, "ask_option")                       # AirPods: one size, one colour
+    assert of(ev, "variant_confirmed")[0]["sku"] == "SSP049-WHITE" and of(ev, "offer_checkout")
+
+
+def test_checkout_covers_only_this_conversations_items(client, shopper):
+    other = client.post("/api/cart/lines", json={"sku": "SSP059-BLACK"}, headers=shopper).json()["added_line_id"]
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    co = _to_review(client, shopper, sid)
+    assert [l["sku"] for l in co["lines"]] == ["SSP001-BLACK-8"]
+    assert any(l["line_id"] == other for l in client.get("/api/cart/lines", headers=shopper).json()["lines"])
+
+
+def test_session_endpoint_rebuilds_the_panel(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)
+    snap = client.get(f"/api/talkshop/sessions/{sid}", headers=shopper).json()
+    assert snap["stage"] == "RECOMMENDED" and any(e["type"] == "recommendations" for e in snap["transcript"])
+    assert not any(e["type"] == "status" for e in snap["transcript"])
+    client.delete(f"/api/talkshop/sessions/{sid}", headers=shopper)
+    assert client.get(f"/api/talkshop/sessions/{sid}", headers=shopper).json()["transcript"] == []
+
+
+def test_talkshop_requires_login(client):
+    assert client.post("/api/talkshop/turn", json={"session_id": "abcd", "text": "hi"}).status_code == 401

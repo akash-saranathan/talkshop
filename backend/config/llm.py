@@ -13,16 +13,24 @@ MODEL_NAME = "gemini-3.5-flash-lite"
 _resolved: dict | None = None
 
 
-def get_llm(temperature: float = 0.1):
-    """Return a configured ChatGoogleGenerativeAI instance."""
+def get_llm(temperature: float = 0.1, timeout: float | None = None, max_retries: int | None = None):
+    """Return a configured ChatGoogleGenerativeAI instance. timeout/max_retries
+    let latency-sensitive callers (Talkshop) fail fast instead of sitting in
+    the client's default retry backoff when the API rate-limits."""
     from langchain_google_genai import ChatGoogleGenerativeAI
     api_key = os.getenv("GOOGLE_API_KEY", "")
     if not api_key:
         _hard_stop()
+    extra = {}
+    if timeout is not None:
+        extra["timeout"] = timeout
+    if max_retries is not None:
+        extra["max_retries"] = max_retries
     return ChatGoogleGenerativeAI(
         model=MODEL_NAME,
         temperature=temperature,
         google_api_key=api_key,
+        **extra,
     )
 
 

@@ -1,0 +1,157 @@
+"""
+Deterministic reading of short, predictable replies — "size 8", "black",
+"the first one", "yes", "keep shopping". These are matched exactly against
+the options ShopSphere actually offers, so the common path is fast and
+never depends on the LLM guessing. Anything else goes to the LLM.
+"""
+import re
+from typing import Optional
+
+_NUM_WORDS = {"one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7",
+              "eight": "8", "nine": "9", "ten": "10", "eleven": "11", "twelve": "12", "thirteen": "13"}
+_SIZE_WORDS = {"extra small": "XS", "x-small": "XS", "small": "S", "medium": "M", "large": "L",
+               "extra large": "XL", "x-large": "XL", "xx-large": "XXL", "double xl": "XXL"}
+_COLOR_SYNONYMS = {"gray": "grey", "navy blue": "navy", "dark grey": "graphite", "rose gold": "gold"}
+# Ordinal words first: in "the second one", "second" must win over "one".
+_ORDINALS = {"first": 0, "1st": 0, "second": 1, "2nd": 1, "third": 2, "3rd": 2,
+             "number one": 0, "number two": 1, "number three": 2}
+
+YES = {"yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "yes please", "proceed", "checkout",
+       "check out", "yes checkout", "yes, checkout", "let's do it", "lets do it", "sounds good", "go for it",
+       "proceed to checkout", "yes proceed", "do it", "sure thing"}
+NO = {"no", "n", "nope", "not now", "keep shopping", "later", "maybe later", "no thanks", "no thank you",
+      "not yet", "continue shopping", "nah"}
+# Phrases that sound like payment consent. Typed text is NEVER consent — in the
+# review stage these just point the shopper at the GO AHEAD button.
+PAY_PHRASES = ("go ahead", "pay", "place order", "place the order", "buy now", "confirm", "complete",
+               "purchase", "submit order", "checkout now")
+
+
+def norm(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip().lower().rstrip(".!?"))
+
+
+def is_yes(text: str) -> bool:
+    return norm(text) in YES
+
+
+def is_no(text: str) -> bool:
+    return norm(text) in NO
+
+
+def sounds_like_payment(text: str) -> bool:
+    t = norm(text)
+    return any(p in t for p in PAY_PHRASES) or t in YES
+
+
+def pick_shown(text: str, names: list[str]) -> Optional[int]:
+    """'the first one' / '#2' / 'the last' / a product's name → index into the shown list."""
+    t = norm(text)
+    if not names:
+        return None
+    for i, name in enumerate(names):                      # full name wins
+        if norm(name) in t:
+            return i
+    if re.search(r"\blast\b", t):
+        return len(names) - 1
+    m = re.search(r"(?:#|number |no\.? ?|option )?\b([1-9])\b", t)
+    if m and len(t) <= 20 and 1 <= int(m.group(1)) <= len(names):
+        return int(m.group(1)) - 1
+    for word, idx in _ORDINALS.items():
+        if re.search(rf"\b{re.escape(word)}\b", t) and idx < len(names) and len(t) <= 30:
+            return idx
+    # A distinctive word from one name only ("the pegasus", "flexrun")
+    words = {w for w in re.findall(r"[a-z0-9]+", t) if len(w) > 3}
+    hits = [i for i, n in enumerate(names) if words & {w for w in re.findall(r"[a-z0-9]+", n.lower()) if len(w) > 3}]
+    return hits[0] if len(hits) == 1 else None
+
+
+def pick_size(text: str, sizes: list[str]) -> Optional[str]:
+    """Match a reply to one of the offered sizes/options (8, M, 256GB, 41mm …)."""
+    if not sizes:
+        return None
+    t = norm(text)
+    for word, num in _NUM_WORDS.items():
+        t = re.sub(rf"\b{word}\b", num, t)
+    for phrase, code in sorted(_SIZE_WORDS.items(), key=lambda kv: -len(kv[0])):
+        t = re.sub(rf"\b{phrase}\b", code.lower(), t)
+    compact = t.replace(" ", "")
+    by_norm = {s.lower(): s for s in sizes}
+    for key in sorted(by_norm, key=len, reverse=True):     # "256gb" before "25"
+        if re.search(rf"(?<![a-z0-9.]){re.escape(key)}(?![a-z0-9])", t) or compact == key:
+            return by_norm[key]
+    m = re.search(r"\b(\d{1,2})(?:\.0)?\b", t)
+    if m and m.group(1) in sizes:
+        return m.group(1)
+    return None
+
+
+def pick_color(text: str, colors: list[str]) -> Optional[str]:
+    t = norm(text)
+    for alias, real in _COLOR_SYNONYMS.items():
+        t = re.sub(rf"\b{alias}\b", real, t)
+    for c in sorted(colors, key=len, reverse=True):        # "light blue" before "blue"
+        if re.search(rf"\b{re.escape(c.lower())}\b", t):
+            return c
+    return None
+
+
+def gender_of(text: str) -> Optional[str]:
+    t = norm(text)
+    if re.search(r"\b(women'?s?|woman|ladies|lady|her|girls?|female|sister|wife|mom|mum|mother|"
+                 r"girlfriend|daughter|aunt|grandma)\b", t):
+        return "women"
+    if re.search(r"\b(men'?s?|man|guys?|him|boys?|male|gents?|brother|husband|dad|father|"
+                 r"boyfriend|son|uncle|grandpa)\b", t):
+        return "men"
+    return None
+
+
+# ── Clear shopping requests (skip the LLM round-trip) ────────────────────────
+
+_CATEGORY_WORDS = [  # longest/most specific first
+    (r"running shoes?|running sneakers?|jogging shoes?|runners", "running_shoes"),
+    (r"hiking boots?|chelsea boots?|boots?", "boots"),
+    (r"sneakers?|trainers|high[- ]tops?|canvas shoes?", "sneakers"),
+    (r"sandals?|flip[- ]flops?|slides|heels|pumps|dress shoes?|oxfords?|derbys?|loafers?|shoes?", "shoes"),
+    (r"smart ?watch(?:es)?|apple watch|fitness (?:tracker|band)s?|watch(?:es)?", "watches"),
+    (r"head ?phones?|ear ?buds|earphones|airpods|speakers?", "electronics"),
+    (r"smart ?phones?|iphones?|phones?|galaxy", "phones"),
+    (r"laptops?|macbooks?|notebook computers?", "laptops"),
+    (r"sunglasses|shades", "sunglasses"),
+    (r"hand ?bags?|backpacks?|clutch(?:es)?|totes?|crossbody|purses?|bags?", "bags"),
+    (r"dress(?:es)?|gowns?|t-?shirts?|tees?|shirts?|polos?|jeans|chinos|pants|trousers|jackets?|sweaters?|"
+     r"hoodies?|sweatshirts?|turtlenecks?|ponchos?|tops?", "clothing"),
+    (r"belts?|wallets?|scarf|scarves", "accessories"),
+]
+_BUDGET = re.compile(r"(?:under|below|less than|up to|max(?:imum)?|within|no more than|cheaper than)\s*\$?\s*(\d+(?:\.\d+)?)"
+                     r"|\$\s*(\d+(?:\.\d+)?)\s*(?:or less|max|tops)")
+_REQUEST = re.compile(r"\b(need|want|looking for|show me|find|get me|buy|shopping for|do you have|any|"
+                      r"recommend|suggest|i'?d like|searching for|gift)\b")
+CARRIED_BRANDS = {"nike": "Nike", "adidas": "Adidas", "converse": "Converse", "levi's": "Levi's", "levis": "Levi's",
+                  "ray-ban": "Ray-Ban", "rayban": "Ray-Ban", "sony": "Sony", "apple": "Apple", "samsung": "Samsung",
+                  "jbl": "JBL"}
+# Well-known brands ShopSphere doesn't stock → "we don't carry X, here are similar".
+NOT_CARRIED = ["gucci", "prada", "puma", "reebok", "new balance", "asics", "hoka", "under armour", "zara", "h&m",
+               "lululemon", "bose", "beats", "dell", "lenovo", "google", "pixel", "oneplus", "fossil", "michael kors",
+               "coach", "louis vuitton", "chanel", "balenciaga", "vans", "skechers", "timberland", "north face",
+               "patagonia", "uniqlo", "garmin", "fitbit", "microsoft", "versace", "burberry", "hermes"]
+
+
+def search_intent(text: str) -> Optional[dict]:
+    """A clear product request ("running shoes under $150 for everyday running")
+    parsed into search arguments, or None if the LLM should read it."""
+    t = norm(text)
+    category = next((cat for pattern, cat in _CATEGORY_WORDS if re.search(rf"\b(?:{pattern})\b", t)), None)
+    if not category:
+        return None
+    if t.endswith("?") or text.strip().endswith("?"):
+        if not _REQUEST.search(t):        # "is it a good running shoe?" is a question, not a search
+            return None
+    m = _BUDGET.search(t)
+    budget = float(m.group(1) or m.group(2)) if m else None
+    brand = next((name for key, name in CARRIED_BRANDS.items() if re.search(rf"\b{re.escape(key)}\b", t)), None)
+    if not brand:
+        missing = next((b for b in NOT_CARRIED if re.search(rf"\b{re.escape(b)}\b", t)), None)
+        brand = missing.title() if missing else None
+    return {"query": text, "category": category, "max_price": budget, "gender": gender_of(text), "brand": brand}

@@ -162,7 +162,13 @@ def search(
     elif sort == "new":
         products.sort(key=lambda p: (not p.is_new, -(p.rating or 0)))
     else:  # relevance, then rating as the tie-break
-        products.sort(key=lambda p: (-_relevance(p, query_words, phrase), -(p.rating or 0), -(p.review_count or 0)))
+        scored = [(_relevance(p, query_words, phrase), p) for p in products]
+        if query_words and any(score > 0 for score, _ in scored):
+            # The shopper's words matched something: don't pad results with
+            # products that match none of them (no AirPods for "cozy sweater").
+            scored = [(score, p) for score, p in scored if score > 0]
+        scored.sort(key=lambda sp: (-sp[0], -(sp[1].rating or 0), -(sp[1].review_count or 0)))
+        products = [p for _, p in scored]
     return products[:limit] if limit else products
 
 
