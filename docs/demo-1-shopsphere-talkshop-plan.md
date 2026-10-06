@@ -16,14 +16,14 @@
 
 ### Progress
 
-**Phases approved: 2 / 8 · Steps done: 19 / 64** · Phase 2 👀 ready for your review
+**Phases approved: 3 / 8 · Steps done: 31 / 64** · Phase 3 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
 | 0 | Groundwork | 4 / 4 | ✅ Approved |
 | 1 | ShopSphere catalog and data foundation | 7 / 7 | ✅ Approved |
-| 2 | ShopSphere merchant services (APIs) | 8 / 8 | 👀 Ready for your review |
-| 3 | Talkshop orchestrator (AI layer) | 0 / 12 | ⬜ Not started |
+| 2 | ShopSphere merchant services (APIs) | 8 / 8 | ✅ Approved |
+| 3 | Talkshop orchestrator (AI layer) | 12 / 12 | 👀 Ready for your review |
 | 4 | ShopSphere storefront (website) | 0 / 10 | ⬜ Not started |
 | 5 | Talkshop panel (inside ShopSphere) | 0 / 11 | ⬜ Not started |
 | 6 | Connecting ShopSphere and Talkshop | 0 / 6 | ⬜ Not started |
@@ -60,22 +60,22 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 2.7 Order service (`SS-#####`, reduce stock, save everything, tracking)
 - [x] 2.8 API tests: happy path + every §7 alternative path
 - [x] **Checkpoint:** full purchase flow passes as API tests with no LLM *(206 tests pass, incl. 21 service tests covering every §7 path)*
-- [ ] **Approved, proceed to Phase 3**
+- [x] **Approved, proceed to Phase 3**
 
 ### Phase 3: Talkshop orchestrator (AI layer)
-- [ ] 3.1 Stage tracker (stages and allowed transitions)
-- [ ] 3.2 Intent extraction without questions before searching
-- [ ] 3.3 Tool layer (8 tools calling the Phase 2 services)
-- [ ] 3.4 Orchestrator loop (stage → LLM decision → tool → events)
-- [ ] 3.5 Top 3 + one-line reasons from returned facts only
-- [ ] 3.6 Option questions (size → colour) with inventory checks
-- [ ] 3.7 Cart → offer checkout → checkout for this conversation's items only
-- [ ] 3.8 Consent gate: payment only from the GO AHEAD event
-- [ ] 3.9 Structured event stream (§9.4)
-- [ ] 3.10 Page context + "Ask Talkshop about this" entry
-- [ ] 3.11 Old browser-run cart and checkout actions retired
-- [ ] 3.12 Orchestrator tests (incl. "typing go ahead never pays")
-- [ ] **Checkpoint:** demo script runs through the stream with the right events
+- [x] 3.1 Stage tracker (stages and allowed transitions)
+- [x] 3.2 Intent extraction without questions before searching
+- [x] 3.3 Tool layer (8 tools calling the Phase 2 services)
+- [x] 3.4 Orchestrator loop (stage → LLM decision → tool → events)
+- [x] 3.5 Top 3 + one-line reasons from returned facts only
+- [x] 3.6 Option questions (size → colour) with inventory checks
+- [x] 3.7 Cart → offer checkout → checkout for this conversation's items only
+- [x] 3.8 Consent gate: payment only from the GO AHEAD event
+- [x] 3.9 Structured event stream (§9.4)
+- [x] 3.10 Page context + "Ask Talkshop about this" entry
+- [x] 3.11 Old browser-run cart and checkout actions retired *(Talkshop's new orchestrator has none. The old `/api/chat` code path is deleted together with the old chat page in 5.11, so today's chat keeps working until the new panel replaces it)*
+- [x] 3.12 Orchestrator tests (incl. "typing go ahead never pays")
+- [x] **Checkpoint:** demo script runs through the stream with the right events *(228 tests pass incl. 22 orchestrator tests; live run with Gemini: spec flow end to end, order SS-#####, typed "go ahead" never pays)*
 - [ ] **Approved, proceed to Phase 4**
 
 ### Phase 4: ShopSphere storefront (website)
@@ -575,6 +575,10 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
 | 3.12 | Tests | Scripted conversations: happy path, out-of-stock size, decline, cancel, mid-flow question, **typing "go ahead" never pays** | new `tests/test_talkshop_orchestrator.py` |
 
 ✅ **Checkpoint:** the §14 demo script runs through the stream (with no UI) and emits the right events at each step. Payment is impossible without the GO AHEAD event.
+
+**As built (Phase 3):** `backend/talkshop/` holds `state.py` (stages + allowed actions), `parse.py` (exact reading of predictable replies and clear product requests), `tools.py` (ShopSphere services as tools; `confirm_and_pay` is not an LLM tool), `brain.py` (LLM decide + recommendation copy, with timeouts and fallbacks) and `orchestrator.py`. Endpoint: **`POST /api/talkshop/turn`** `{session_id, text | action, page}` → event stream. Plus `GET/DELETE /api/talkshop/sessions/{id}` to rebuild or reset the panel. It is a new endpoint rather than a rewrite of `/api/chat/stream`, so the current chat keeps working until Phase 5.
+- **Speed:** the first live run took up to **203 s** per turn, because the Gemini client silently retried with growing waits when rate-limited. Fixed: Talkshop's LLM calls have a 10 s timeout and at most 1 retry, falling back to deterministic behaviour, and clear product requests skip the LLM entirely. Live turns are now **0.1–5.5 s**.
+- **Search quality:** when a request matches some products, search no longer pads the top 3 with unrelated ones. Relationship words (sister, dad…) set women/men.
 
 ---
 
