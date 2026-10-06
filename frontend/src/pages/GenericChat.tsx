@@ -22,6 +22,7 @@ import { useAuth } from "../auth/AuthContext";
 import { authFetch, getToken } from "../api/client";
 import ProtocolTracePanel, { type ProtocolEvent } from "../components/ProtocolTracePanel";
 import { mockTokenize, formatCardNumber, formatExpiry, type TokenizedCard } from "../utils/mockTokenizer";
+import { getProductImageUrl } from "../utils/productImages";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -100,12 +101,6 @@ function ProtocolStack({ useAcp }: { useAcp: boolean }) {
 
 // ── Product card (simplified — direct-purchase flow) ──────────────────────────
 
-// Deterministic photo seed: maps product id to a Picsum photo number (consistent per product)
-function picsum(id: string, w = 300, h = 200): string {
-  // Use the product id as seed → always same photo for same product
-  return `https://picsum.photos/seed/${encodeURIComponent(id)}/${w}/${h}`;
-}
-
 // Merchant brand colors used as fallback background
 const MERCHANT_BG: Record<string, { grad: string }> = {
   nike:   { grad: "from-blue-500 to-blue-700"   },
@@ -141,7 +136,7 @@ function GenericProductCard({
       <div className={`relative h-28 rounded-lg overflow-hidden ${!imgOk ? `bg-gradient-to-br ${fbGrad}` : "bg-[var(--color-surface-2)]"}`}>
         {imgOk && (
           <img
-            src={picsum(product.id)}
+            src={getProductImageUrl(product.merchant_id, product.id)}
             alt={product.title}
             className="w-full h-full object-cover"
             onError={() => setImgOk(false)}
@@ -268,6 +263,10 @@ export default function GenericChat() {
   const [useAcp, setUseAcp] = useState(!isGuest);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // ── Session history (sidebar) ─────────────────────────────────────────────
+  interface HistoryEntry { query: string; orderLabel?: string; ts: string }
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+
   // ── Protocol trace ───────────────────────────────────────────────────────
   const [protocolEvents, setProtocolEvents] = useState<ProtocolEvent[]>([]);
   const [traceOpen, setTraceOpen] = useState(true);
@@ -347,6 +346,8 @@ export default function GenericChat() {
   const launchSearch = (q: string) => {
     if (!q.trim() || flowState !== "idle") return;
     setQuery(q);
+    // Save to sidebar history
+    setHistory((h) => [{ query: q, ts: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) }, ...h]);
 
     const sid = crypto.randomUUID().replace(/-/g, "");
     setSessionId(sid);
@@ -391,6 +392,8 @@ export default function GenericChat() {
       const data = JSON.parse(ev.data);
       setOrderInfo(data);
       setFlowState("complete");
+      // Annotate the sidebar history entry with the order label
+      setHistory((h) => h.map((e, i) => i === 0 ? { ...e, orderLabel: data.order_label } : e));
       es.close();
     });
 
@@ -478,20 +481,29 @@ export default function GenericChat() {
           <span className="text-sm font-bold text-[var(--color-primary)]">Talkshop</span>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
           <button
             onClick={newSearch}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-dashed border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-dashed border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors mb-2"
           >
             <Plus size={14} /> New search
           </button>
-          {query && flowState !== "idle" && (
-            <div className="mt-3">
-              <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide px-1 mb-1.5">Current</p>
-              <div className="px-3 py-2 rounded-lg bg-[var(--color-primary-bg)] border border-[var(--color-primary)]/20">
-                <p className="text-xs text-[var(--color-text)] line-clamp-2">{query}</p>
-              </div>
-            </div>
+
+          {history.length > 0 && (
+            <>
+              <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide px-1 mb-1">History</p>
+              {history.map((entry, i) => (
+                <div key={i}
+                  className={`px-3 py-2 rounded-lg border text-left ${i === 0 && flowState !== "idle"
+                    ? "bg-[var(--color-primary-bg)] border-[var(--color-primary)]/30"
+                    : "bg-[var(--color-surface)] border-[var(--color-border)]"}`}>
+                  <p className="text-xs font-medium text-[var(--color-text)] line-clamp-2">{entry.query}</p>
+                  {entry.orderLabel
+                    ? <p className="text-[10px] text-emerald-600 mt-0.5">✓ {entry.orderLabel}</p>
+                    : <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{entry.ts}</p>}
+                </div>
+              ))}
+            </>
           )}
         </div>
 
@@ -509,19 +521,9 @@ export default function GenericChat() {
 
         {/* Header */}
         <header className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
-          <span className="text-sm font-semibold text-[var(--color-text)]">Generic Agent</span>
-
-          {/* Protocol mode toggle */}
-          <div className="flex items-center gap-1.5 ml-2">
-            <span className="text-[10px] text-[var(--color-text-muted)]">Mode:</span>
-            <button
-              onClick={() => setUseAcp((v) => !v)}
-              disabled={flowState !== "idle"}
-              title={useAcp ? "Click to switch to pre-registered instruments" : "Click to switch to card + ACP"}
-              className="flex items-center"
-            >
-              <ProtocolStack useAcp={useAcp} />
-            </button>
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold text-[var(--color-text)]">Intelligent Agentic Commerce</span>
+            <span className="text-[10px] text-[var(--color-text-muted)]">Powered by A2A · UCP · ACP · AP2</span>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
@@ -765,7 +767,7 @@ export default function GenericChat() {
               {/* Product + payment */}
               <div className="px-4 py-3 border-b border-emerald-200 flex items-center gap-3">
                 <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-emerald-200">
-                  <img src={picsum(orderInfo.product.id ?? orderInfo.order_id, 48, 48)}
+                  <img src={getProductImageUrl(orderInfo.product.merchant ?? "", orderInfo.product.id ?? orderInfo.order_id, 48, 48)}
                     alt="" className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
