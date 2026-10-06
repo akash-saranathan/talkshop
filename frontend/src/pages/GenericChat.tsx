@@ -100,14 +100,20 @@ function ProtocolStack({ useAcp }: { useAcp: boolean }) {
 
 // ── Product card (simplified — direct-purchase flow) ──────────────────────────
 
-// Merchant brand colors for product card backgrounds
-const MERCHANT_BG: Record<string, { grad: string; icon: string }> = {
-  nike:   { grad: "from-blue-500 to-blue-700",    icon: "text-white" },
-  adidas: { grad: "from-slate-600 to-slate-800",   icon: "text-white" },
-  zara:   { grad: "from-rose-400 to-rose-600",     icon: "text-white" },
-  hm:     { grad: "from-pink-400 to-pink-600",     icon: "text-white" },
-  fossil: { grad: "from-stone-500 to-stone-700",   icon: "text-white" },
-  casio:  { grad: "from-teal-500 to-teal-700",     icon: "text-white" },
+// Deterministic photo seed: maps product id to a Picsum photo number (consistent per product)
+function picsum(id: string, w = 300, h = 200): string {
+  // Use the product id as seed → always same photo for same product
+  return `https://picsum.photos/seed/${encodeURIComponent(id)}/${w}/${h}`;
+}
+
+// Merchant brand colors used as fallback background
+const MERCHANT_BG: Record<string, { grad: string }> = {
+  nike:   { grad: "from-blue-500 to-blue-700"   },
+  adidas: { grad: "from-slate-600 to-slate-800"  },
+  zara:   { grad: "from-rose-400 to-rose-600"    },
+  hm:     { grad: "from-pink-400 to-pink-600"    },
+  fossil: { grad: "from-stone-500 to-stone-700"  },
+  casio:  { grad: "from-teal-500 to-teal-700"    },
 };
 
 function GenericProductCard({
@@ -121,8 +127,8 @@ function GenericProductCard({
   };
   const badgeClass = merchantBadgeColors[product.merchant_id] ?? "bg-slate-100 text-slate-600";
   const available = product.variants.some((v) => v.available);
-  const bg = MERCHANT_BG[product.merchant_id] ?? { grad: "from-slate-400 to-slate-600", icon: "text-white" };
-  const isWatch = product.category?.toLowerCase().includes("watch");
+  const fbGrad = (MERCHANT_BG[product.merchant_id] ?? { grad: "from-slate-400 to-slate-600" }).grad;
+  const [imgOk, setImgOk] = useState(true);
 
   return (
     <motion.div
@@ -131,20 +137,26 @@ function GenericProductCard({
       transition={{ delay: index * 0.05 }}
       className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 flex flex-col gap-2"
     >
-      {/* Merchant-colored product image area */}
-      <div className={`relative h-24 rounded-lg bg-gradient-to-br ${bg.grad} flex items-center justify-center overflow-hidden`}>
+      {/* Product image — Picsum seeded by product id; fallback to brand gradient */}
+      <div className={`relative h-28 rounded-lg overflow-hidden ${!imgOk ? `bg-gradient-to-br ${fbGrad}` : "bg-[var(--color-surface-2)]"}`}>
+        {imgOk && (
+          <img
+            src={picsum(product.id)}
+            alt={product.title}
+            className="w-full h-full object-cover"
+            onError={() => setImgOk(false)}
+          />
+        )}
+        {!imgOk && (
+          <div className="flex items-center justify-center h-full">
+            <ShoppingBag size={32} className="text-white opacity-60" strokeWidth={1.5} />
+          </div>
+        )}
         {index < 3 && (
-          <span className={`absolute top-1 left-1 w-5 h-5 rounded-full text-[10px] font-bold grid place-items-center bg-white/20 text-white`}>
+          <span className="absolute top-1 left-1 w-5 h-5 rounded-full text-[10px] font-bold grid place-items-center bg-black/40 text-white">
             #{index + 1}
           </span>
         )}
-        <div className="flex flex-col items-center gap-1 opacity-80">
-          {isWatch
-            ? <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={bg.icon}><circle cx="12" cy="12" r="6"/><polyline points="12 10 12 12 13 13"/><path d="M9 2h6M9 22h6"/></svg>
-            : <ShoppingBag size={32} className={bg.icon} strokeWidth={1.5} />
-          }
-          <span className={`text-[10px] font-bold tracking-widest uppercase ${bg.icon} opacity-60`}>{product.merchant_id}</span>
-        </div>
       </div>
 
       <span className={`self-start text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${badgeClass}`}>
@@ -735,45 +747,92 @@ export default function GenericChat() {
             </motion.div>
           )}
 
-          {/* Order complete */}
+          {/* Order complete — full confirmation + delivery tracker */}
           {orderInfo && flowState === "complete" && (
             <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
-              className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 size={20} className="text-emerald-600 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-emerald-800">{orderInfo.order_label}</p>
-                  <p className="text-xs text-emerald-700 mt-0.5">
-                    {orderInfo.product.title} · {orderInfo.product.merchant}
+              className="rounded-xl border border-emerald-200 bg-emerald-50 overflow-hidden">
+
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 py-3 bg-emerald-500">
+                <CheckCircle2 size={18} className="text-white shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-white">{orderInfo.order_label}</p>
+                  <p className="text-[11px] text-emerald-100">{orderInfo.product.merchant}</p>
+                </div>
+                <span className="text-sm font-bold text-white">${orderInfo.totals.total?.toFixed(2)}</span>
+              </div>
+
+              {/* Product + payment */}
+              <div className="px-4 py-3 border-b border-emerald-200 flex items-center gap-3">
+                <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-emerald-200">
+                  <img src={picsum(orderInfo.product.id ?? orderInfo.order_id, 48, 48)}
+                    alt="" className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-emerald-900 line-clamp-1">{orderInfo.product.title}</p>
+                  <p className="text-[11px] text-emerald-700 mt-0.5">
+                    Paid with {orderInfo.payment_display.brand} •••• {orderInfo.payment_display.last4}
                   </p>
                 </div>
               </div>
 
-              {/* Total */}
-              <div className="text-xs text-emerald-700 flex gap-4">
-                <span>Total paid: <strong>${orderInfo.totals.total?.toFixed(2)}</strong></span>
-                <span>{orderInfo.payment_display.brand} •••• {orderInfo.payment_display.last4}</span>
+              {/* Delivery stepper */}
+              <div className="px-4 py-3 border-b border-emerald-200">
+                <p className="text-[10px] font-semibold text-emerald-700 mb-3 uppercase tracking-wide">Delivery Status</p>
+                <div className="flex items-center gap-0">
+                  {["Order Placed", "Processing", "Shipped", "Out for Delivery", "Delivered"].map((step, i) => {
+                    const active = i === 1; // "Processing" — order just placed
+                    const done   = i === 0;
+                    return (
+                      <div key={step} className="flex-1 flex flex-col items-center gap-1">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all
+                          ${done   ? "bg-emerald-500 border-emerald-500 text-white"  : ""}
+                          ${active ? "bg-emerald-600 border-emerald-600 text-white ring-2 ring-emerald-300" : ""}
+                          ${!done && !active ? "bg-white border-emerald-200 text-emerald-300" : ""}`}>
+                          {done ? "✓" : i + 1}
+                        </div>
+                        <span className={`text-[9px] text-center leading-tight
+                          ${done || active ? "text-emerald-700 font-medium" : "text-emerald-400"}`}>
+                          {step}
+                        </span>
+                        {i < 4 && (
+                          <div className={`absolute mt-3 h-0.5 w-full max-w-[calc(100%-24px)]
+                            ${done ? "bg-emerald-400" : "bg-emerald-200"}`} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-emerald-600 mt-3">
+                  Estimated delivery: <strong>{(() => {
+                    const d = new Date(); d.setDate(d.getDate() + 3);
+                    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                  })()}</strong>
+                </p>
               </div>
 
-              {/* Mandate chain summary */}
-              <div className="rounded-lg bg-white/60 border border-emerald-100 px-3 py-2">
-                <p className="text-[10px] font-semibold text-emerald-600 mb-1.5">AP2 Mandate Chain</p>
+              {/* AP2 mandate chain */}
+              <div className="px-4 py-3 border-b border-emerald-200">
+                <p className="text-[10px] font-semibold text-emerald-600 mb-1.5 uppercase tracking-wide">AP2 Mandate Chain</p>
                 {[
-                  ["Intent", orderInfo.mandates.intent],
-                  ["Cart",   orderInfo.mandates.cart],
-                  ["Payment",orderInfo.mandates.payment],
+                  ["Intent",  orderInfo.mandates.intent],
+                  ["Cart",    orderInfo.mandates.cart],
+                  ["Payment", orderInfo.mandates.payment],
                 ].map(([label, id]) => (
-                  <div key={label} className="flex items-start gap-1.5 text-[10px] text-emerald-700 py-0.5">
+                  <div key={label} className="flex items-center gap-1.5 text-[10px] text-emerald-700 py-0.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-400 text-white text-[8px] font-bold grid place-items-center shrink-0">✓</span>
                     <span className="font-medium w-12 shrink-0">{label}</span>
-                    <span className="text-[9px] font-mono text-emerald-600/80 break-all">{id.slice(0, 42)}…</span>
+                    <span className="text-[9px] font-mono text-emerald-600/70 truncate">{id.slice(0, 36)}…</span>
                   </div>
                 ))}
               </div>
 
-              <button onClick={newSearch}
-                className="w-full py-2 rounded-lg text-xs font-medium border border-emerald-300 text-emerald-700 hover:bg-emerald-100 transition-colors">
-                Start new search
-              </button>
+              <div className="px-4 py-3">
+                <button onClick={newSearch}
+                  className="w-full py-2 rounded-lg text-xs font-medium border border-emerald-300 text-emerald-700 hover:bg-emerald-100 transition-colors">
+                  Start new search
+                </button>
+              </div>
             </motion.div>
           )}
 
