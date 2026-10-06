@@ -67,6 +67,7 @@ class Session:
     color: Optional[str] = None
     sku: Optional[str] = None
     line_ids: list[str] = field(default_factory=list)       # cart lines Talkshop added in this conversation
+    added_qty: dict[str, int] = field(default_factory=dict)  # how many of each line Talkshop added
     checkout_id: Optional[str] = None
     order_id: Optional[str] = None
     history: list[dict] = field(default_factory=list)       # [{"role": "user"|"assistant", "text": ...}] for the LLM

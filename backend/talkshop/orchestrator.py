@@ -238,10 +238,17 @@ async def _confirm_variant(t: Turn, lead: str = "") -> None:
     try:
         cart, line_id = tools.add_to_cart(s.user_id, s.sku)
     except CartError as exc:
-        t.say(exc.message)
-        return
+        # Never a dead end: explain, then let the shopper pick another colour.
+        msg = exc.message
+        if exc.code == "OUT_OF_STOCK":
+            msg = (f"Your cart already holds every pair we have of {product['name']} in that "
+                   f"{check['option_label'].lower()} and colour.")
+        s.color, s.sku = None, None
+        t.stage(Stage.ASK_COLOR if check["has_sizes"] else Stage.PRODUCT_SELECTED)
+        return await _next_option(t, f"{msg} Want a different colour?")
     if line_id not in s.line_ids:
         s.line_ids.append(line_id)
+    s.added_qty[line_id] = s.added_qty.get(line_id, 0) + 1
     t.say(f"{(lead + ' ') if lead else ''}✓ {' · '.join(parts)} is in stock. Added to your ShopSphere cart.")
     t.emit("cart_updated", cart=cart, added_line_id=line_id)
     t.stage(Stage.IN_CART)
@@ -261,7 +268,7 @@ async def _checkout(t: Turn) -> None:
         return
     t.status("CartUp", "Preparing your order…")
     try:
-        co = tools.create_checkout(s.user_id, lines)
+        co = tools.create_checkout(s.user_id, lines, {lid: s.added_qty.get(lid, 1) for lid in lines})
     except CheckoutError as exc:
         t.say(exc.message)
         return
@@ -324,6 +331,7 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str]) -> N
     t.status("TrackIt", f"Order {order['order_id']} confirmed.")
     bought = {ln["line_id"] for ln in co["lines"]}
     s.line_ids = [lid for lid in s.line_ids if lid not in bought]
+    s.added_qty = {lid: q for lid, q in s.added_qty.items() if lid not in bought}
     s.checkout_id, s.order_id = None, order["order_id"]
     t.say(f"Your order is confirmed! Order {order['order_id']} arrives {order['delivery_date']}.")
     t.emit("order_confirmed", order=order)
@@ -346,7 +354,8 @@ def greeting(s: Session, name: str) -> tuple[str, list[str]]:
 
 
 async def run_turn(user: CurrentUser, session_id: str, *, text: Optional[str] = None,
-                   action: Optional[dict] = None, page: Optional[dict] = None) -> AsyncIterator[dict]:
+                   action: Optional[dict] = None, page: Optional[dict] = None,
+                   image_base64: Optional[str] = None) -> AsyncIterator[dict]:
     s = state.get(user.user_id, session_id)
     if page is not None:
         s.page = page
@@ -357,6 +366,8 @@ async def run_turn(user: CurrentUser, session_id: str, *, text: Optional[str] = 
         try:
             if action:
                 await _handle_action(t, user, action)
+            elif image_base64:
+                await _handle_image(t, image_base64, (text or "").strip())
             elif text and text.strip():
                 await _handle_text(t, text.strip())
         except Exception:  # never leave the panel hanging
@@ -377,6 +388,9 @@ async def run_turn(user: CurrentUser, session_id: str, *, text: Optional[str] = 
 
 async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
     s, kind = t.s, action.get("type")
+    if action.get("label"):          # what the shopper tapped, shown as their reply
+        t.emit("user_message", text=str(action["label"])[:120])
+        s.history.append({"role": "user", "text": str(action["label"])[:120]})
     if kind == "greet":
         text, chips = greeting(s, user.name.split()[0] if user.name else "there")
         t.say(text)
@@ -400,6 +414,22 @@ async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
         await _go_ahead(t, user, action.get("checkout_id"))
     else:
         t.say("That isn't available right now.")
+
+
+async def _handle_image(t: Turn, image_base64: str, note: str) -> None:
+    """A pasted photo: the LLM describes it, then a normal ShopSphere search."""
+    s = t.s
+    t.emit("user_message", text=note or "(photo)", image=True)
+    s.history.append({"role": "user", "text": f"[photo] {note}".strip()})
+    if s.stage == Stage.PAYING:
+        return
+    t.status("VibeCheck", "Looking at your photo…")
+    args = await brain.describe_image(image_base64, note)
+    if not args:
+        t.say("I couldn't make out a product in that photo. Could you describe what you're looking for?")
+        return
+    args["gender"] = parse.gender_of(note)
+    await _search(t, f"{args['query']} {note}".strip(), args)
 
 
 async def _handle_text(t: Turn, text: str) -> None:

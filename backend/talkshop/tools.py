@@ -87,9 +87,9 @@ def get_cart(user_id: str) -> dict:
         return cart_service.get_cart(db, user_id)
 
 
-def create_checkout(user_id: str, line_ids: list[str]) -> dict:
+def create_checkout(user_id: str, line_ids: list[str], quantities: Optional[dict[str, int]] = None) -> dict:
     with _db() as db:
-        return checkout_service.snapshot(db, checkout_service.create_checkout(db, user_id, line_ids))
+        return checkout_service.snapshot(db, checkout_service.create_checkout(db, user_id, line_ids, quantities))
 
 
 def get_checkout(user_id: str, checkout_id: str) -> dict:

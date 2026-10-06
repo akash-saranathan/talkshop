@@ -142,3 +142,31 @@ async def recommend(request: str, products: list[dict]) -> dict:
     except Exception as exc:
         log.warning("talkshop.recommend fallback: %s", exc)
         return default
+
+
+_IMAGE_SYSTEM = """You help a shopper find products like the one in their photo at the ShopSphere store.
+Look at the photo and return ONLY JSON:
+{"query": "<3-6 words describing the item, e.g. 'black leather crossbody bag'>",
+ "category": "<one of """ + ", ".join(CATEGORIES) + """ or null>",
+ "color": "<main colour, one word, or null>"}
+If the photo shows no product you could shop for, return {"query": null}."""
+
+
+async def describe_image(image_base64: str, note: str = "") -> Optional[dict]:
+    """Turn a pasted photo into search arguments (query/category/colour)."""
+    data_url = image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
+    try:
+        resp = await _ask(_llm(), [
+            SystemMessage(content=_IMAGE_SYSTEM),
+            HumanMessage(content=[{"type": "text", "text": note or "Find products like this."},
+                                  {"type": "image_url", "image_url": data_url}]),
+        ])
+        out = json.loads(extract_json_from_llm(_content_text(resp.content)))
+        if not out.get("query"):
+            return None
+        return {"query": str(out["query"])[:80],
+                "category": out.get("category") if out.get("category") in CATEGORIES else None,
+                "color": (str(out["color"]).strip().title() if out.get("color") else None)}
+    except Exception as exc:
+        log.warning("talkshop.describe_image failed: %s", exc)
+        return None

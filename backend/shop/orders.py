@@ -52,10 +52,15 @@ def finalize(db: Session, co: Checkout, payment_ref: str) -> Order:
         if product:
             product.inventory = max(0, (product.inventory or 0) - ln["quantity"])
 
-    bought = [i for i in (co.cart_item_ids or "").split(",") if i]
-    if bought:
-        db.query(CartItem).filter(CartItem.user_id == co.user_id,
-                                  CartItem.cart_item_id.in_(bought)).delete(synchronize_session=False)
+    # Take what was bought out of the cart: the line goes if all of it was
+    # bought, otherwise it keeps the remainder (e.g. one of two pairs).
+    for ln in lines:
+        item = db.query(CartItem).filter_by(cart_item_id=ln.get("line_id"), user_id=co.user_id).first()
+        if item:
+            if item.quantity > ln["quantity"]:
+                item.quantity -= ln["quantity"]
+            else:
+                db.delete(item)
     co.status = "paid"
     db.commit()
     return order

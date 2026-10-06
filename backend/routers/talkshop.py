@@ -28,13 +28,15 @@ class TurnRequest(BaseModel):
     session_id: str = Field(..., min_length=4, max_length=80)
     text: Optional[str] = Field(None, max_length=1000)
     action: Optional[dict] = None
+    image_base64: Optional[str] = Field(None, max_length=3_000_000)   # a pasted photo (data URL or base64)
     page: Optional[dict] = None   # e.g. {"type": "product", "product_id": "SSP001"} or {"type": "category", "department": "shoes"}
 
 
 @router.post("/api/talkshop/turn")
 async def talkshop_turn(req: TurnRequest, user: CurrentUser = Depends(get_current_user)):
     async def stream():
-        async for ev in orchestrator.run_turn(user, req.session_id, text=req.text, action=req.action, page=req.page):
+        async for ev in orchestrator.run_turn(user, req.session_id, text=req.text, action=req.action, page=req.page,
+                                                  image_base64=req.image_base64):
             yield f"event: {ev['type']}\ndata: {json.dumps(ev, default=str)}\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream",

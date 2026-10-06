@@ -81,9 +81,12 @@ def _recalculate(db: Session, co: Checkout) -> list[dict]:
     return issues
 
 
-def create_checkout(db: Session, user_id: str, line_ids: list[str]) -> Checkout:
+def create_checkout(db: Session, user_id: str, line_ids: list[str],
+                    quantities: Optional[dict[str, int]] = None) -> Checkout:
     """A checkout for the chosen cart lines (the website's selected items, or
-    the item(s) Talkshop added in this conversation)."""
+    the item(s) Talkshop added in this conversation). `quantities` buys fewer
+    than the cart holds — Talkshop buys what it added in this chat, even if
+    the same item was already in the cart."""
     if not line_ids:
         raise CheckoutError("NO_ITEMS", "Choose at least one item to check out.")
     items = db.query(CartItem).filter(CartItem.user_id == user_id, CartItem.cart_item_id.in_(line_ids)).all()
@@ -100,7 +103,8 @@ def create_checkout(db: Session, user_id: str, line_ids: list[str]) -> Checkout:
             "name": product.name if product else it.title, "brand": it.brand,
             "size": it.size, "color": it.color,
             "option_label": (product.option_label if product else None) or "Size",
-            "quantity": it.quantity, "unit_price": product.price if product else it.price,
+            "quantity": max(1, min(it.quantity, (quantities or {}).get(it.cart_item_id, it.quantity))),
+            "unit_price": product.price if product else it.price,
             "image_url": (variant.image_url if variant else None) or it.image_url,
             "delivery_days": product.delivery_days if product else it.delivery_days,
         })
@@ -153,9 +157,6 @@ def update_checkout(db: Session, user_id: str, checkout_id: str, *, delivery_met
             if qty < 1:
                 raise CheckoutError("INVALID_QUANTITY", "Quantity must be at least 1.")
             by_id[line_id]["quantity"] = qty
-            cart_line = db.query(CartItem).filter_by(cart_item_id=line_id, user_id=user_id).first()
-            if cart_line:
-                cart_line.quantity = qty           # keep the cart in step with the review screen
         co.lines_json = json.dumps(lines)
     _recalculate(db, co)
     db.commit()

@@ -1,22 +1,23 @@
-import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import StoreHeader, { Wordmark } from "../components/shopsphere/StoreHeader";
 import { DEPARTMENTS } from "../api/shop";
+import TalkshopPanel from "../components/talkshop/TalkshopPanel";
 
 /**
- * Every ShopSphere page: header, the page itself, footer — plus the slot on
- * the right where the Talkshop assistant panel docks (Phase 5).
+ * Every ShopSphere page: header, the page itself, footer — with the Talkshop
+ * assistant docked on the right. This is a layout route, so the panel (and
+ * its conversation) stays mounted while the shopper moves between pages.
  */
-export default function StoreLayout({ children, assistant }: { children: ReactNode; assistant?: ReactNode }) {
+export default function StoreLayout() {
   return (
     <div className="ss-app min-h-screen flex flex-col">
       <StoreHeader />
       <div className="flex-1 flex">
         <main className="flex-1 min-w-0">
-          {children}
+          <Outlet />
           <StoreFooter />
         </main>
-        {assistant}
+        <TalkshopPanel />
       </div>
     </div>
   );

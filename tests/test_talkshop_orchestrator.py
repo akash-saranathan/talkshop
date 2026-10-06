@@ -283,3 +283,49 @@ def test_session_endpoint_rebuilds_the_panel(client, shopper):
 
 def test_talkshop_requires_login(client):
     assert client.post("/api/talkshop/turn", json={"session_id": "abcd", "text": "hi"}).status_code == 401
+
+
+def test_pasted_photo_becomes_a_search(client, shopper, monkeypatch):
+    async def describe(image, note=""):
+        return {"query": "leather crossbody bag", "category": "bags", "color": "Red"}
+    monkeypatch.setattr(brain, "describe_image", describe)
+    r = client.post("/api/talkshop/turn", json={"session_id": f"t-{uuid.uuid4().hex[:8]}", "image_base64": "data:image/jpeg;base64,AAAA"},
+                    headers=shopper)
+    events = [json.loads(l[6:]) for b in r.text.split("\n\n") for l in b.splitlines() if l.startswith("data: ")]
+    recs = of(events, "recommendations")[0]["products"]
+    assert recs[0]["name"] == "Leather Crossbody Bag"
+
+
+def test_unreadable_photo_asks_for_words(client, shopper, monkeypatch):
+    async def describe(image, note=""):
+        return None
+    monkeypatch.setattr(brain, "describe_image", describe)
+    r = client.post("/api/talkshop/turn", json={"session_id": f"t-{uuid.uuid4().hex[:8]}", "image_base64": "AAAA"}, headers=shopper)
+    assert "couldn't make out a product" in r.text
+
+
+def test_item_already_in_cart_buys_only_what_the_chat_added(client, shopper):
+    """Cart already holds 1× Runner Pro X 8 black; Talkshop adds another.
+    The chat's order is for 1 pair, and the other pair stays in the cart."""
+    client.post("/api/cart/lines", json={"sku": "SSP001-BLACK-8"}, headers=shopper)
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    co = _to_review(client, shopper, sid)
+    assert co["lines"][0]["quantity"] == 1 and co["total"] == 139.64
+    ev = turn(client, shopper, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
+    assert of(ev, "order_confirmed")[0]["order"]["total"] == 139.64
+    left = [l for l in client.get("/api/cart/lines", headers=shopper).json()["lines"] if l["sku"] == "SSP001-BLACK-8"]
+    assert len(left) == 1 and left[0]["quantity"] == 1
+
+
+def test_cart_already_holds_all_stock_is_not_a_dead_end(client, shopper):
+    from backend.db.schema import ProductVariant
+    with Session(get_engine()) as s:
+        stock = s.query(ProductVariant).filter_by(sku="SSP001-BLACK-8").one().stock
+    client.post("/api/cart/lines", json={"sku": "SSP001-BLACK-8", "quantity": stock}, headers=shopper)
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)
+    turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    turn(client, shopper, sid, text="8")
+    ev = turn(client, shopper, sid, text="black")
+    assert "already holds every pair" in " ".join(m["text"] for m in of(ev, "message"))
+    assert of(ev, "ask_option")[-1]["option"] == "color" and stage(ev) == "ASK_COLOR"
