@@ -714,6 +714,10 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
     - The LLM reads every search request for size and colour (typos, shades like "sea green"), in the recommendation call it already makes, so there's no extra wait. Code accepts only colours the products really come in.
     - A message that names a product is never taken as a quick answer to the question on screen. Unclear ones go to the LLM.
     - A small typo matcher covers a model outage.
+  - **Logged in, yet checkout said "Not authenticated":** all tabs share one saved login, so a tab could show a stale name after another tab (or a backend restart) changed or cleared it. Now:
+    - Tabs follow each other's login and logout.
+    - A request with no token reloads the page to restore the identity.
+    - Starting a visitor session retries while the backend restarts.
 
 ---
 

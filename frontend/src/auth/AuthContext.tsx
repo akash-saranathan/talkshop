@@ -6,7 +6,7 @@
  * conversation into the account and reports how cart line ids changed.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { clearToken, getToken, setToken } from "../api/client";
+import { TOKEN_KEY, clearToken, getToken, setToken } from "../api/client";
 
 export interface User {
   user_id: string;
@@ -77,8 +77,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .then((r) => (r.ok ? r.json() : Promise.reject()))
           .then((u: User) => setUser(u))
       : Promise.reject();
-    restore.catch(() => startVisitor()).catch(() => setUser(null)).finally(() => setLoading(false));
+    // The backend may be briefly unavailable (e.g. restarting): keep trying
+    // rather than leave the page with nobody signed in.
+    const visitorWithRetry = async () => {
+      for (let attempt = 0; ; attempt++) {
+        try { return await startVisitor(); } catch (e) {
+          if (attempt >= 5) throw e;
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        }
+      }
+    };
+    restore.catch(() => visitorWithRetry()).catch(() => setUser(null)).finally(() => setLoading(false));
   }, [startVisitor]);
+
+  // Every tab shares one saved login. When another tab logs in, logs out or
+  // loses the session, follow it, so no tab shows a stale name while sending
+  // someone else's (or no) token.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TOKEN_KEY || e.key === null) window.location.reload();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const signIn = useCallback(async (url: string, body: unknown): Promise<AuthResult> => {
     const wasCustomer = user && !user.is_visitor;
