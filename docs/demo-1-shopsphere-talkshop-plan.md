@@ -16,11 +16,11 @@
 
 ### Progress
 
-**Phases approved: 0 / 8 · Steps done: 0 / 64**
+**Phases approved: 0 / 8 · Steps done: 4 / 64** · Phase 0 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
-| 0 | Groundwork | 0 / 4 | ⬜ Not started |
+| 0 | Groundwork | 4 / 4 | 👀 Ready for your review |
 | 1 | ShopSphere catalog and data foundation | 0 / 7 | ⬜ Not started |
 | 2 | ShopSphere merchant services (APIs) | 0 / 8 | ⬜ Not started |
 | 3 | Talkshop orchestrator (AI layer) | 0 / 12 | ⬜ Not started |
@@ -32,11 +32,11 @@
 Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review · ✅ Approved
 
 ### Phase 0: Groundwork
-- [ ] 0.1 `CATALOG_SOURCES` setting: ShopSphere catalog only (DummyJSON, Shopify, Best Buy switched off)
-- [ ] 0.2 DummyJSON validation bug recorded as a known issue
-- [ ] 0.3 Guest login removed from the UI
-- [ ] 0.4 Demo reset command (reseed catalog, customer, carts, orders)
-- [ ] **Checkpoint:** app runs, search returns ShopSphere catalog only, reset works
+- [x] 0.1 `CATALOG_SOURCES` setting: ShopSphere catalog only (DummyJSON, Shopify, Best Buy switched off)
+- [x] 0.2 DummyJSON validation bug recorded as a known issue
+- [x] 0.3 Guest login removed from the UI
+- [x] 0.4 Demo reset command (reseed catalog, customer, carts, orders)
+- [x] **Checkpoint:** app runs, search returns ShopSphere catalog only, reset works *(174 tests pass; live search: "30 products across 1 store", 0 DummyJSON)*
 - [ ] **Approved, proceed to Phase 1**
 
 ### Phase 1: ShopSphere catalog and data foundation
@@ -729,3 +729,11 @@ Browse **Shoes** → open **FlexRun 5** → **✦ Ask Talkshop about this** → 
 | LLM latency or occasional wrong tool choice | Stages limit what the LLM can do at each step. Option chips and buttons give a deterministic path. Every money step is code-only |
 | Scope size (website + assistant + services) | Strict phase order with a checkpoint per phase. Website path works before the panel is built |
 | Gemini model availability | Keep the provider swappable (existing `get_llm`) |
+
+## 16. Known issues (found while building)
+
+| Issue | Where | Status |
+|---|---|---|
+| **DummyJSON adapter drops every product.** Items are fetched but tagged `source="dummyjson"`, which the product model doesn't allow, so all fail validation and are silently skipped. DummyJSON has never added results to search | `backend/merchants/dummyjson.py`, `backend/models/product.py` | Not fixed in Demo 1. External catalogs are off (`CATALOG_SOURCES=shopsphere`). Logged in `status.md` |
+| **"Forgot password" changes a password with only an email** (account-takeover risk) | `POST /api/auth/reset-password` | Out of Demo 1 scope. Needs an emailed reset link |
+

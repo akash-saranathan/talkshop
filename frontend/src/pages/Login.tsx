@@ -1,15 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader, Store, Eye, EyeOff, ArrowLeft, UserCheck, UserPlus } from "lucide-react";
-import { useAuth, ExistingCustomerError } from "../auth/AuthContext";
+import { Loader, Store, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
 
-type Screen = "landing" | "login" | "register" | "guest" | "reset";
+// Demo 1: ShopSphere assumes a logged-in customer, so there is no guest
+// option — the page opens straight on Log in / Sign up.
+type Screen = "login" | "register" | "reset";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, register, loginAsGuest } = useAuth();
-  const [screen, setScreen] = useState<Screen>("landing");
+  const { login, register } = useAuth();
+  const [screen, setScreen] = useState<Screen>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,12 +20,9 @@ export default function Login() {
   const [showNew, setShowNew] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Guest tried an email that belongs to a registered account — offer login.
-  const [existingCustomer, setExistingCustomer] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const reset = () => { setError(null); setExistingCustomer(false); setSuccess(null); setPassword(""); setNewPassword(""); };
-  const goBack = () => { setScreen("landing"); reset(); };
+  const reset = () => { setError(null); setSuccess(null); setPassword(""); setNewPassword(""); };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -36,13 +35,6 @@ export default function Login() {
         navigate("/");
       } else if (screen === "register") {
         await register(name, email, password);
-        navigate("/");
-      } else if (screen === "guest") {
-        if (!name.trim() || name.trim().length < 2) throw new Error("Please enter your full name (at least 2 characters).");
-        if (!/^[A-Za-z\s'\-]+$/.test(name.trim())) throw new Error("Name should contain only letters, spaces, or hyphens.");
-        if (!email.trim()) throw new Error("Please enter your email address.");
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) throw new Error("Please enter a valid email address.");
-        await loginAsGuest(name.trim(), email.trim());
         navigate("/");
       } else if (screen === "reset") {
         const res = await fetch("/api/auth/reset-password", {
@@ -60,7 +52,6 @@ export default function Login() {
       }
     } catch (err) {
       setError((err as Error).message);
-      setExistingCustomer(err instanceof ExistingCustomerError);
     } finally {
       setLoading(false);
     }
@@ -85,75 +76,6 @@ export default function Login() {
         </div>
 
         <AnimatePresence mode="wait">
-
-          {/* ── Landing ──────────────────────────────────────────────────────── */}
-          {screen === "landing" && (
-            <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col gap-3">
-              <p className="text-sm text-center text-[var(--color-text-muted)] mb-1">How would you like to continue?</p>
-
-              {/* Customer (log in or sign up) */}
-              <button
-                onClick={() => { reset(); setScreen("login"); }}
-                className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-[var(--color-primary)] bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/10 transition-colors text-left group"
-              >
-                <div className="w-10 h-10 rounded-full bg-[var(--color-primary)] text-white grid place-items-center shrink-0 mt-0.5">
-                  <UserCheck size={18} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-[var(--color-text)] group-hover:text-[var(--color-primary)] transition-colors">Customer</p>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Log in or create an account — access your saved cards and order history</p>
-                </div>
-              </button>
-
-              {/* Guest */}
-              <button
-                onClick={() => { reset(); setScreen("guest"); }}
-                className="w-full flex items-start gap-4 p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-surface-2)] transition-colors text-left group"
-              >
-                <div className="w-10 h-10 rounded-full border-2 border-[var(--color-border)] text-[var(--color-text-muted)] grid place-items-center shrink-0 mt-0.5 group-hover:border-[var(--color-primary)] group-hover:text-[var(--color-primary)] transition-colors">
-                  <UserPlus size={18} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-[var(--color-text)]">Continue as Guest</p>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Browse and buy without an account — enter your card at checkout</p>
-                </div>
-              </button>
-            </motion.div>
-          )}
-
-          {/* ── Guest flow ──────────────────────────────────────────────────── */}
-          {screen === "guest" && (
-            <motion.div key="guest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <button type="button" onClick={goBack}
-                className="flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] mb-4 transition-colors">
-                <ArrowLeft size={14} /> Back
-              </button>
-              <h2 className="font-semibold text-[var(--color-text)] mb-0.5">Continue as Guest</h2>
-              <p className="text-xs text-[var(--color-text-muted)] mb-4">Just your name and email — you'll enter payment details at checkout.</p>
-              <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-                <input value={name} onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name" required className={inputCls} />
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email address" required className={inputCls} />
-                {error && (
-                  <div className="text-sm text-rose-500 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
-                    <p>{error}</p>
-                    {existingCustomer && (
-                      <button type="button" onClick={() => { reset(); setScreen("login"); }}
-                        className="mt-1.5 font-semibold text-[var(--color-primary)] hover:underline">
-                        Log in instead →
-                      </button>
-                    )}
-                  </div>
-                )}
-                <button type="submit" disabled={loading}
-                  className="mt-1 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-dark)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
-                  {loading && <Loader size={14} className="animate-spin" />}
-                  Start Shopping
-                </button>
-              </form>
-            </motion.div>
-          )}
 
           {/* ── Password reset ───────────────────────────────────────────────── */}
           {screen === "reset" && (
@@ -190,11 +112,6 @@ export default function Login() {
           {/* ── Login / Register ─────────────────────────────────────────────── */}
           {(screen === "login" || screen === "register") && (
             <motion.div key="auth" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <button type="button" onClick={goBack}
-                className="flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] mb-4 transition-colors">
-                <ArrowLeft size={14} /> Back
-              </button>
-
               {/* Tab switcher */}
               <div className="flex rounded-xl border border-[var(--color-border)] p-1 mb-5 text-sm">
                 {(["login", "register"] as const).map((s) => (

@@ -4,6 +4,7 @@ Agents call these tools; tools return NormalizedProduct lists.
 Raw merchant JSON never reaches the LLM — only normalized schemas pass through.
 """
 import asyncio
+import os
 from typing import Optional
 
 from fastmcp import FastMCP
@@ -17,6 +18,15 @@ from backend.merchants import dummyjson as dummyjson_adapter
 
 mcp = FastMCP("commerce-server")
 
+# Which catalogs product search reads — comma-separated, from:
+# shopsphere (our own seeded catalog), shopify, bestbuy, dummyjson.
+# Demo 1 is a single-merchant store, so the default is ShopSphere only; the
+# external adapters stay in the code for later demos. Read per call so a
+# changed .env or test override takes effect without a restart.
+def _catalog_sources() -> set[str]:
+    raw = os.getenv("CATALOG_SOURCES", "shopsphere")
+    return {s.strip().lower() for s in raw.split(",") if s.strip()}
+
 
 @mcp.tool()
 async def search_products(
@@ -27,36 +37,36 @@ async def search_products(
     size: Optional[str] = None,
 ) -> list[dict]:
     """
-    Fan-out search across all merchant adapters in parallel.
+    Search the catalogs enabled by CATALOG_SOURCES (in parallel).
     Returns normalized product list — financial fields come from DB, not LLM.
     """
-    local_task = asyncio.to_thread(
-        local_adapter.search_products,
-        category=category,
-        brand=brand,
-        max_price=max_price,
-        size=size,
-    )
-    shopify_task = shopify_adapter.search_products(
-        category=category, brand=brand, max_price=max_price, size=size
-    )
-    bestbuy_task = bestbuy_adapter.search_products(
-        category=category, brand=brand, max_price=max_price, query=query
-    )
-    dummyjson_task = dummyjson_adapter.search_products(
-        category=category, brand=brand, max_price=max_price, query=query
-    )
-
-    local_results, shopify_results, bestbuy_results, dummyjson_results = await asyncio.gather(
-        local_task, shopify_task, bestbuy_task, dummyjson_task, return_exceptions=True
-    )
+    sources = _catalog_sources()
+    tasks = []
+    if "shopsphere" in sources:
+        tasks.append(asyncio.to_thread(
+            local_adapter.search_products,
+            category=category, brand=brand, max_price=max_price, size=size,
+        ))
+    if "shopify" in sources:
+        tasks.append(shopify_adapter.search_products(
+            category=category, brand=brand, max_price=max_price, size=size
+        ))
+    if "bestbuy" in sources:
+        tasks.append(bestbuy_adapter.search_products(
+            category=category, brand=brand, max_price=max_price, query=query
+        ))
+    if "dummyjson" in sources:
+        tasks.append(dummyjson_adapter.search_products(
+            category=category, brand=brand, max_price=max_price, query=query
+        ))
 
     combined: list[NormalizedProduct] = []
-    for batch in (local_results, shopify_results, bestbuy_results, dummyjson_results):
+    for batch in await asyncio.gather(*tasks, return_exceptions=True):
         if isinstance(batch, list):
             combined.extend(batch)
 
-    # Always fall back to local if external adapters returned nothing useful
+    # Nothing matched (or every enabled source failed) — fall back to the
+    # ShopSphere catalog by category alone so the shopper still sees options.
     if not combined:
         combined = await asyncio.to_thread(local_adapter.search_products, category=category)
 

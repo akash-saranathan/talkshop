@@ -8,6 +8,20 @@
 
 ---
 
+## Demo 1 — ShopSphere × Talkshop (`demo-1-merchant-chat-assistant` branch, local)
+
+ShopSphere merchant website with Talkshop as its built-in assistant. Plan, phases and the
+implementation checklist: [`docs/demo-1-shopsphere-talkshop-plan.md`](docs/demo-1-shopsphere-talkshop-plan.md).
+
+**Known issue — DummyJSON adapter drops every product.** `backend/merchants/dummyjson.py` fetches
+items fine, but tags them `source="dummyjson"`, which `NormalizedProduct.source` doesn't allow
+(`'local' | 'shopify_api' | 'playwright'`). Every item fails validation and is silently skipped, so
+DummyJSON has contributed **zero** results to search. Not fixed in Demo 1: the external catalogs are
+switched off there (`CATALOG_SOURCES=shopsphere`). Even when fixed, DummyJSON items have no
+sizes/colours and aren't in our DB, so they could be browsed but not checked out.
+
+---
+
 ## Version 1 (Frozen — `ts-version1` branch)
 
 Full 5-phase POC with 6-agent pipeline, DPAT tokens, guardrails, and audit trail.

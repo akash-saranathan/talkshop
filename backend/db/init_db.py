@@ -122,8 +122,8 @@ def seed_products(session: Session):
     session.commit()
 
 
-def run():
-    engine = init_db()
+def run(db_path: Path = DB_PATH):
+    engine = init_db(db_path)
     with Session(engine) as session:
         seed_agents(session)
         seed_demo_user(session)
@@ -131,7 +131,7 @@ def run():
         seed_demo_loyalty(session)
         seed_merchants(session)
         seed_products(session)
-    print(f"Database initialized at {DB_PATH}")
+    print(f"Database initialized at {db_path}")
 
 
 if __name__ == "__main__":
