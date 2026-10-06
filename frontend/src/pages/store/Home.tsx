@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { ArrowRight, RotateCcw, ShieldCheck, Truck } from "lucide-react";
 import { shop, type Product } from "../../api/shop";
 import ProductTile from "../../components/shopsphere/ProductTile";
+import TalkshopPicks from "../../components/talkshop/TalkshopPicks";
+import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 import { Skeleton } from "../../components/ui";
 
 const DEPT_TILES = [
@@ -16,6 +18,8 @@ export default function StoreHome() {
   const [arrivals, setArrivals] = useState<Product[] | null>(null);
   const [hero, setHero] = useState<Product[]>([]);
   const [tiles, setTiles] = useState<Record<string, Product | undefined>>({});
+  const { picks, selectedId } = useTalkshopShared();
+  const pickIds = new Set(picks.map((p) => p.product_id));
 
   useEffect(() => {
     shop.products({ new: true, sort: "rating", limit: 8 }).then(setArrivals).catch(() => setArrivals([]));
@@ -75,7 +79,7 @@ export default function StoreHome() {
         ))}
       </section>
 
-      {/* Talkshop picks row — filled by the assistant (Phase 6) */}
+      <TalkshopPicks />
 
       {/* New arrivals */}
       <section className="mx-auto max-w-[1400px] px-4 sm:px-6 mt-16">
@@ -87,7 +91,8 @@ export default function StoreHome() {
           <Link to="/c/new" className="text-sm font-medium inline-flex items-center gap-1 hover:underline">View all <ArrowRight size={14} /></Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-10">
-          {arrivals ? arrivals.map((p, i) => <ProductTile key={p.product_id} product={p} priority={i < 4} />)
+          {arrivals ? arrivals.map((p, i) => <ProductTile key={p.product_id} product={p} priority={i < 4}
+              picked={pickIds.has(p.product_id)} selected={p.product_id === selectedId} />)
             : Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="aspect-square" />)}
         </div>
       </section>

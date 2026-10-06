@@ -137,7 +137,7 @@ export default function ProductPage() {
               {added ? <><Check size={17} /> Added to cart</> : !color || (hasSizes && !size) ? `Select a ${hasSizes && !size ? label.toLowerCase() : "colour"}` : "Add to cart"}
             </Button>
             {TALKSHOP_ENABLED && (
-              <Button size="lg" variant="talk" onClick={() => askTalkshop(product.product_id)}>
+              <Button size="lg" variant="talk" onClick={() => askTalkshop(product.product_id, product.name)}>
                 <Sparkles size={16} /> Ask Talkshop about this
               </Button>
             )}

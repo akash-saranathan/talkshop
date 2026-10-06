@@ -44,6 +44,8 @@ def fake_llm(monkeypatch):
         m = message.lower()
         if "flat feet" in m:
             return {"action": "answer", "args": {}, "reply": "It has cushioned, breathable support for everyday runs."}
+        if "take this" in m:
+            return {"action": "select_product", "args": {"product_index": None}, "reply": ""}
         if "gucci" in m:
             return {"action": "search", "args": {"query": "shoes", "category": "shoes", "brand": "Gucci"}, "reply": ""}
         if "running" in m:
@@ -329,3 +331,20 @@ def test_cart_already_holds_all_stock_is_not_a_dead_end(client, shopper):
     ev = turn(client, shopper, sid, text="black")
     assert "already holds every pair" in " ".join(m["text"] for m in of(ev, "message"))
     assert of(ev, "ask_option")[-1]["option"] == "color" and stage(ev) == "ASK_COLOR"
+
+
+
+def test_greeting_fits_the_page(client, shopper):
+    ev = turn(client, shopper, f"t-{uuid.uuid4().hex[:8]}", action={"type": "greet"}, page={"type": "category", "department": "women"})
+    assert "women's styles" in of(ev, "message")[0]["text"] and "A summer dress" in of(ev, "suggestions")[0]["chips"]
+    ev = turn(client, shopper, f"t-{uuid.uuid4().hex[:8]}", action={"type": "greet"}, page={"type": "product", "product_id": "SSP002"})
+    sug = of(ev, "suggestions")[0]
+    assert "FlexRun 5" in of(ev, "message")[0]["text"]
+    chip = sug["chips"][0]
+    assert sug["chip_actions"][chip] == {"type": "ask_about", "product_id": "SSP002"}
+
+
+def test_this_one_on_a_product_page_selects_it(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    ev = turn(client, shopper, sid, text="I'll take this one", page={"type": "product", "product_id": "SSP002"})
+    assert of(ev, "product_selected")[0]["product"]["product_id"] == "SSP002" and stage(ev) == "ASK_SIZE"

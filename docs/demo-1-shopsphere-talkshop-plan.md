@@ -16,7 +16,7 @@
 
 ### Progress
 
-**Phases approved: 5 / 8 · Steps done: 52 / 64** · Phase 5 👀 ready for your review
+**Phases approved: 6 / 8 · Steps done: 58 / 64** · Phase 6 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
@@ -25,8 +25,8 @@
 | 2 | ShopSphere merchant services (APIs) | 8 / 8 | ✅ Approved |
 | 3 | Talkshop orchestrator (AI layer) | 12 / 12 | ✅ Approved |
 | 4 | ShopSphere storefront (website) | 10 / 10 | ✅ Approved |
-| 5 | Talkshop panel (inside ShopSphere) | 11 / 11 | 👀 Ready for your review |
-| 6 | Connecting ShopSphere and Talkshop | 0 / 6 | ⬜ Not started |
+| 5 | Talkshop panel (inside ShopSphere) | 11 / 11 | ✅ Approved |
+| 6 | Connecting ShopSphere and Talkshop | 6 / 6 | 👀 Ready for your review |
 | 7 | Polish, quality and demo readiness | 0 / 6 | ⬜ Not started |
 
 Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review · ✅ Approved
@@ -105,16 +105,16 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 5.10 Presenter overlay (agent trace) *(built new inside the panel; the old AgentTrailPanel was retired with the old chat)*
 - [x] 5.11 Old full-screen chat removed from navigation *(frontend page and its components deleted, `/assistant` redirects to the store. The backend `/api/chat` endpoints stay because the test suite still covers that pipeline)*
 - [x] **Checkpoint:** whole §6 flow completes in the panel, in light and dark *(browser-automated in light, dark and phone: greeting → top 3 → Select → 8 → Black → cart → review $139.64 → typed "go ahead" refused → GO AHEAD → SS-##### → conversation kept across pages → View in My Orders → presenter view; no console errors)*
-- [ ] **Approved, proceed to Phase 6**
+- [x] **Approved, proceed to Phase 6**
 
 ### Phase 6: Connecting ShopSphere and Talkshop
-- [ ] 6.1 Shared cart store (header badge bumps from both sides)
-- [ ] 6.2 Page context + page-aware greetings
-- [ ] 6.3 "Ask Talkshop about this" opens with product selected
-- [ ] 6.4 "Talkshop picks for you" row on the storefront
-- [ ] 6.5 Selection sync + View on ShopSphere
-- [ ] 6.6 Orders link + My Orders refresh
-- [ ] **Checkpoint:** connections I1–I9 (§5) checked in the browser
+- [x] 6.1 Shared cart store (header badge bumps from both sides)
+- [x] 6.2 Page context + page-aware greetings
+- [x] 6.3 "Ask Talkshop about this" opens with product selected
+- [x] 6.4 "Talkshop picks for you" row on the storefront
+- [x] 6.5 Selection sync + View on ShopSphere
+- [x] 6.6 Orders link + My Orders refresh
+- [x] **Checkpoint:** connections I1–I9 (§5) checked in the browser *(automated in light + dark: greeting by name, page-aware greeting, picks row, selection highlight, badge 0→1→2→3→1 across chat + website adds and the chat order, View on ShopSphere, Ask Talkshop about this, chat checkout limited to chat items, My Orders refreshes live; no console errors)*
 - [ ] **Approved, proceed to Phase 7**
 
 ### Phase 7: Polish, quality and demo readiness
@@ -645,6 +645,9 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
 | 6.6 | **Orders link**: confirmed card → `/orders/:id`. The My Orders list refreshes | `OrderConfirmedCard.tsx`, `Dashboard.tsx` |
 
 ✅ **Checkpoint:** every row I1–I9 checked in the browser.
+
+**As built (Phase 6):** `talkshop/TalkshopContext.tsx` is shared by the panel and every store page. It sends the current page with each turn, applies Talkshop's cart changes to the header badge, exposes picks and the selected product, opens the panel for "Ask Talkshop about this", refreshes My Orders after a chat order, and re-greets for the new page until the shopper has said something. `components/talkshop/TalkshopPicks.tsx` is on Home and category/search pages.
+- **Backend:** page-aware greetings (Women, Men, categories, product, cart, orders, search). Product-page chips can trigger actions ("Help me choose a size & colour" → straight to the size question). The LLM sees the product page you're on, so "I'll take this one" selects it.
 
 ---
 

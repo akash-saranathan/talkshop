@@ -74,6 +74,8 @@ Rules:
 - A question about a product shown ("is it good for flat feet?") is "answer", using only the facts given.
 - If the shopper agrees to check out, choose "checkout"; if they decline, "keep_shopping".
 - Greetings and thanks are "answer".
+- If CONTEXT has page_product, "this", "it" or "this one" means that product. Wanting to buy it or pick its
+  size/colour is "select_product" (product_index null); a question about it is "answer".
 - Never choose an action that is not in the allowed list."""
 
 

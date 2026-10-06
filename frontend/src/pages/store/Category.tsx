@@ -3,6 +3,8 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { SlidersHorizontal, X } from "lucide-react";
 import { shop, type Product, type ProductQuery } from "../../api/shop";
 import ProductTile from "../../components/shopsphere/ProductTile";
+import TalkshopPicks from "../../components/talkshop/TalkshopPicks";
+import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 import { Chip, Empty, Skeleton, Swatch, cx } from "../../components/ui";
 
 const PAGES: Record<string, { title: string; blurb: string; query: ProductQuery }> = {
@@ -39,6 +41,8 @@ export default function Category() {
   const [base, setBase] = useState<Product[] | null>(null);      // unfiltered — feeds the filter options
   const [items, setItems] = useState<Product[] | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const { picks, selectedId } = useTalkshopShared();
+  const pickIds = new Set(picks.map((p) => p.product_id));
 
   useEffect(() => {
     if (!page) return;
@@ -83,6 +87,8 @@ export default function Category() {
         <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">{page.title}</h1>
         {page.blurb && <p className="text-muted">{page.blurb}</p>}
       </div>
+
+      <div className="-mx-4 sm:-mx-6"><TalkshopPicks /></div>
 
       <div className="sticky top-16 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 mt-6 py-3 bg-canvas/90 backdrop-blur border-b border-line flex items-center gap-3">
         <button onClick={() => setShowFilters((s) => !s)}
@@ -132,7 +138,8 @@ export default function Category() {
 
       <div className="mt-8 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-10">
         {items === null && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="aspect-square" />)}
-        {items?.map((p, i) => <ProductTile key={p.product_id} product={p} priority={i < 4} />)}
+        {items?.map((p, i) => <ProductTile key={p.product_id} product={p} priority={i < 4}
+          picked={pickIds.has(p.product_id)} selected={p.product_id === selectedId} />)}
       </div>
       {items?.length === 0 && (
         <Empty title="Nothing matches those filters">

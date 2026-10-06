@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CheckCircle2, ChevronRight, CreditCard, MapPin, Package, Truck } from "lucide-react";
 import { money, niceDate, shop, type Address, type OrderLine } from "../../api/shop";
 import { Badge, Empty, Spinner } from "../../components/ui";
+import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 
 interface OrderView {
   id: string; created_at: string | null; total: number; delivery_date: string | null; delivery_method: string | null;
@@ -29,9 +30,10 @@ const STATUS: Record<string, { label: string; tone: "good" | "accent" | "neutral
 
 export function OrdersPage() {
   const [orders, setOrders] = useState<OrderView[] | null>(null);
+  const { ordersVersion } = useTalkshopShared();     // refreshes when Talkshop places an order
   useEffect(() => {
     shop.orders().then((rows) => setOrders(rows.map(toView).filter(Boolean) as OrderView[])).catch(() => setOrders([]));
-  }, []);
+  }, [ordersVersion]);
 
   if (!orders) return <Spinner label="Loading your orders…" />;
   return (

@@ -2,6 +2,7 @@ import { Link, Outlet } from "react-router-dom";
 import StoreHeader, { Wordmark } from "../components/shopsphere/StoreHeader";
 import { DEPARTMENTS } from "../api/shop";
 import TalkshopPanel from "../components/talkshop/TalkshopPanel";
+import { TalkshopProvider } from "../talkshop/TalkshopContext";
 
 /**
  * Every ShopSphere page: header, the page itself, footer — with the Talkshop
@@ -10,16 +11,18 @@ import TalkshopPanel from "../components/talkshop/TalkshopPanel";
  */
 export default function StoreLayout() {
   return (
-    <div className="ss-app min-h-screen flex flex-col">
-      <StoreHeader />
-      <div className="flex-1 flex">
-        <main className="flex-1 min-w-0">
-          <Outlet />
-          <StoreFooter />
-        </main>
-        <TalkshopPanel />
+    <TalkshopProvider>
+      <div className="ss-app min-h-screen flex flex-col">
+        <StoreHeader />
+        <div className="flex-1 flex">
+          <main className="flex-1 min-w-0">
+            <Outlet />
+            <StoreFooter />
+          </main>
+          <TalkshopPanel />
+        </div>
       </div>
-    </div>
+    </TalkshopProvider>
   );
 }
 

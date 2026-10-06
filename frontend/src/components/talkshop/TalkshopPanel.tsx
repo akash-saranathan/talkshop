@@ -8,7 +8,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Info, Minus, RotateCcw, Sparkles, X } from "lucide-react";
 import type { Stage, TalkAction, TalkEvent } from "../../api/talkshop";
 import type { Checkout } from "../../api/shop";
-import { useTalkshop, type TraceStep } from "../../talkshop/useTalkshop";
+import type { TraceStep } from "../../talkshop/useTalkshop";
+import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 import Composer from "./Composer";
 import {
   CartUpdatedCard, OptionChips, OrderConfirmedCard, PaymentStatusCard, QuickReplies,
@@ -16,7 +17,6 @@ import {
 } from "./cards";
 import { cx } from "../ui";
 
-const OPEN_KEY = "talkshop_panel_open";
 const STEPS = ["Search", "Choose", "Size", "Colour", "Cart", "Review", "Done"];
 const STEP_OF: Record<Stage, number> = {
   GREETING: 0, SEARCHING: 0, RECOMMENDED: 1, PRODUCT_SELECTED: 1, ASK_SIZE: 2, ASK_COLOR: 3, VARIANT_CONFIRMED: 3,
@@ -28,16 +28,10 @@ const AGENTS: Record<string, string> = {
   PayIt: "12 security checks, then charges", TrackIt: "Creates the order",
 };
 
-function isDesktop() { return typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches; }
-
 export default function TalkshopPanel() {
-  const ts = useTalkshop();
-  const [open, setOpen] = useState(() => {
-    try { const saved = localStorage.getItem(OPEN_KEY); return saved === null ? isDesktop() : saved === "1"; }
-    catch { return isDesktop(); }
-  });
+  const ts = useTalkshopShared();
+  const { open, setOpen } = ts;
   const [presenter, setPresenter] = useState(false);
-  useEffect(() => { try { localStorage.setItem(OPEN_KEY, open ? "1" : "0"); } catch { /* private mode */ } }, [open]);
 
   if (!open) {
     return (
@@ -143,7 +137,7 @@ function lastIndex(events: TalkEvent[], type: TalkEvent["type"]) {
   return -1;
 }
 
-function Conversation({ ts }: { ts: ReturnType<typeof useTalkshop> }) {
+function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
   const { events, stage, busy, status, error } = ts;
   const items = useMemo(() => buildItems(events), [events]);
   const scroller = useRef<HTMLDivElement>(null);
@@ -181,7 +175,8 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshop> }) {
         switch (ev.type) {
           case "suggestions":
             return <QuickReplies key={i} active={it.index === lastSuggest && lastUser < it.index && !busy}
-              choices={ev.chips.map((c) => ({ value: c, label: c, primary: false }))} onPick={(c) => ts.send({ text: c.label })} />;
+              choices={ev.chips.map((c) => ({ value: c, label: c, primary: !!ev.chip_actions?.[c] }))}
+              onPick={(c) => { const a = ev.chip_actions?.[c.label]; ts.send(a ? { action: { ...a, label: c.label } } : { text: c.label }); }} />;
           case "recommendations":
             return <RecommendationCards key={i} products={ev.products} onAct={act}
               active={it.index === lastRecs && !busy && !["AWAITING_CONSENT", "PAYING"].includes(stage)} />;

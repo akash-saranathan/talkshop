@@ -1,7 +1,8 @@
 /**
- * Talkshop conversation state for the panel. The server keeps the real
- * conversation (stage + transcript); this mirrors it, streams new turns in,
- * and rebuilds from the server after a reload or page change.
+ * Talkshop conversation state. The server keeps the real conversation
+ * (stage + transcript); this mirrors it, streams new turns in, sends the
+ * current ShopSphere page with every turn, and rebuilds from the server
+ * after a reload.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSession, resetSession, streamTurn, type Stage, type TalkEvent, type TurnInput } from "../api/talkshop";
@@ -21,9 +22,12 @@ function sessionId(): string {
 }
 
 export interface TraceStep { agent: string; message: string; at: number }
+export type Page = Record<string, unknown>;
 
-export function useTalkshop() {
+export function useTalkshop(getPage: () => Page) {
   const sid = useRef(sessionId());
+  const pageRef = useRef(getPage);
+  pageRef.current = getPage;
   const [events, setEvents] = useState<TalkEvent[]>([]);
   const [stage, setStage] = useState<Stage>("GREETING");
   const [busy, setBusy] = useState(false);
@@ -38,7 +42,7 @@ export function useTalkshop() {
     busyRef.current = true;
     setBusy(true); setError(null); setStatus(null);
     try {
-      await streamTurn(sid.current, input, (ev) => {
+      await streamTurn(sid.current, { page: pageRef.current(), ...input }, (ev) => {
         if (ev.type === "status") {
           setStatus(ev.message);
           setTrace((t) => [...t.slice(-60), { agent: ev.agent, message: ev.message, at: Date.now() }]);
@@ -73,6 +77,7 @@ export function useTalkshop() {
   }, [send]);
 
   const restart = useCallback(async () => {
+    if (busyRef.current) return;
     await resetSession(sid.current).catch(() => {});
     sid.current = `ts-${crypto.randomUUID()}`;
     try { sessionStorage.setItem(SESSION_KEY, sid.current); } catch { /* private mode */ }

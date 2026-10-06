@@ -26,6 +26,9 @@ log = logging.getLogger(__name__)
 
 SUGGESTIONS = {
     "home": ["Running shoes under $150", "A gift under $50", "Noise-cancelling headphones"],
+    "women": ["A summer dress", "Women's running shoes", "Leather handbag"],
+    "men": ["Men's crew tee", "Leather Chelsea boots", "A classic watch"],
+    "new": ["What's new in shoes?", "New tech under $100", "New arrivals for women"],
     "shoes": ["Everyday running shoes", "White sneakers", "Waterproof hiking boots"],
     "clothing": ["A summer dress", "Men's crew tee", "Denim jacket"],
     "accessories": ["Leather handbag", "Sunglasses for summer", "Classic watch"],
@@ -71,6 +74,13 @@ def _shown_products(s: Session) -> list[dict]:
 
 def _context(s: Session) -> dict:
     ctx: dict = {"page": s.page}
+    if s.page.get("product_id") and s.page.get("product_id") != s.product_id:
+        p = tools.get_product(s.page["product_id"])
+        if p:   # the product page the shopper is looking at ("does this come in 9?")
+            ctx["page_product"] = {"product_id": p["product_id"], "name": p["name"], "brand": p["brand"],
+                                   "price": p["price"], "rating": p["rating"], "tags": p["tags"],
+                                   "description": p["description"], "sizes": p["sizes"],
+                                   "colors": [c["name"] for c in p["colors"]]}
     if s.shown:
         ctx["shown_products"] = [
             {"index": i, "product_id": p["product_id"], "name": p["name"], "brand": p["brand"], "price": p["price"],
@@ -340,17 +350,34 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str]) -> N
 
 # ── entry point ──────────────────────────────────────────────────────────────
 
-def greeting(s: Session, name: str) -> tuple[str, list[str]]:
+PAGE_LEADS = {
+    "women": "Browsing women's styles?", "men": "Browsing men's styles?", "shoes": "Looking for shoes?",
+    "clothing": "Looking for clothing?", "accessories": "Looking for accessories?",
+    "electronics": "Looking for electronics?", "new": "Checking out what's new?",
+}
+
+
+def greeting(s: Session, name: str) -> tuple[str, list[str], dict]:
+    """A greeting that fits the page the shopper is on. Returns (text, chips,
+    chip_actions) — a chip with an action triggers it instead of sending text."""
     page = s.page or {}
     if page.get("product_id"):
         product = tools.get_product(page["product_id"])
         if product:
-            return (f"Hi {name} 👋 Questions about the {product['name']}? I can help you pick a size and colour.",
-                    ["Help me choose", "Is it good for everyday use?"])
+            help_chip = "Help me choose a size & colour" if product["sizes"] else "Help me choose a colour"
+            return (f"Hi {name} 👋 Looking at the {product['name']}? I can help you pick and add it to your cart.",
+                    [help_chip, f"Is the {product['name']} good for everyday use?"],
+                    {help_chip: {"type": "ask_about", "product_id": product["product_id"]}})
+    if page.get("type") == "cart":
+        return f"Hi {name} 👋 Need a hand with your cart?", SUGGESTIONS["home"], {}
+    if page.get("type") == "orders":
+        return f"Hi {name} 👋 Anything else I can find for you?", SUGGESTIONS["home"], {}
     dept = page.get("department")
-    if dept in SUGGESTIONS and dept != "home":
-        return f"Hi {name} 👋 Looking for {dept}? Tell me what you need.", SUGGESTIONS[dept]
-    return f"Hi {name} 👋 How can I help you shop today?", SUGGESTIONS["home"]
+    if dept in PAGE_LEADS:
+        return f"Hi {name} 👋 {PAGE_LEADS[dept]} Tell me what you need.", SUGGESTIONS.get(dept, SUGGESTIONS["home"]), {}
+    if page.get("query"):
+        return f"Hi {name} 👋 Want help narrowing down “{page['query']}”?", SUGGESTIONS["home"], {}
+    return f"Hi {name} 👋 How can I help you shop today?", SUGGESTIONS["home"], {}
 
 
 async def run_turn(user: CurrentUser, session_id: str, *, text: Optional[str] = None,
@@ -392,9 +419,9 @@ async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
         t.emit("user_message", text=str(action["label"])[:120])
         s.history.append({"role": "user", "text": str(action["label"])[:120]})
     if kind == "greet":
-        text, chips = greeting(s, user.name.split()[0] if user.name else "there")
+        text, chips, chip_actions = greeting(s, user.name.split()[0] if user.name else "there")
         t.say(text)
-        t.emit("suggestions", chips=chips)
+        t.emit("suggestions", chips=chips, chip_actions=chip_actions)
     elif kind in ("select", "ask_about"):
         await _select(t, action.get("product_id", ""), from_page=(kind == "ask_about"))
     elif kind == "choose_size" and s.product_id:
@@ -491,6 +518,8 @@ async def _handle_text(t: Turn, text: str) -> None:
         idx = args.get("product_index")
         if isinstance(idx, int) and 0 <= idx < len(s.shown):
             await _select(t, s.shown[idx])
+        elif s.page.get("product_id"):        # "I'll take this one" on a product page
+            await _select(t, s.page["product_id"], from_page=True)
         else:
             t.say("Which one would you like? Tap Select on a card or say “the first one”.")
     elif act == "choose_option" and s.product_id:

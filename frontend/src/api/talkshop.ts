@@ -14,7 +14,7 @@ export interface OptionChoice { value: string; available: boolean; hex?: string;
 export type TalkEvent =
   | { type: "user_message"; text: string; image?: boolean }
   | { type: "message"; role: "assistant"; text: string }
-  | { type: "suggestions"; chips: string[] }
+  | { type: "suggestions"; chips: string[]; chip_actions?: Record<string, TalkAction> }
   | { type: "recommendations"; intro: string; products: (Product & { reason?: string | null })[] }
   | { type: "product_selected"; product: ProductDetail; from_page: boolean }
   | { type: "ask_option"; option: "size" | "color"; label: string; choices: OptionChoice[] }
