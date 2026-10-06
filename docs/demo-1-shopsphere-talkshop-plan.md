@@ -761,6 +761,10 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
 - **Payment:** `mock_processor.void_authorization`. `payment.confirm` returns `order_failed` when the order can't be created.
 - **Address validation:** `profile.add_address` now also checks the state code and field lengths.
 - **Not changed:** the website's own checkout page keeps its forms; it also handles `order_failed`. Tax is a flat rate today, so adding an address doesn't change the total. The "total recalculated" message is there for when it does.
+- **Follow-up: deleting saved details.** The checkout page's Change lists now have a delete button (with a Delete/Keep confirmation) for each saved address and card.
+  - The server endpoints are `DELETE /api/me/addresses/{id}` and `DELETE /api/me/payment-methods/{id}`. They only delete the customer's own items; visitors get 403.
+  - The next saved item becomes the default, and open checkouts switch to it, or ask again when none are left.
+  - Past orders keep their own copy of the address and card.
 - **For a production build:** the card fields would sit in a payment provider's hosted iframe (e.g. Stripe Elements), so the store's own page couldn't read them. Here they are a local, ShopSphere-only React component that posts straight to the tokenization endpoint.
 
 ---

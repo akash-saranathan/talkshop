@@ -106,7 +106,9 @@ export const shop = {
   addresses: () => call<Address[]>("/api/me/addresses"),
   addAddress: (a: Omit<Address, "address_id" | "is_default" | "display" | "country" | "label" | "line2"> & { line2?: string; label?: string; make_default?: boolean }) =>
     call<Address>("/api/me/addresses", json("POST", a)),
+  deleteAddress: (id: string) => call<{ deleted: string }>(`/api/me/addresses/${id}`, json("DELETE")),
   cards: () => call<Card[]>("/api/me/payment-methods"),
+  deleteCard: (id: string) => call<{ deleted: string }>(`/api/me/payment-methods/${id}`, json("DELETE")),
   addCard: (c: { number: string; exp_month: number; exp_year: number; cvc: string; cardholder_name: string; make_default?: boolean }) =>
     call<Card>("/api/me/payment-methods", json("POST", c)),
 

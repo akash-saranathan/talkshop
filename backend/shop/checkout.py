@@ -163,6 +163,15 @@ def update_checkout(db: Session, user_id: str, checkout_id: str, *, delivery_met
     return co
 
 
+def reassign(db: Session, user_id: str, field: str, old_id: str, new_id: Optional[str]) -> None:
+    """A saved address/card was deleted: open checkouts that used it switch to
+    the customer's default (or to none, so checkout asks for one again)."""
+    for co in db.query(Checkout).filter_by(user_id=user_id, status="open").filter(getattr(Checkout, field) == old_id):
+        setattr(co, field, new_id)
+        _recalculate(db, co)
+    db.commit()
+
+
 def cancel_checkout(db: Session, user_id: str, checkout_id: str) -> Checkout:
     co = get_checkout(db, user_id, checkout_id)
     if co.status in ("open", "consented"):

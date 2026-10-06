@@ -48,6 +48,33 @@ def list_cards(db: Session, user_id: str) -> list[PaymentMethod]:
             .order_by(PaymentMethod.is_default.desc(), PaymentMethod.id.asc()).all())
 
 
+def _delete_saved(db: Session, model, id_field: str, user_id: str, item_id: str, missing: ProfileError) -> Optional[str]:
+    item = db.query(model).filter(getattr(model, id_field) == item_id, model.user_id == user_id).first()
+    if item is None:
+        raise missing
+    db.delete(item)
+    db.flush()
+    rest = db.query(model).filter_by(user_id=user_id).order_by(model.is_default.desc(), model.id.asc()).all()
+    if rest and not any(r.is_default for r in rest):
+        rest[0].is_default = True                     # the next saved one becomes the default
+    db.commit()
+    return getattr(rest[0], id_field) if rest else None
+
+
+def delete_address(db: Session, user_id: str, address_id: str) -> Optional[str]:
+    """Remove one of the customer's saved addresses. Past orders keep their own
+    copy (orders.ship_to_json). Returns the new default address id, if any."""
+    return _delete_saved(db, Address, "address_id", user_id, address_id,
+                         ProfileError("UNKNOWN_ADDRESS", "That address isn't saved on your account.", 404))
+
+
+def delete_card(db: Session, user_id: str, payment_method_id: str) -> Optional[str]:
+    """Remove a saved card (and its vault token). Past orders keep the brand and
+    last 4 they were paid with. Returns the new default card id, if any."""
+    return _delete_saved(db, PaymentMethod, "payment_method_id", user_id, payment_method_id,
+                         ProfileError("UNKNOWN_CARD", "That card isn't saved on your account.", 404))
+
+
 def add_address(db: Session, user_id: str, *, full_name: str, line1: str, city: str, state: str,
                 postal_code: str, line2: Optional[str] = None, label: Optional[str] = None,
                 country: str = "US", make_default: bool = False) -> Address:

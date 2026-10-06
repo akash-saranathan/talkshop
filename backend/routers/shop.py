@@ -9,8 +9,8 @@ Cart (SKU-based; every call returns the full cart)
   DELETE /api/cart/lines/{line_id}
 
 Customer profile (cards are stored masked; number/CVC are never kept)
-  GET/POST /api/me/addresses
-  GET/POST /api/me/payment-methods
+  GET/POST /api/me/addresses              DELETE /api/me/addresses/{id}
+  GET/POST /api/me/payment-methods        DELETE /api/me/payment-methods/{id}
 
 Checkout + payment
   POST /api/checkouts                       {line_ids}       → review snapshot
@@ -140,6 +140,26 @@ def add_card(req: CardRequest, user: CurrentUser = Depends(require_customer), db
     except profile_service.ProfileError as exc:
         return _error(exc)
     return profile_service.card_dict(card)   # masked: brand, last 4, expiry
+
+
+@router.delete("/api/me/addresses/{address_id}")
+def delete_address(address_id: str, user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
+    try:
+        default = profile_service.delete_address(db, user.user_id, address_id)
+    except profile_service.ProfileError as exc:
+        return _error(exc)
+    checkout_service.reassign(db, user.user_id, "address_id", address_id, default)
+    return {"deleted": address_id, "default_address_id": default}
+
+
+@router.delete("/api/me/payment-methods/{payment_method_id}")
+def delete_card(payment_method_id: str, user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
+    try:
+        default = profile_service.delete_card(db, user.user_id, payment_method_id)
+    except profile_service.ProfileError as exc:
+        return _error(exc)
+    checkout_service.reassign(db, user.user_id, "payment_method_id", payment_method_id, default)
+    return {"deleted": payment_method_id, "default_payment_method_id": default}
 
 
 # ── Checkout + payment ───────────────────────────────────────────────────────

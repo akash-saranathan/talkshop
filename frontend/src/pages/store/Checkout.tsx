@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CreditCard, Lock, MapPin, ShieldCheck, Truck } from "lucide-react";
+import { CreditCard, Lock, MapPin, ShieldCheck, Trash2, Truck } from "lucide-react";
 import { money, niceDate, shop, ShopError, type Checkout } from "../../api/shop";
 import { AddressForm, CardForm } from "../../components/shopsphere/CheckoutForms";
 import { Button, Empty, Notice, Spinner, Stepper, cx } from "../../components/ui";
@@ -33,6 +33,27 @@ function Radio({ checked, onClick, children }: { checked: boolean; onClick: () =
   );
 }
 
+/** Trash icon beside a saved address/card; asks "Delete / Keep" before removing it. */
+function RemoveSaved({ what, onRemove }: { what: string; onRemove: () => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  if (!confirming) return (
+    <button type="button" onClick={() => setConfirming(true)} aria-label={`Delete ${what}`} title="Delete"
+      className="shrink-0 p-2.5 rounded-full text-muted hover:text-bad hover:bg-panel transition-colors">
+      <Trash2 size={16} />
+    </button>
+  );
+  return (
+    <span className="shrink-0 flex items-center gap-3 text-sm">
+      <button type="button" disabled={removing} className="font-medium text-bad hover:underline"
+        onClick={async () => { setRemoving(true); await onRemove(); setRemoving(false); setConfirming(false); }}>
+        {removing ? "Deleting…" : "Delete"}
+      </button>
+      <button type="button" onClick={() => setConfirming(false)} className="text-muted hover:text-ink">Keep</button>
+    </span>
+  );
+}
+
 export default function CheckoutPage() {
   const { checkoutId = "" } = useParams();
   const { user } = useAuth();
@@ -52,6 +73,18 @@ export default function CheckoutPage() {
     try { setCo(await shop.updateCheckout(checkoutId, changes)); setEditing(null); }
     catch (e) { setError(e instanceof ShopError ? e.message : "Couldn't update your order."); }
     finally { setBusy(false); }
+  };
+
+  // Delete a saved address/card. ShopSphere moves this checkout to the next
+  // saved one (or none, which brings the form back) — reload to show it.
+  const removeSaved = async (kind: "address" | "card", id: string) => {
+    setError(null);
+    try {
+      await (kind === "address" ? shop.deleteAddress(id) : shop.deleteCard(id));
+      const fresh = await shop.checkout(checkoutId);
+      setCo(fresh);
+      if (!(kind === "address" ? fresh.saved_addresses : fresh.saved_payment_methods).length) setEditing(null);
+    } catch (e) { setError(e instanceof ShopError ? e.message : `Couldn't delete that ${kind}.`); }
   };
 
   const place = async () => {
@@ -108,9 +141,12 @@ export default function CheckoutPage() {
             ) : editing === "address" ? (
               <div className="flex flex-col gap-2">
                 {co.saved_addresses.map((a) => (
-                  <Radio key={a.address_id} checked={a.address_id === co.address?.address_id} onClick={() => change({ address_id: a.address_id })}>
-                    <span className="text-sm font-medium">{a.label}</span><span className="block text-sm text-muted">{a.display}</span>
-                  </Radio>
+                  <div key={a.address_id} className="flex items-center gap-1">
+                    <Radio checked={a.address_id === co.address?.address_id} onClick={() => change({ address_id: a.address_id })}>
+                      <span className="text-sm font-medium">{a.label}</span><span className="block text-sm text-muted">{a.display}</span>
+                    </Radio>
+                    <RemoveSaved what={`address ${a.line1}`} onRemove={() => removeSaved("address", a.address_id)} />
+                  </div>
                 ))}
                 <button onClick={() => setAdding("address")} className="self-start text-sm font-medium mt-1 hover:underline">+ Add a new address</button>
               </div>
@@ -143,11 +179,14 @@ export default function CheckoutPage() {
             ) : editing === "card" ? (
               <div className="flex flex-col gap-2">
                 {co.saved_payment_methods.map((c) => (
-                  <Radio key={c.payment_method_id} checked={c.payment_method_id === co.payment_method?.payment_method_id}
-                    onClick={() => change({ payment_method_id: c.payment_method_id })}>
-                    <span className="text-sm font-medium">{c.display}</span>
-                    <span className="block text-sm text-muted">Expires {String(c.exp_month).padStart(2, "0")}/{String(c.exp_year).slice(-2)}</span>
-                  </Radio>
+                  <div key={c.payment_method_id} className="flex items-center gap-1">
+                    <Radio checked={c.payment_method_id === co.payment_method?.payment_method_id}
+                      onClick={() => change({ payment_method_id: c.payment_method_id })}>
+                      <span className="text-sm font-medium">{c.display}</span>
+                      <span className="block text-sm text-muted">Expires {String(c.exp_month).padStart(2, "0")}/{String(c.exp_year).slice(-2)}</span>
+                    </Radio>
+                    <RemoveSaved what={`card ${c.display}`} onRemove={() => removeSaved("card", c.payment_method_id)} />
+                  </div>
                 ))}
                 <button onClick={() => setAdding("card")} className="self-start text-sm font-medium mt-1 hover:underline">+ Add a new card</button>
               </div>
