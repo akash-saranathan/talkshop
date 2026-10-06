@@ -28,7 +28,7 @@ class NormalizedProduct(BaseModel):
     shipping_cost: float = Field(default=0.0, ge=0)
     product_url: Optional[str] = None
     image_url: Optional[str] = None
-    source: Literal["local", "shopify_api", "playwright"] = "local"
+    source: Literal["local", "shopify_api", "playwright", "merchant_catalog"] = "local"
 
     # Deterministic ranking score — set by SneakPeek, never by LLM
     rank_score: float = Field(default=0.0, ge=0.0)

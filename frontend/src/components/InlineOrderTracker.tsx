@@ -3,6 +3,7 @@
  * inside the chat, triggered by "track my orders", "where's my package" etc.
  */
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Package, Loader, ChevronDown, ChevronUp, Truck, MapPin,
@@ -355,12 +356,12 @@ export default function InlineOrderTracker() {
         <span className="text-[11px] text-[var(--color-text-muted)]">
           {orders.length} order{orders.length !== 1 ? "s" : ""} total
         </span>
-        <a
-          href="/dashboard"
+        <Link
+          to="/dashboard"
           className="flex items-center gap-1 text-[11px] text-[var(--color-primary)] hover:underline font-medium"
         >
           Full dashboard <ExternalLink size={10} />
-        </a>
+        </Link>
       </div>
     </motion.div>
   );

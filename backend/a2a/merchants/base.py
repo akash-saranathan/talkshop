@@ -62,10 +62,18 @@ class BaseMerchantAgent:
         catalog = self._load_catalog()
         results = []
         for product in catalog:
-            # category / subcategory filter
+            # category / subcategory filter — bidirectional word-overlap so LLM categories
+            # like "running_shoes" match catalog categories like "running" or "sneakers"
             if intent.category:
-                cat = intent.category.lower()
-                if cat not in product["category"].lower() and cat not in product.get("subcategory", "").lower():
+                cat = intent.category.lower().replace("_", " ").replace("-", " ")
+                prod_cat = (product["category"] + " " + product.get("subcategory", "")).lower()
+                cat_words = {w for w in cat.split() if len(w) > 2}
+                prod_words = {w for w in prod_cat.split() if len(w) > 2}
+                # Pass if: direct substring OR any word overlap in either direction
+                if not (cat in prod_cat or prod_cat.strip() in cat or
+                        cat_words & prod_words or
+                        any(pw in cat for pw in prod_words) or
+                        any(cw in prod_cat for cw in cat_words)):
                     continue
 
             # price filter

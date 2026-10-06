@@ -3,42 +3,46 @@ Guardrails AI — output schema validation on LLM responses.
 Catches hallucinated financial fields (e.g. price as string) before they
 enter the financial pipeline.
 """
-from typing import Any, Optional
+from typing import Optional
 
 from backend.models.intent import ShoppingIntent
 
 
 def validate_shopping_intent(raw_output: str) -> tuple[bool, Optional[ShoppingIntent], Optional[str]]:
+    valid, intent, err, _ = validate_shopping_intent_checked(raw_output)
+    return valid, intent, err
+
+
+def validate_shopping_intent_checked(raw_output: str) -> tuple[bool, Optional[ShoppingIntent], Optional[str], bool]:
     """
-    Parse and validate LLM output as ShoppingIntent.
-    Returns (valid, intent, error_message).
-    Uses Guardrails AI if available, falls back to raw Pydantic parse.
+    Returns (valid, intent, error_message, guardrails_ai_ran).
+    guardrails_ai_ran is True only when the Guardrails AI validator executed,
+    so callers never report a Guardrails AI PASS for the plain Pydantic fallback.
     """
     try:
         from guardrails import Guard
-        guard = Guard.from_pydantic(ShoppingIntent)
-        result = guard.parse(raw_output)
-        validated = ShoppingIntent.model_validate(result.validated_output)
-        return True, validated, None
     except ImportError:
-        # Guardrails AI not installed — fall back to Pydantic directly
-        pass
-    except Exception as e:
-        return False, None, f"guardrails_validation_failed: {e}"
+        Guard = None
 
-    # Pydantic fallback
+    if Guard is not None:
+        try:
+            result = Guard.for_pydantic(ShoppingIntent).parse(raw_output)
+            if not result.validation_passed:
+                return False, None, "guardrails_validation_failed", True
+            return True, ShoppingIntent.model_validate(result.validated_output), None, True
+        except Exception as e:
+            return False, None, f"guardrails_validation_failed: {e}", True
+
     try:
         import json
-        # Strip markdown code fences if present
         clean = raw_output.strip()
         if clean.startswith("```"):
             lines = clean.split("\n")
             clean = "\n".join(lines[1:-1])
-        data = json.loads(clean)
-        intent = ShoppingIntent.model_validate(data)
-        return True, intent, None
+        intent = ShoppingIntent.model_validate(json.loads(clean))
+        return True, intent, None, False
     except Exception as e:
-        return False, None, f"pydantic_parse_failed: {e}"
+        return False, None, f"pydantic_parse_failed: {e}", False
 
 
 def extract_json_from_llm(text: str) -> str:

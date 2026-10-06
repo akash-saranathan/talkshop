@@ -89,6 +89,7 @@ export interface ChatCallbacks {
   onBlocked: (message: string) => void;
   onError: (message: string) => void;
   onDone: () => void;
+  onProtocolEvent?: (event: Record<string, unknown>) => void;
 }
 
 export function streamChat(message: string, sessionId: string, callbacks: ChatCallbacks): () => void {
@@ -137,6 +138,13 @@ export function streamChat(message: string, sessionId: string, callbacks: ChatCa
   es.addEventListener("step_done", (e) => handle(e.data));
   es.addEventListener("recommendation", (e) => handle(e.data));
   es.addEventListener("blocked", (e) => handle(e.data));
+  es.addEventListener("protocol_event", (e) => {
+    try {
+      callbacks.onProtocolEvent?.(JSON.parse((e as MessageEvent).data));
+    } catch {
+      // Ignore malformed events
+    }
+  });
   es.addEventListener("error", (e) => {
     // The native EventSource auto-reconnects after "error" unless closed —
     // one backend hiccup would otherwise retry indefinitely and spam duplicate errors.

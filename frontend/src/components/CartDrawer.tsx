@@ -11,7 +11,6 @@ interface Props {
   open: boolean;
   onClose: () => void;
   sessionCartIds?: Set<string>;
-  onCheckout?: (item: CartItemData) => void;
 }
 
 function getArrivalLabel(days: number): string {
@@ -22,7 +21,7 @@ function getArrivalLabel(days: number): string {
   return `Arrives ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }
 
-export default function CartDrawer({ open, onClose, sessionCartIds, onCheckout }: Props) {
+export default function CartDrawer({ open, onClose, sessionCartIds }: Props) {
   const [items, setItems] = useState<CartItemData[]>([]);
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
@@ -73,16 +72,6 @@ export default function CartDrawer({ open, onClose, sessionCartIds, onCheckout }
   const hasSplit = previousItems.length > 0;
 
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-
-  const handleCheckout = () => {
-    const target = sessionItems[0] ?? items[0];
-    if (target && onCheckout) {
-      onClose();
-      onCheckout(target);
-    } else {
-      onClose();
-    }
-  };
 
   return createPortal(
     <AnimatePresence>
@@ -170,12 +159,6 @@ export default function CartDrawer({ open, onClose, sessionCartIds, onCheckout }
                     </span>
                   </div>
                 )}
-                <button
-                  onClick={handleCheckout}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-light)] transition-colors"
-                >
-                  <ShoppingCart size={15} /> Checkout
-                </button>
               </div>
             )}
           </motion.div>

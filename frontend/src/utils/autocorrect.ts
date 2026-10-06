@@ -33,8 +33,46 @@ const TYPOS: Record<string, string> = {
   brwon: "brown", borwn: "brown", gren: "green", gery: "grey",
 };
 
+// Shopping vocabulary for near-miss matching ("nkie" → "Nike"). Only these words
+// are candidates, so ordinary English is never rewritten.
+const VOCAB = [
+  "Nike", "Adidas", "Zara", "Fossil", "Casio", "Samsung", "Apple", "Sony",
+  "shoes", "sneakers", "running", "dress", "shirt", "jacket", "jeans", "watch", "watches",
+  "headphones", "earbuds", "backpack", "bag", "cap", "hoodie", "sweater", "skirt", "boots", "sandals",
+  "black", "white", "blue", "brown", "green", "grey", "red", "pink",
+  "summer", "winter", "under", "budget", "price", "delivery", "order", "track", "checkout", "compare",
+];
+const VOCAB_LOWER = new Map(VOCAB.map((w) => [w.toLowerCase(), w]));
+
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+function fuzzyVocab(lower: string): string | null {
+  if (lower.length < 4 || VOCAB_LOWER.has(lower)) return null;
+  const maxDist = lower.length <= 5 ? 1 : 2;
+  let best: string | null = null;
+  let bestDist = Infinity;
+  let tie = false;
+  for (const [candidate, original] of VOCAB_LOWER) {
+    if (candidate.length < 4) continue;
+    const d = editDistance(lower, candidate);
+    if (d < bestDist) { best = original; bestDist = d; tie = false; }
+    else if (d === bestDist) tie = true;
+  }
+  return best && bestDist <= maxDist && !tie ? best : null;
+}
+
 function correctWord(word: string): string | null {
-  const fix = TYPOS[word.toLowerCase()];
+  const fix = TYPOS[word.toLowerCase()] ?? fuzzyVocab(word.toLowerCase());
   if (!fix || fix === word) return null;
   // Keep a capital the user typed ("Wnat" → "Want").
   return word[0] === word[0].toUpperCase() && word[0] !== word[0].toLowerCase()

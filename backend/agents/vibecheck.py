@@ -11,7 +11,7 @@ from typing import Any, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.config.llm import get_llm
-from backend.guardrails.validators import validate_shopping_intent, extract_json_from_llm
+from backend.guardrails.validators import validate_shopping_intent_checked, extract_json_from_llm
 from backend.models.intent import ShoppingIntent
 
 
@@ -86,9 +86,19 @@ async def extract_intent(
     prior_intent: Optional[dict] = None,
     image_base64: Optional[str] = None,
 ) -> tuple[Optional[ShoppingIntent], Optional[str]]:
+    intent, error, _ = await extract_intent_checked(user_message, prior_intent, image_base64)
+    return intent, error
+
+
+async def extract_intent_checked(
+    user_message: str,
+    prior_intent: Optional[dict] = None,
+    image_base64: Optional[str] = None,
+) -> tuple[Optional[ShoppingIntent], Optional[str], bool]:
     """
-    Run NeMo input guard → LLM extraction → Guardrails AI validation.
-    Returns (intent, error_message). error_message is non-None if blocked.
+    LLM extraction → Guardrails AI validation. Input guardrails run earlier, in the pipeline.
+    Returns (intent, error_message, schema_passed). schema_passed is True only when
+    Guardrails AI validated the output.
 
     prior_intent, when given, is merged with -- not replaced by -- the new
     message, so a follow-up answer ("size 10, under $100") completes the
@@ -98,11 +108,6 @@ async def extract_intent(
     product they want -- passed to the LLM as a second content part
     (Gemini is multimodal) purely to help infer visual attributes.
     """
-    from backend.guardrails.nemo import check_input
-    allowed, block_msg = await check_input(user_message)
-    if not allowed:
-        return None, block_msg
-
     llm = get_llm(temperature=0.1)
     user_content = user_message
     if prior_intent:
@@ -137,23 +142,24 @@ async def extract_intent(
         response = await llm.ainvoke(messages)
         raw = extract_json_from_llm(_content_text(response.content))
     except Exception as e:
-        return None, f"llm_error: {e}"
+        return None, f"llm_error: {e}", False
 
-    valid, intent, err = validate_shopping_intent(raw)
+    valid, intent, err, guardrails_ai_ran = validate_shopping_intent_checked(raw)
+    schema_passed = valid and guardrails_ai_ran
     if not valid:
         # Last-resort: inject raw_query so the pipeline can still proceed
         try:
             data = json.loads(raw)
             data["raw_query"] = user_message
             intent = ShoppingIntent.model_validate(data)
-            return intent, None
+            return intent, None, False
         except Exception:
-            return None, f"intent_extraction_failed: {err}"
+            return None, f"intent_extraction_failed: {err}", False
 
     if intent:
         intent = intent.model_copy(update={"raw_query": user_message})
 
-    return intent, None
+    return intent, None, schema_passed
 
 
 _AFFIRMATIVE = {

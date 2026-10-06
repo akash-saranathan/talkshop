@@ -38,6 +38,14 @@
   font-family: "Inter", sans-serif;
 }
 
+button:not(:disabled),
+[role="button"],
+a,
+summary,
+select {
+  cursor: pointer;
+}
+
 body {
   background-color: var(--color-bg);
   color: var(--color-text);

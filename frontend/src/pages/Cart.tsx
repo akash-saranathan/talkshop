@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, Loader, Minus, Plus, Trash2, ShoppingCart, Wallet, CreditCard } from "lucide-react";
 import { getCart, updateCartItemQuantity, removeFromCart, type CartItemData } from "../api/cart";
@@ -208,12 +208,12 @@ export default function Cart() {
   return (
     <div className="min-h-screen bg-[var(--color-bg)] p-6">
       <div className="flex items-center gap-4 mb-1">
-        <a
-          href="/"
+        <Link
+          to="/chat"
           className="flex items-center gap-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
         >
           <ArrowLeft size={15} /> Back to Chat
-        </a>
+        </Link>
       </div>
       <h1 className="text-2xl font-semibold text-[var(--color-primary)] mb-1">Your Cart</h1>
       {items.length > 0 && (
@@ -235,12 +235,12 @@ export default function Cart() {
               Ask the assistant for something and hit Select to add it here.
             </p>
           </div>
-          <a
-            href="/"
+          <Link
+            to="/chat"
             className="px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] transition-colors"
           >
             Start shopping
-          </a>
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-5xl mt-2">

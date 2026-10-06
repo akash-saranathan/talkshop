@@ -1,4 +1,5 @@
 import { ArrowLeft, Store } from "lucide-react";
+import { Link } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
 
 interface Props {
@@ -13,12 +14,12 @@ export default function AppHeader({ title, backHref, backLabel = "Back", right }
     <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
       <div className="flex items-center gap-4">
         {backHref && (
-          <a
-            href={backHref}
+          <Link
+            to={backHref}
             className="flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
           >
             <ArrowLeft size={14} /> {backLabel}
-          </a>
+          </Link>
         )}
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] text-white grid place-items-center shrink-0">

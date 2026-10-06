@@ -10,7 +10,8 @@ ALLOWED_CURRENCIES: set[str] = {"USD"}
 TOKEN_TTL_MINUTES: int = 15
 SINGLE_USE: bool = True
 REQUIRE_USER_CONSENT: bool = True
-ALLOWED_MERCHANTS: set[str] = {"MERCHANT_A", "MERCHANT_B", "MERCHANT_C"}
+ALLOWED_MERCHANTS: set[str] = {"MERCHANT_A", "MERCHANT_B", "MERCHANT_C",
+                               "nike", "adidas", "zara", "hm", "fossil", "casio"}
 TAX_RATE: float = 0.082  # 8.2%
 FREE_SHIPPING_THRESHOLD: float = 50.0
 FLAT_SHIPPING_COST: float = 5.99

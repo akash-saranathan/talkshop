@@ -28,17 +28,23 @@ We built a six-agent pipeline on top of an LLM that takes natural language as th
 
 > Open the app. Log in. Land on the chat.
 
-**What the screen shows:**
-- Clean dark/light toggle header
+**Login screen — two options:**
+- **Customer** — opens a tab switcher: Log in (returning) or Sign up (new). One card, both flows.
+- **Continue as Guest** — name + email only; card details are entered at checkout, never stored.
+
+**What the chat screen shows:**
+- Clean dark/light toggle header with cart badge and "Order Tracker ↗" link
 - Left sidebar with previous sessions (like ChatGPT threads)
 - Central text input with a microphone button
-- Agent trail panel on the right (collapsed by default)
+- Orders panel on the right (collapsible live feed of recent orders)
 
 **Talk track:**
 
 "The entry point is a chat window. Nothing else. Users can type or hold the mic to speak — the voice input has a real-time waveform visualizer, so they get feedback they're being heard.
 
-The sidebar preserves every past conversation. Sessions are restored on return. So if a user came back from the cart page, they pick up exactly where they left off."
+The sidebar preserves every past conversation. Sessions are restored on return — including any in-progress checkout. So if a user came back from the cart page, they pick up exactly where they left off.
+
+Guests get the full experience. They enter payment details once at checkout via a secure modal; that card is remembered for the rest of the session so they're not asked twice."
 
 **Key message for directors:**
 > Session continuity is a trust feature. The user never loses their thread.
@@ -92,26 +98,34 @@ The winning column gets a Best Pick badge. Each column has its own Add to Cart b
 
 ---
 
-## Act 5 — Cart & Checkout (2 min)
+## Act 5 — Inline Checkout & Cart (3 min)
 
-> Add a product. Open cart drawer. Proceed to checkout.
+> Say "yes" or "buy it" after the agent recommends a product.
 
-**What happens:**
-- Cart drawer slides in over the chat (no page navigation)
-- Items split: "This session" vs. "Previous items"
-- Wallet balance shown; card option available
-- Checkout page: read-only order summary, Approve button
+**What happens — inline checkout flow (no page navigation):**
+1. The agent asks "Want me to add this to your cart?" with quick-action chips (Yes / No thanks)
+2. User says yes (or types "buy it", "proceed", etc.) → **Order Summary card appears inside the chat bubble**
+3. Summary shows: product, merchant, subtotal / tax / shipping / total, and a saved card picker
+4. Returning customers see their saved cards (Visa, Mastercard, Amex) — pick one and confirm
+5. Guest users click "Secure Payment" → modal collects card details once, never stored in chat
+6. User clicks **Confirm & Pay** → multi-step status animation runs inline (GreenLight → PayIt → TrackIt)
+7. Confirmed card appears with order ID, total, loyalty points earned, and a collapsible order tracker
+8. **"📦 Track my orders"** button fades in — clicking it drops a live tracker directly in the chat thread
+
+**Cart drawer — for multi-item or deferred purchases:**
+- Slides in over the chat (no page navigation)
+- Items split: "Added This Session" vs. "Earlier"
+- Wallet or card payment; wallet grays out with amber warning if balance is insufficient
+- Proceed to Checkout → multi-item checkout page processes each item sequentially with status badges
 
 **Talk track:**
 
-"Cart is a drawer, not a separate page. The user stays in the conversation. The session split shows what they added today vs. past sessions — this builds trust that nothing is being auto-added.
+"The entire purchase can happen without ever leaving the chat. The user says yes — an order summary card appears right there in the conversation. They pick a saved card and confirm. Three animated steps run inline, then the confirmed state appears with their order ID and points earned.
 
-Payment selection is here: wallet or card. If the wallet balance is too low, the option grays out with an amber warning. No ambiguity.
-
-On the checkout page, everything is read-only. The user sees exactly what they're approving — amount, merchant, payment method — before they click anything."
+For users buying multiple items, or who added to cart earlier, the cart drawer gives a full view — session items flagged separately so nothing looks auto-added. Everything is read-only at approval time. The user sees exactly what they're approving before anything is charged."
 
 **Key message:**
-> Human-in-the-loop. The AI assembles the cart, but the user clicks Approve. Nothing is charged without explicit consent.
+> Human-in-the-loop. The AI assembles the cart, but the user clicks Approve. Nothing is charged without explicit consent. The entire flow — from discovery to confirmation — never leaves the chat window.
 
 ---
 
@@ -142,20 +156,37 @@ The LLM is completely out of the payment path. The trust boundary is enforced by
 
 ---
 
-## Act 7 — Order Tracker / Dashboard (1 min)
+## Act 7 — Order Tracker: In Chat & Dashboard (2 min)
 
-> Navigate to Dashboard.
+> After confirming a purchase, click "📦 Track my orders". Or type "track my order" at any time.
 
-**What the screen shows:**
+**Inline tracker — right inside chat:**
+- Appears as a chat bubble with a header showing "X on the way · Y delivered"
+- Each order is a collapsible card showing:
+  - Product name, merchant, amount, purchase date
+  - Real-time status badge (Processing / Shipped / Delivered / Blocked)
+  - **5-step delivery stepper**: Order Placed → Processing → Shipped → Out for Delivery → Delivered — current step highlighted, completed steps in green
+  - Estimated arrival date ("Tomorrow", "Oct 12", etc.)
+  - Tracking number with one-click copy
+- Active/in-transit orders shown expanded at the top; delivered orders collapsed below
+- "Full dashboard →" link at the bottom
+
+**Triggered two ways:**
+1. **After purchase** — "📦 Track my orders" button fades in below the confirmed card
+2. **Any time** — type "track my order", "where's my package", "order status", "when will it arrive", etc.
+
+**Full Dashboard:**
 - Metric cards: total sessions, approved orders, blocked transactions, total spend
-- Sortable order table with delivery status badges
-- Date range filter
+- Sortable order table with delivery status badges and date range filter
+- Every blocked payment shows its reason code — full audit trail
 
 **Talk track:**
 
-"The dashboard gives a complete picture of activity. Admins and users can see approved vs. blocked transactions, total spend, and delivery status for every order — Processing, Shipped, Delivered.
+"After a purchase confirms in chat, a Track my orders button appears. Click it and the tracker drops right into the conversation — no navigation, no new tab. Each order shows exactly where it is in the pipeline with a live step indicator and the expected arrival date.
 
-The order table is sortable by purchase date or arrival date, with a date range filter. Every blocked payment shows its reason code, so there's a full audit trail."
+Users can also just ask — 'where's my package' or 'order status' — and get the same tracker bubble at any point in the session.
+
+The full dashboard is still there for a complete historical view with sortable tables and audit logs."
 
 ---
 
@@ -188,7 +219,9 @@ Or paste a product screenshot. The AI reads the image, infers the category and v
 
 Stack: React + FastAPI. LLM is Gemini 2.0 Flash Lite with an Ollama fallback for offline demos. LangGraph for the agent graph. NeMo Guardrails on input. Guardrails AI on LLM output. SQLite for the catalog and order DB.
 
-137 products, 3 merchants, 11 categories. Full end-to-end flow works today."
+Frontend highlights: framer-motion for all inline animations, session persistence via sessionStorage, real-time audio waveform via Web Audio API, inline checkout and order tracker rendered directly in the chat thread — no page navigation required.
+
+137 products, 3 merchants, 11 categories. Full end-to-end conversational commerce flow works today — discovery, comparison, inline checkout, and live order tracking, all from a single chat window."
 
 ---
 
@@ -206,13 +239,671 @@ Stack: React + FastAPI. LLM is Gemini 2.0 Flash Lite with an Ollama fallback for
 
 ## Demo Order Cheat Sheet
 
-1. Login
+1. **Login** — click Customer → Log in tab (or Sign up for new account); or Continue as Guest
 2. Type: *"Show me blue Nike running shoes size 10 under $120"*
 3. Watch agent trail, skeleton cards → real cards + match tags
 4. Sort by price, then fastest delivery
 5. Select 2–3 products → Compare → show AI verdict panel
-6. Add one to cart → open cart drawer → show session split
-7. Switch to card payment → Checkout → Approve
-8. Watch multi-step status badges (Queued → Authorizing → Paid)
-9. Go to Dashboard → show metrics, order table, audit trail
-10. Quick voice demo: hold mic, speak, release
+6. Say *"yes"* or *"buy it"* → **Order Summary card appears inline in chat**
+7. Pick a saved card → click **Confirm & Pay** → watch inline payment steps animate
+8. See confirmed card with order ID + loyalty points
+9. Click **"📦 Track my orders"** → live order tracker drops in the chat thread
+10. Type *"track my order"* in a new message → tracker appears again from scratch
+11. Add another item to cart → open cart drawer → show session split → multi-item checkout page
+12. Go to Dashboard → show metrics, order table, audit trail
+13. Quick voice demo: hold mic, speak, release
+
+---
+
+---
+
+# Version 2 — Generic Agentic Commerce (v3-generic-agent branch)
+
+> Note: the steps below describe the earlier design. The flow the app actually runs, with real payloads, is documented at the end of this file under "Live Trace — Current Flow (Real Runtime)".
+
+## What Changed
+
+Version 2 upgrades the payment and agent communication architecture. Instead of a single in-house pipeline with a proprietary DPAT token, v2 uses **four real industry protocols** as of 2025–2026: A2A (Google), UCP (Google + Shopify + Walmart), ACP (OpenAI + Stripe), and AP2 (Google). The six named v1 agents (VibeCheck, SneakPeek, etc.) are replaced by a single **Generic Shopping Agent** that orchestrates across these protocols.
+
+---
+
+## Full Flow — Suggestion Click to Payment Complete
+
+### Step 1 — User clicks a suggestion chip (or types a query)
+
+The chat input is always active. Clicking a chip like *"Nike running shoes"* immediately calls `launchSearch()` — no need to click the input first. If a previous search is in progress, it is cleanly cancelled and a fresh session starts.
+
+**What fires:**
+- A new `session_id` (UUID, 32 hex chars) is generated client-side
+- An SSE connection opens: `GET /api/generic/stream?q=...&session_id=...&use_acp=true`
+- The session is saved to the sidebar history (persists for the browser session)
+
+---
+
+### Step 2 — Merchant Routing (internal)
+
+**Protocol:** internal  
+**Color in trace:** slate
+
+The agent calls `parse_intent(query)` — extracts brand, category, size, price constraints from natural language. Then `route_merchants(intent)` picks which merchant agents to call (Nike, Adidas, Zara, H&M, Fossil, Casio, etc.).
+
+**SSE event emitted to frontend:**
+```json
+{
+  "type": "protocol_event",
+  "data": {
+    "protocol": "internal",
+    "direction": "→",
+    "label": "merchant_routing",
+    "detail": { "merchants": ["nike"], "brand": "nike", "category": "running shoes" }
+  }
+}
+```
+
+---
+
+### Step 3 — A2A Product Search
+
+**Protocol:** A2A — Agent-to-Agent (Google, Apr 2025)  
+**Color in trace:** blue  
+**Spec:** JSON-RPC 2.0 envelope, Agent Cards at `/.well-known/agent.json`
+
+The agent makes parallel `asyncio.gather()` calls to each merchant agent. Each call:
+1. `GET /.well-known/agent.json` — fetches the merchant's Agent Card (describes capabilities, endpoints, auth)
+2. `POST /a2a` with JSON-RPC payload: `{"method": "message/send", "params": {"message": {"parts": [{"text": query}]}}}`
+3. Merchant agent returns a Task with Artifacts containing the product list
+
+**Two SSE events per merchant (request + response):**
+```json
+{
+  "protocol": "A2A",
+  "source": "GenericShoppingAgent",
+  "target": "NikeMerchantAgent",
+  "direction": "→",
+  "label": "message/send",
+  "detail": { "merchant": "nike", "query": "running shoes" }
+}
+```
+```json
+{
+  "protocol": "A2A",
+  "source": "NikeMerchantAgent",
+  "target": "GenericShoppingAgent",
+  "direction": "←",
+  "label": "products_returned",
+  "detail": { "count": 8, "merchant": "nike" }
+}
+```
+
+Products from all merchants are merged and sorted (rating desc, price asc).
+
+---
+
+### Step 4 — AP2 IntentMandate
+
+**Protocol:** AP2 — Agent Payments Protocol (Google, Sep 2025)  
+**Color in trace:** amber  
+**Spec:** W3C Verifiable Credential (VC) — signed JSON-LD
+
+After A2A search confirms which merchants have products, the agent creates the first of three AP2 mandates: the **IntentMandate**. This is the user's cryptographic authorization for the agent to proceed.
+
+```json
+{
+  "protocol": "AP2",
+  "source": "User",
+  "target": "AP2Verifier",
+  "direction": "→",
+  "label": "intent_mandate_signed",
+  "detail": {
+    "id": "ap2_intent_abc123",
+    "merchants": ["nike"]
+  }
+}
+```
+
+**The mandate object** (stored server-side, never sent to frontend):
+```json
+{
+  "@context": ["https://www.w3.org/2018/credentials/v1"],
+  "type": ["VerifiableCredential", "IntentMandate"],
+  "credentialSubject": {
+    "query": "Nike running shoes",
+    "authorized_merchants": ["nike"],
+    "user_id": "user_42"
+  }
+}
+```
+
+---
+
+### Step 5 — Human Pause: Product Selection
+
+`human_pause` SSE event fires with `pause_type: "product_selection"`. The backend blocks on an `asyncio.Event` (5-minute timeout).
+
+**Frontend shows:** product grid with category-appropriate photos (curated Unsplash pools per merchant), variants selector, quantity picker, filter by brand.
+
+**User picks a product.** Frontend sends:
+```
+POST /api/generic/resume
+{ "session_id": "...", "product_id": "nike_air_max_001", "quantity": 1, "variant": {...} }
+```
+
+The asyncio.Event is set, the backend continues.
+
+---
+
+### Step 6 — UCP Checkout Session
+
+**Protocol:** UCP — Universal Commerce Protocol (Google + Shopify + Walmart + Target + Etsy + Wayfair, Jan 2026)  
+**Color in trace:** violet  
+**Spec:** REST, `POST /checkout-sessions`
+
+```json
+{
+  "protocol": "UCP",
+  "source": "GenericShoppingAgent",
+  "target": "UCPAdapter",
+  "direction": "→",
+  "label": "POST /checkout-sessions",
+  "detail": { "product_id": "nike_air_max_001", "quantity": 1, "merchant": "nike" }
+}
+```
+
+**Response — the totals breakdown:**
+```json
+{
+  "protocol": "UCP",
+  "direction": "←",
+  "label": "session_created",
+  "detail": {
+    "ucp_session_id": "ucp_sess_xyz789",
+    "status": "open",
+    "totals": {
+      "subtotal": 129.99,
+      "fulfillment": 7.99,
+      "tax": 13.52,
+      "total": 151.50
+    }
+  }
+}
+```
+
+---
+
+### Step 7 — AP2 CartMandate
+
+The second AP2 mandate locks the cart — product, quantity, and the exact total from UCP. This prevents price tampering.
+
+```json
+{
+  "protocol": "AP2",
+  "label": "cart_mandate_signed",
+  "detail": {
+    "id": "ap2_cart_def456",
+    "checkout_hash": "a3f9c2b1d7e0..."
+  }
+}
+```
+
+The `checkout_hash` is a SHA-256 of `product_id + quantity + total_cents`. Any price change would invalidate it.
+
+---
+
+### Step 8 — Human Pause: Approve & Pay
+
+`human_pause` fires with `pause_type: "approve_pay"`. Frontend shows:
+
+- **Customer (useAcp=true):** Auto-displays registered card "Visa •••• 4001 · exp 12/27" — just a Confirm button, no card entry
+- **Guest (useAcp=false):** Shows pre-registered demo instruments to choose from
+
+Frontend sends on approve:
+```
+POST /api/generic/resume
+{ "session_id": "...", "payment_method": "mock_pm_4001", "brand": "Visa", "last4": "4001" }
+```
+
+**Security:** Raw card data (PAN, CVV, expiry) never leaves the browser. A `mockTokenize()` call produces `mock_pm_<last4>` — the only thing that ever crosses the wire.
+
+---
+
+### Step 9 — ACP Shared Payment Token (customer mode only)
+
+**Protocol:** ACP — Agentic Commerce Protocol (OpenAI + Stripe, Sep 2025)  
+**Color in trace:** indigo  
+**Spec:** Shared Payment Token (SPT)
+
+The `mock_pm_4001` reference is sent to ACP to issue a single-use, amount-capped, merchant-scoped token:
+
+```json
+{
+  "protocol": "ACP",
+  "direction": "→",
+  "label": "POST /shared_payment/issued_tokens",
+  "detail": {
+    "payment_method": "pm_***4001",
+    "network_business_profile": "nbp_nike",
+    "constraints": {
+      "currency": "USD",
+      "maximum_amount": 15150,
+      "expiration": "now+15min"
+    }
+  }
+}
+```
+
+**SPT issued:**
+```json
+{
+  "protocol": "ACP",
+  "direction": "←",
+  "label": "token_issued",
+  "detail": {
+    "id": "spt_ghi789",
+    "brand": "Visa",
+    "last4": "4001",
+    "status": "active",
+    "maximum_amount_usd": 151.50
+  }
+}
+```
+
+**SPT verified** — constraints check (currency, amount cap, merchant scope, expiry):
+```json
+{ "protocol": "ACP", "label": "token_verified", "detail": { "ok": true, "reason": "constraints_satisfied" } }
+```
+
+---
+
+### Step 10 — AP2 PaymentMandate
+
+The final mandate authorizes the specific payment. Together, the three mandates form a chain: IntentMandate → CartMandate → PaymentMandate.
+
+```json
+{
+  "protocol": "AP2",
+  "label": "payment_mandate_signed",
+  "detail": {
+    "id": "ap2_pay_jkl012",
+    "acp_token_id": "spt_ghi789",
+    "amount_cents": 15150
+  }
+}
+```
+
+---
+
+### Step 11 — Order Complete
+
+The `order_complete` SSE event fires. Frontend transitions to the confirmation screen showing:
+- Order ID (e.g. `TS-2026-00042`)
+- Product thumbnail, merchant, variant
+- Price breakdown (subtotal / fulfillment / tax / total)
+- AP2 mandate chain summary (3 VCs)
+- 5-step delivery tracker: Order Placed → Processing → Shipped → Out for Delivery → Delivered — "Processing" highlighted
+- Dashboard link
+
+The sidebar history entry is annotated with the order label.
+
+---
+
+## Protocol Summary Table
+
+| Step | Protocol | Who Calls It | What It Does |
+|------|----------|--------------|--------------|
+| Routing | internal | Generic Agent | Parses NL intent, selects merchants |
+| Search | **A2A** | Generic Agent → Merchant Agents | JSON-RPC product search via Agent Cards |
+| Intent Auth | **AP2** | User → AP2Verifier | W3C VC: user authorizes agent to shop |
+| Checkout | **UCP** | Generic Agent → UCPAdapter | REST: creates session, returns totals |
+| Cart Lock | **AP2** | Generic Agent → AP2Verifier | W3C VC: locks product, price, quantity |
+| Payment Token | **ACP** | Generic Agent → ACPAdapter | Issues single-use SPT, verifies constraints |
+| Payment Auth | **AP2** | Generic Agent → AP2Verifier | W3C VC: final payment authorization |
+
+---
+
+## Key Security Properties
+
+- **Card data stays in the browser** — only a tokenized `mock_pm_<last4>` crosses the wire
+- **ACP SPT is single-use** — replay attacks are impossible
+- **ACP SPT is amount-capped** — the agent cannot charge more than the UCP total
+- **ACP SPT is merchant-scoped** — the token only works at the intended merchant
+- **AP2 CartMandate includes a checkout hash** — price tampering is detected at the PaymentMandate step
+- **LLM is outside the payment path** — all three payment steps are deterministic Python, not model calls
+
+---
+
+## Right Panel — Pipeline View vs Protocol Trace
+
+The right panel has two tabs:
+
+**Pipeline tab (default):** A vertical flowchart showing all 10 stages. Each stage lights up as it completes — slate dot → colored filled dot. The active stage shows a spinner. This gives a high-level view of "where are we in the flow."
+
+**Trace tab:** Every raw protocol message, expandable to see the full JSON payload. Color-coded by protocol. Useful for technical inspection of exactly what each adapter sent and received.
+
+---
+
+## Demo Cheat Sheet (v2)
+
+1. Login as Customer (uses ACP path) or Guest (pre-registered instruments)
+2. Click a suggestion chip or type: *"Nike running shoes"*
+3. Watch Pipeline tab: Routing → A2A → AP2 Intent → [pause]
+4. Pick a product from the grid
+5. Watch: UCP → AP2 Cart → [pause]
+6. See totals, confirm with registered card (customer) or select demo instrument (guest)
+7. Watch: ACP Token → AP2 Payment
+8. Order confirmation screen: order ID, delivery tracker, AP2 mandate chain
+9. Sidebar shows completed session with order label ✓ TS-2026-XXXXX
+10. Type another query — chat input stays active, new search starts automatically
+
+---
+
+# Live Trace — Current Flow (Real Runtime)
+
+This section describes what the app actually does today. Every JSON block was captured from a real run of the backend (Gemini calls, NeMo, Guardrails AI and the merchant catalogs were all live). Where a value is not captured, the document says so.
+
+## How to read the Live Trace
+
+- **Flow** shows the stages as a template: A2A → UCP Catalog → UCP Checkout → AP2 approval → ACP/DPAT → Payment → Order. Each stage lights up when its real event arrives. Click a stage to see its events.
+- **Live** is the real-time stream. Each event is a card. Click a card to see its captured data, sender and receiver, timestamp, and duration if one was measured.
+- Only real results are shown. A guardrail appears only if it actually ran. If a stage has no guardrail, it shows none.
+
+## Honest scope
+
+| Layer | How it runs | Real? |
+|---|---|---|
+| A2A (merchant agents) | In-process Python calls to the six merchant agents, using A2A message envelopes | Real calls, **not network JSON-RPC** |
+| UCP Catalog | Calls to each merchant's catalog through the agent | Real data from `backend/data/*_catalog.json` |
+| UCP Checkout | `POST /api/checkout/create` | Real REST response |
+| AP2 approval | Browser approval step, then `POST /api/authorizations/approve` | The approval is a **UI step**; no AP2 mandate messages exist |
+| ACP / DPAT | GreenLight DPAT token from `POST /api/authorizations/approve`, used by `POST /api/payments/execute` | Real token; it is a **DPAT**, not an ACP wire message |
+| Payment | `POST /api/payments/execute` | Real REST response |
+| Order | Returned in the execute response | Real order ID |
+
+## Stage 1 — Input checks (custom, deterministic)
+
+**What it does:** checks the user's message before any LLM call: empty input, length, harsh language, malformed characters, PII (email, phone, card-like numbers, SSN), and payment-credential keywords.
+
+**Why:** these checks are fast, free, and predictable. A card number should never reach an LLM, so this stage runs first.
+
+**Benefit:** every check reports its own result, so a PASS is only shown for a check that actually ran.
+
+**Real output (shopping request, "Nike running shoes"):**
+
+```json
+{
+  "type": "protocol_event",
+  "source": "Input checks",
+  "target": "ShoppingAgent",
+  "protocol": "internal",
+  "direction": "out",
+  "label": "input_validation_pass",
+  "detail": {
+    "framework": "custom",
+    "checks": [
+      {"check": "empty_input", "status": "pass", "reason": null},
+      {"check": "input_length", "status": "pass", "reason": null},
+      {"check": "harsh_language", "status": "pass", "reason": null},
+      {"check": "malformed_input", "status": "pass", "reason": null},
+      {"check": "pii_detection", "status": "pass", "reason": null},
+      {"check": "credential_keyword", "status": "pass", "reason": null}
+    ]
+  }
+}
+```
+
+## Stage 2 — NeMo Guardrails: Commerce Scope (Gemini engine)
+
+**What it does:** decides whether the message is about shopping, is off-topic, or asks for payment credentials.
+
+**Why NeMo and Gemini:** NeMo is the policy layer. Its flow in `backend/guardrails/nemo/commerce.co` says what happens for each verdict. Gemini is the classifier that picks the verdict. This takes one Gemini call per message. The earlier embedding-based matching did not run in this environment, so it was replaced.
+
+**Benefit:** the policy is readable and editable in one file. A verdict is enforced by the flow, not by string matching in Python.
+
+**Real output (off-topic: "what is the weather in Paris today"):**
+
+```json
+{
+  "type": "protocol_event",
+  "source": "NeMo Guardrails",
+  "target": "ShoppingAgent",
+  "protocol": "internal",
+  "direction": "out",
+  "label": "nemo_blocked",
+  "detail": {
+    "framework": "NeMo Guardrails",
+    "policy": "Commerce Scope",
+    "engine": "Gemini",
+    "category": "off_topic",
+    "response": "I'm your personal shopping assistant — I'm not able to help with that. Ask me to find a product, compare prices, or check availability and I'll get right on it!"
+  }
+}
+```
+
+A shopping request produces `nemo_pass` with `category: commerce_allowed`. If classification fails, the result is an error. It is never shown as a PASS.
+
+## Stage 3 — Intent extraction (Gemini) and schema check (Guardrails AI)
+
+**What it does:** Gemini turns the message into a structured `ShoppingIntent` (brand, category, size, colour, budget). Guardrails AI then checks that JSON against the Pydantic model.
+
+**Why:** the LLM can return text that looks right but has a string where a number belongs. The schema check catches that before any price or merchant decision uses it.
+
+**Benefit:** the `schema_valid` event appears only when Guardrails AI actually validated and passed the output. If Guardrails AI doesn't pass, no event is shown.
+
+*Not captured in this document:* this run did not record a sample of the Gemini output, so no JSON is shown for this stage.
+
+## Stage 4 — A2A: merchant routing and agent message
+
+**What it does:** routes the intent to the relevant merchant agents. For "Nike running shoes", only Nike is selected.
+
+**Why A2A:** it is the agent-to-agent pattern. The shopping agent talks to each merchant agent through a message with a skill and parameters, instead of reaching into the merchant's database.
+
+**Benefit:** each merchant can change its catalog or rules without the shopping agent knowing. The message shape matches what a real A2A call would send.
+
+**Real output (routing):**
+
+```json
+{
+  "label": "merchant_routing",
+  "source": "ShoppingAgent",
+  "target": "MerchantNetwork",
+  "protocol": "internal",
+  "detail": {"merchants": ["nike"]}
+}
+```
+
+**Real output (message to the agent):**
+
+```json
+{
+  "label": "message/send",
+  "source": "ShoppingAgent",
+  "target": "NikeAgent",
+  "protocol": "A2A",
+  "direction": "out",
+  "detail": {
+    "method": "message/send",
+    "skill": "product_search",
+    "intent": {"category": "running_shoes", "brand": "Nike"}
+  }
+}
+```
+
+**Real output (task result):**
+
+```json
+{
+  "label": "task_result",
+  "source": "NikeAgent",
+  "target": "ShoppingAgent",
+  "protocol": "A2A",
+  "direction": "in",
+  "detail": {"merchant": "nike", "product_count": 46, "status": "completed", "duration_ms": 1.2}
+}
+```
+
+`duration_ms` is measured around the in-process call. It is not a network time.
+
+## Stage 5 — UCP Catalog
+
+**What it does:** the Nike agent queries its own catalog, `backend/data/nike_catalog.json`, and returns matching items.
+
+**Why UCP:** the Universal Commerce Protocol describes catalog lookups and checkout as standard operations. Here it is used as the catalog structure, not as a network service.
+
+**Benefit:** the catalog format is the same for every merchant, so the trace and cards don't need special cases.
+
+**Real output (catalog results):**
+
+```json
+{
+  "label": "catalog_results",
+  "source": "UCPCatalog",
+  "target": "NikeAgent",
+  "protocol": "UCP",
+  "direction": "in",
+  "detail": {"merchant": "nike", "product_count": 46, "duration_ms": 1.2}
+}
+```
+
+`product_count` is the raw match count from the catalog. The product cards show fewer, because the deterministic filter also applies size, colour and price.
+
+**Real product (one card's data):**
+
+```json
+{
+  "merchant_id": "nike",
+  "product_id": "nike_zoom_fly_6-9-pink-white",
+  "title": "Nike Zoom Fly 6",
+  "category": "running_shoes",
+  "price": 139.99,
+  "currency": "USD",
+  "size": "9",
+  "color": "Pink/White",
+  "available": true,
+  "inventory": 4,
+  "delivery_days": 3,
+  "rating": 4.8,
+  "review_count": 412,
+  "source": "merchant_catalog"
+}
+```
+
+## Stage 6 — Merchant boundary checks (custom)
+
+**What it does:** before the products reach the list, checks that each product belongs to the merchant that returned it and has a positive price. Products that fail are dropped.
+
+**Why:** a merchant response is data from another system, so it is checked at the boundary.
+
+**Real output:**
+
+```json
+{
+  "label": "boundary_check",
+  "source": "NikeAgent",
+  "target": "ShoppingAgent",
+  "protocol": "A2A",
+  "detail": {
+    "framework": "custom",
+    "merchant": "nike",
+    "checks": [
+      {"check": "merchant_identity", "status": "pass", "reason": null},
+      {"check": "price_positive", "status": "pass", "reason": null}
+    ]
+  }
+}
+```
+
+## Stage 7 — UCP Checkout (REST)
+
+**What it does:** the user clicks a product and the app calls `POST /api/checkout/create`. The server locks the price, tax and shipping, and returns a checkout hash.
+
+**Why:** the checkout hash lets the payment step prove the approved amount has not changed.
+
+**Benefit:** the total the user approves is the total that gets charged.
+
+**Real request body:** `{"product_id": "nike_zoom_fly_6-9-pink-white", "merchant_id": "nike", "quantity": 1}`
+
+**Real response:**
+
+```json
+{
+  "checkout_id": "CHK_3FA7B824",
+  "merchant_id": "nike",
+  "product_id": "nike_zoom_fly_6-9-pink-white",
+  "product_title": "Nike Zoom Fly 6",
+  "quantity": 1,
+  "size": "9",
+  "color": "Pink/White",
+  "subtotal": 139.99,
+  "shipping": 0.0,
+  "tax": 11.48,
+  "total": 151.47,
+  "currency": "USD",
+  "checkout_hash": "9ac2541f1f2c547cf0b6e352ba73b54450befbc75b724f24923a1ea9c3c30087"
+}
+```
+
+The checkout event in the trace shows these totals from this response.
+
+## Stage 8 — AP2 approval (browser step) and GreenLight DPAT
+
+**What it does:** the user confirms the amount in the UI. The app then calls `POST /api/authorizations/approve` with the checkout details. The server issues a single-use DPAT token.
+
+**Why:** the user's consent is recorded before any money moves, and the token is tied to this checkout.
+
+**Honest note:** the approval is a browser step. No AP2 mandate message is exchanged, and the trace labels it that way.
+
+**Real request body:** the checkout's `checkout_id`, `checkout_hash`, `merchant_id`, `total`, `currency`, `product_id`, `product_title`, `merchant_name`, `subtotal`, `tax` and `shipping` fields, copied from the checkout response.
+
+**Real response:**
+
+```json
+{
+  "token_id": "DPAT_8E632A3F",
+  "authorization_id": "AUTH_5226723EE0",
+  "expires_at": "2026-10-06T22:22:48.408127Z",
+  "summary": "Authorization token DPAT_8E632A3F issued for Nike. Amount: $151.47. Expires in 15 minutes. Single-use token — valid for this purchase only."
+}
+```
+
+## Stage 9 — ACP / payment (DPAT used for payment)
+
+**What it does:** the app calls `POST /api/payments/execute` with the DPAT token and checkout details. The payment engine runs its 12 payment checks, then charges the mock processor.
+
+**Why:** the token can be used once, for this amount and merchant, within its expiry window. The engine rejects anything else.
+
+**Benefit:** a replayed or altered token is blocked before any charge.
+
+**Real response:**
+
+```json
+{
+  "status": "success",
+  "order_id": "CHK_3FA7B824",
+  "amount": 151.47,
+  "merchant": "Nike",
+  "summary": "Order CHK_3FA7B824 confirmed at Nike. Charged $151.47. Transaction TXN_A6B209C6C8.",
+  "transaction_id": "TXN_A6B209C6C8",
+  "blocked_reason": null,
+  "points_earned": 151,
+  "loyalty_balance": 151
+}
+```
+
+**Not yet in the browser:** the 12 payment check results are computed on the server but are not returned to the chat, so the trace doesn't show them yet.
+
+## Stage 10 — Order
+
+**What it does:** the order is recorded in the same execute response. The trace shows it as `order_created`.
+
+**Honest note:** the order is not a separate timed operation, so its duration is shown as not measured.
+
+## Durations
+
+Durations are measured only where a real call was timed: the merchant catalog call (in-process), the checkout create, the approve call and the execute call. Everything else shows no duration.
+
+## What is still not real
+
+- Separate request and response payloads are not captured for each event. Each event shows what it recorded when it fired.
+- AP2 mandate messages don't exist. The approval is a browser step plus a DPAT token.
+- The A2A and UCP calls are in-process, not network JSON-RPC.
+- Payment guardrail results are not yet returned to the browser.
+- Intent extraction samples are not captured in this document.

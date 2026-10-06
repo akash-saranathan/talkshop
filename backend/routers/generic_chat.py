@@ -26,8 +26,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from datetime import datetime, timezone
+
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.agents.generic_shopping_agent import ShoppingSession, run_generic_agent
+from backend.guardrails.nemo import check_input
 
 router = APIRouter()
 
@@ -61,6 +64,7 @@ async def generic_stream(
     q: str = Query(..., description="Natural-language shopping request"),
     session_id: str = Query(default_factory=lambda: uuid.uuid4().hex),
     use_acp: bool = Query(default=True, description="True = ACP SPT flow (customer); False = pre-registered instrument (guest)"),
+    prior_intent: str = Query(default="", description="JSON of partial intent from a previous clarifying-question round"),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> StreamingResponse:
     """
@@ -68,11 +72,38 @@ async def generic_stream(
     and puts events on the session queue. Human-pause moments hold until
     POST /api/generic/resume is called with the session_id.
     """
+    # ── Guardrails check ─────────────────────────────────────────────────────
+    allowed, block_msg = await check_input(q)
+    if not allowed:
+        ts = datetime.now(timezone.utc).isoformat()
+
+        async def _blocked():
+            pev = {
+                "type": "protocol_event",
+                "ts": ts,
+                "source": "User",
+                "target": "GuardrailsEngine",
+                "protocol": "guardrails",
+                "direction": "✗",
+                "label": "input_blocked",
+                "detail": {"reason": "sensitive_request_detected"},
+            }
+            yield f"event: protocol_event\ndata: {json.dumps(pev)}\n\n"
+            yield f"event: guardrail_block\ndata: {json.dumps({'message': block_msg})}\n\n"
+            yield "event: done\ndata: {}\n\n"
+
+        return StreamingResponse(
+            _blocked(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     session = ShoppingSession(
         session_id=session_id,
         query=q,
         user_id=current_user.user_id,
         use_acp=use_acp,
+        prior_intent_json=prior_intent or None,
     )
     _SESSIONS[session_id] = session
 

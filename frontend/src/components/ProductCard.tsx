@@ -256,7 +256,7 @@ export default function ProductCard({ product, index, selected = false, onToggle
               className="text-sm px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-light)] disabled:opacity-60"
             >
               {adding ? <Loader size={13} className="animate-spin" /> : null}
-              {adding ? "Adding..." : "Add to Cart"}
+              {adding ? "Selecting..." : "Select"}
             </button>
           )}
         </div>

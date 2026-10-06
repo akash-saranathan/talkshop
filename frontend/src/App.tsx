@@ -19,7 +19,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/" replace />;
+  if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -28,13 +28,9 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* v3 generic agent — entry point */}
-          <Route path="/" element={<Login />} />
-          <Route path="/chat" element={<RequireAuth><GenericChat /></RequireAuth>} />
-
-          {/* v1 demo — preserved at /v1 */}
-          <Route path="/v1" element={<RequireAuth><Chat /></RequireAuth>} />
-          <Route path="/login" element={<Navigate to="/" replace />} />
+          {/* main entry: original Talk Shop */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={<RequireAuth><Chat /></RequireAuth>} />
 
           {/* shared routes */}
           <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />

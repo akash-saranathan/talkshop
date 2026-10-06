@@ -100,7 +100,7 @@ export default function ProductDetailModal({ product, adding, onClose, onSelect 
           disabled={adding || !product.available}
           className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-light)] disabled:opacity-50 transition-colors"
         >
-          {adding ? "Adding..." : !product.available ? "Out of stock" : "Add to Cart"}
+          {adding ? "Selecting..." : !product.available ? "Out of stock" : "Select"}
         </button>
       </motion.div>
     </div>

@@ -20,11 +20,11 @@ from pydantic import BaseModel
 from backend.agents.cartup import build_checkout
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.agents.greenlight import request_dpat, summarize_authorization
-from backend.db.schema import AuditEvent, DelegatedToken, PaymentAuthorization, Product, Merchant
+from backend.db.schema import AuditEvent, DelegatedToken, PaymentAuthorization
 from backend.db.session_utils import get_session as _session, now_utc as _now, write_audit_event as _audit
+from backend.merchants import catalog as merchant_catalog
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import GuardrailEvent, PaymentRequest
-from backend.models.product import NormalizedProduct
 from backend.payment.guardrail_engine import run_guardrails
 from backend.payment.signing import sign_authorization
 from backend.payment.token_lookup import load_token_context
@@ -89,31 +89,9 @@ async def create_checkout_endpoint(
     CartUp builds a CheckoutObject from a selected product.
     Returns the full checkout with SHA-256 hash.
     """
-    with _session() as session:
-        row = (
-            session.query(Product, Merchant)
-            .join(Merchant, Product.merchant_id == Merchant.merchant_id)
-            .filter(Product.product_id == req.product_id)
-            .first()
-        )
-        if not row:
-            raise HTTPException(status_code=404, detail="Product not found")
-        product, merchant = row
-        normalized = NormalizedProduct(
-            merchant_id=product.merchant_id,
-            merchant_name=merchant.merchant_name,
-            product_id=product.product_id,
-            title=product.name,
-            brand=product.brand,
-            category=product.category,
-            price=product.price,
-            size=product.size,
-            color=product.color,
-            available=product.inventory > 0,
-            inventory=product.inventory,
-            delivery_days=product.delivery_days or 5,
-            rating=product.rating or 0.0,
-        )
+    normalized = merchant_catalog.get_product(req.product_id)
+    if not normalized:
+        raise HTTPException(status_code=404, detail="Product not found")
 
     checkout, error = await build_checkout(normalized, req.quantity, current_user.user_id)
     if error:

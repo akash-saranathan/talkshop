@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   ChevronLeft, ChevronRight, Activity, CheckCircle2, XCircle,
   Loader2, Shield, Search, ShoppingBag, Key, CreditCard, Package,
@@ -41,6 +41,7 @@ interface Props {
   activeProducts?: ProductData[];
   activeIntent?: SimpleIntent;
   activeRecommendation?: string;
+  embedMode?: boolean;
 }
 
 type AgentId = "VibeCheck" | "SneakPeek" | "CartUp" | "GreenLight" | "PayIt" | "TrackIt";
@@ -250,6 +251,7 @@ export default function AgentTrailPanel({
   activeLoading,
   activeProducts,
   activeIntent,
+  embedMode = false,
 }: Props) {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -300,34 +302,32 @@ export default function AgentTrailPanel({
   const outputRows = getAgentOutput(selectedAgent, activeTurnSteps, activeProducts, activeIntent);
   const activeSteps = getAgentSteps(selectedAgent, activeTurnSteps);
 
-  return (
-    <aside
-      style={{ width }}
-      className="border-l border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col overflow-hidden shrink-0"
-    >
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 py-3 shrink-0"
-        style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)" }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-6 h-6 rounded-lg bg-white/10 grid place-items-center">
-            <Activity size={13} className="text-white" />
+  const inner = (
+    <>
+      {!embedMode && (
+        <div className="flex items-center justify-between px-4 py-3 shrink-0"
+          style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)" }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 rounded-lg bg-white/10 grid place-items-center">
+              <Activity size={13} className="text-white" />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-white leading-none tracking-wide">Agent Pipeline</p>
+              <p className="text-[9px] text-white/60 mt-0.5 leading-none">Live execution trace</p>
+            </div>
+            {activeLoading && (
+              <span className="flex items-center gap-1 ml-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-[9px] text-amber-300 font-medium">Running</span>
+              </span>
+            )}
           </div>
-          <div>
-            <p className="text-[11px] font-bold text-white leading-none tracking-wide">Agent Pipeline</p>
-            <p className="text-[9px] text-white/60 mt-0.5 leading-none">Live execution trace</p>
-          </div>
-          {activeLoading && (
-            <span className="flex items-center gap-1 ml-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              <span className="text-[9px] text-amber-300 font-medium">Running</span>
-            </span>
-          )}
+          <button type="button" onClick={onToggleCollapse} title="Collapse"
+            className="text-white/50 hover:text-white transition-colors">
+            <ChevronRight size={15} />
+          </button>
         </div>
-        <button type="button" onClick={onToggleCollapse} title="Collapse"
-          className="text-white/50 hover:text-white transition-colors">
-          <ChevronRight size={15} />
-        </button>
-      </div>
+      )}
 
       {/* ── Progress bar ── */}
       <div className="px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
@@ -586,13 +586,24 @@ export default function AgentTrailPanel({
                 </button>
               );
             })}
-            <a href="/dashboard"
+            <Link to="/dashboard"
               className="text-[10px] text-[var(--color-primary)] hover:underline block text-center py-2 border-t border-[var(--color-border)] mt-1">
               View all orders →
-            </a>
+            </Link>
           </div>
         )}
       </div>
+    </>
+  );
+
+  if (embedMode) return inner;
+
+  return (
+    <aside
+      style={{ width }}
+      className="border-l border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col overflow-hidden shrink-0"
+    >
+      {inner}
     </aside>
   );
 }

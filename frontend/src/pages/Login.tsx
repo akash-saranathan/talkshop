@@ -33,17 +33,17 @@ export default function Login() {
     try {
       if (screen === "login") {
         await login(email, password);
-        navigate("/chat");
+        navigate("/");
       } else if (screen === "register") {
         await register(name, email, password);
-        navigate("/chat");
+        navigate("/");
       } else if (screen === "guest") {
         if (!name.trim() || name.trim().length < 2) throw new Error("Please enter your full name (at least 2 characters).");
         if (!/^[A-Za-z\s'\-]+$/.test(name.trim())) throw new Error("Name should contain only letters, spaces, or hyphens.");
         if (!email.trim()) throw new Error("Please enter your email address.");
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) throw new Error("Please enter a valid email address.");
         await loginAsGuest(name.trim(), email.trim());
-        navigate("/chat");
+        navigate("/");
       } else if (screen === "reset") {
         const res = await fetch("/api/auth/reset-password", {
           method: "POST",

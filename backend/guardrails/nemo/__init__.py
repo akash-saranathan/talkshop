@@ -1,4 +1,9 @@
-"""NeMo Guardrails — input/conversation safety for all agent LLM calls."""
+"""NeMo Guardrails — commerce scope and credential policy for chat input.
+
+The policy lives in commerce.co / config.yml. Its only decision source is one
+direct Gemini classification call (classify_commerce_scope), made once per message.
+"""
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +32,34 @@ _BLOCKED_CREDENTIAL_MSG = (
     "What can I help you find today? 🔒"
 )
 
+# Must match the bot refusal wording in commerce.co
+_CREDENTIAL_REFUSAL = "I can't share or expose payment credentials"
+_SCOPE_REFUSAL = "I'm your personal shopping assistant"
+
+_VERDICTS = {"commerce_allowed", "off_topic", "credential_request"}
+_CLASSIFY_PROMPT = """Classify this message sent to a shopping assistant. Reply with exactly one label:
+commerce_allowed - finding, comparing, checking or buying products, or a follow-up about shopping
+credential_request - asking for card numbers, CVV, PIN, bank details or other payment credentials
+off_topic - anything else, such as weather, poems, code, homework or general knowledge
+
+Message: {text}"""
+
+_verdict_ctx: ContextVar[Optional[dict]] = ContextVar("nemo_verdict", default=None)
+
+
+async def classify_commerce_scope(text: str) -> str:
+    from backend.config.llm import get_llm
+    response = await get_llm(temperature=0.0).ainvoke(_CLASSIFY_PROMPT.format(text=text))
+    content = response.content
+    if isinstance(content, list):
+        content = "".join(b.get("text", "") for b in content if isinstance(b, dict))
+    label = str(content).strip().strip("\"'.").lower()
+    verdict = label if label in _VERDICTS else "unknown"
+    holder = _verdict_ctx.get()
+    if holder is not None:
+        holder["verdict"] = verdict
+    return verdict
+
 
 def get_rails():
     """Lazy-load NeMo Guardrails. Cached after first call."""
@@ -35,46 +68,65 @@ def get_rails():
         return _rails
     try:
         from nemoguardrails import RailsConfig, LLMRails
+        from backend.config.llm import get_llm
         config = RailsConfig.from_path(str(_CONFIG_DIR))
-        _rails = LLMRails(config)
+        rails = LLMRails(config, llm=get_llm(temperature=0.0))
+        rails.register_action(classify_commerce_scope, "classify_commerce_scope")
+        _rails = rails
     except Exception as e:
         print(f"[WARNING] NeMo Guardrails unavailable: {e}. Running without input guardrails.")
         _rails = None
     return _rails
 
 
-async def check_input(user_message: str) -> tuple[bool, Optional[str]]:
-    """
-    Run input through guardrails.
-    Returns (allowed: bool, blocked_message: str | None).
+def _result(allowed: bool, message: Optional[str], credential_check: str, nemo: str,
+            category: Optional[str] = None, error: Optional[str] = None) -> dict:
+    return {
+        "allowed": allowed,
+        "message": message,
+        "credential_check": credential_check,
+        "nemo": nemo,
+        "policy": "Commerce Scope",
+        "engine": "Gemini",
+        "category": category,
+        "error": error,
+    }
 
-    1. Deterministic keyword check — always runs, never fails open.
-    2. NeMo semantic check — runs only if NeMo is available; fails open.
-    """
+
+async def check_input_detailed(user_message: str) -> dict:
     msg_lower = user_message.lower()
-
-    # --- deterministic layer (runs even if NeMo is down) ---
     for kw in _CREDENTIAL_KEYWORDS:
         if kw in msg_lower:
-            return False, _BLOCKED_CREDENTIAL_MSG
+            return _result(False, _BLOCKED_CREDENTIAL_MSG, "blocked", "not_run", "credential_request")
 
-    # --- NeMo semantic layer ---
     rails = get_rails()
     if rails is None:
-        return True, None
+        return _result(True, None, "pass", "unavailable")
 
+    holder: dict = {}
+    token = _verdict_ctx.set(holder)
     try:
         response = await rails.generate_async(
-            messages=[{"role": "user", "content": user_message}]
+            messages=[{"role": "user", "content": user_message}],
+            options={"rails": {"input": True, "output": False}},
         )
-        content = response.get("content", "")
-        refused_phrases = [
-            "Payment credentials are protected",
-            "I can only help with product discovery",
-        ]
-        for phrase in refused_phrases:
-            if phrase in content:
-                return False, content
-        return True, None
-    except Exception:
-        return True, None
+    except Exception as e:
+        return _result(True, None, "pass", "error", error=str(e)[:200])
+    finally:
+        _verdict_ctx.reset(token)
+
+    content = response.response[0]["content"] if response.response else ""
+    verdict = holder.get("verdict")
+    if _CREDENTIAL_REFUSAL in content:
+        return _result(False, content, "pass", "blocked", "credential_request")
+    if _SCOPE_REFUSAL in content:
+        return _result(False, content, "pass", "blocked", "off_topic")
+    if verdict == "commerce_allowed":
+        return _result(True, None, "pass", "pass", "commerce_allowed")
+    return _result(True, None, "pass", "error", verdict or "no_verdict",
+                   error="classification did not complete")
+
+
+async def check_input(user_message: str) -> tuple[bool, Optional[str]]:
+    result = await check_input_detailed(user_message)
+    return result["allowed"], result["message"]

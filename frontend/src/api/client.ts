@@ -25,10 +25,6 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   }
   const res = await fetch(url, { ...options, headers });
 
-  // A missing/expired/invalid token used to surface as a confusing
-  // "is the backend running?" error on whatever page made the call —
-  // the real problem was the session, not the server. Send the user
-  // back to log in instead of showing a misleading error.
   if (res.status === 401 && !window.location.pathname.startsWith("/login")) {
     clearToken();
     window.location.href = "/login";

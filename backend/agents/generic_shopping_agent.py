@@ -31,6 +31,12 @@ from pathlib import Path
 from typing import Any
 
 from backend.a2a.models import ShoppingIntent
+from backend.agents.vibecheck import (
+    extract_intent as llm_extract_intent,
+    needs_followup,
+    generate_followup_question,
+    _content_text,   # noqa: PLC2701 — internal helper, same package
+)
 from backend.a2a.merchants.nike import agent as nike_agent
 from backend.a2a.merchants.adidas import agent as adidas_agent
 from backend.a2a.merchants.zara import agent as zara_agent
@@ -98,6 +104,7 @@ class ShoppingSession:
     query: str
     user_id: str
     use_acp: bool
+    prior_intent_json: str | None = None  # JSON of partial intent from a previous clarifying question
 
     queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     pause_event: asyncio.Event = field(default_factory=asyncio.Event)
@@ -146,7 +153,52 @@ async def _pev(
     })
 
 
-# ── Intent parsing ─────────────────────────────────────────────────────────────
+async def _step_start(queue: asyncio.Queue, message: str) -> None:
+    """Emit a step_start event — shown in the agent trail panel."""
+    await _emit(queue, "step_start", {"ts": datetime.now(timezone.utc).isoformat(), "message": message})
+
+
+async def _step_done(queue: asyncio.Queue, message: str) -> None:
+    """Emit a step_done event — marks the step complete in the agent trail panel."""
+    await _emit(queue, "step_done", {"ts": datetime.now(timezone.utc).isoformat(), "message": message})
+
+
+# ── LLM conversational response ───────────────────────────────────────────────
+
+async def _chat_reply(query: str) -> str:
+    """Generate a short conversational reply for non-shopping messages."""
+    from backend.config.llm import get_llm
+    from langchain_core.messages import SystemMessage, HumanMessage
+    llm = get_llm(temperature=0.7)
+    system = (
+        "You are Talkshop, an intelligent agentic commerce assistant powered by A2A, UCP, ACP, and AP2 protocols. "
+        "You help users discover and purchase products from Nike, Adidas, Zara, H&M, Fossil, and Casio. "
+        "Keep replies friendly and concise (2–3 sentences). "
+        "If the user is greeting you, introduce yourself briefly. "
+        "If asked what you can do, explain you can help find and buy products via natural conversation. "
+        "Never make up product prices or details."
+    )
+    try:
+        resp = await llm.ainvoke([SystemMessage(content=system), HumanMessage(content=query)])
+        return _content_text(resp.content).strip()
+    except Exception:
+        return "Hi! I'm Talkshop — tell me what you're looking for and I'll find it for you."
+
+
+def _to_a2a_intent(vi, raw_query: str) -> ShoppingIntent:
+    """Convert a vibecheck ShoppingIntent (models.intent) → a2a ShoppingIntent."""
+    return ShoppingIntent(
+        raw_query=raw_query,
+        brand=vi.brand,
+        category=vi.category,
+        max_price=vi.max_price,
+        size=vi.size,
+        color=vi.color,
+        keywords=list(vi.preferences or []),
+    )
+
+
+# ── Regex intent parsing (fallback only) ──────────────────────────────────────
 
 def parse_intent(query: str) -> ShoppingIntent:
     q = query.lower()
@@ -184,7 +236,17 @@ def parse_intent(query: str) -> ShoppingIntent:
               "yellow", "purple", "orange", "brown", "navy", "beige"]
     color = next((c for c in colors if c in q), None)
 
-    keywords = [w for w in q.split() if w not in _STOP_WORDS and len(w) > 2][:5]
+    # Exclude words already captured as brand/category so they don't double-filter
+    captured = set()
+    if brand:
+        captured.update(brand.lower().split())
+    if category:
+        captured.update(category.lower().split())
+        captured.add(category.lower())
+    keywords = [
+        w for w in q.split()
+        if w not in _STOP_WORDS and len(w) > 2 and w not in captured
+    ][:5]
 
     return ShoppingIntent(
         raw_query=query,
@@ -233,7 +295,36 @@ async def _call_merchant(
         {"intent": {"category": intent.category, "brand": intent.brand, "max_price": intent.max_price}},
     )
 
+    # Simulate UCP Catalog capability: merchant agent queries its own catalog
+    await _pev(
+        session.queue,
+        f"{agent.merchant_name}Agent", "ProductCatalog",
+        "UCP", "→", "catalog_search",
+        {
+            "stage": "product_discovery",
+            "merchant": merchant_id,
+            "query": {
+                "category": intent.category,
+                "brand": intent.brand,
+                "max_price": intent.max_price,
+                "size": intent.size,
+                "color": intent.color,
+            },
+        },
+    )
+
     products = await asyncio.to_thread(agent.search, intent)
+
+    await _pev(
+        session.queue,
+        "ProductCatalog", f"{agent.merchant_name}Agent",
+        "UCP", "←", "catalog_results",
+        {
+            "stage": "product_discovery",
+            "merchant": merchant_id,
+            "product_count": len(products),
+        },
+    )
 
     await _pev(
         session.queue,
@@ -257,8 +348,114 @@ async def run_generic_agent(session: ShoppingSession) -> None:
     ap2 = AP2Adapter()
 
     try:
-        # ── AP2: IntentMandate created at session start ───────────────────────
-        intent = parse_intent(session.query)
+        # ── Layer 1: NeMo Guardrails — input safety check ─────────────────────
+        from backend.guardrails.nemo import check_input
+        await _pev(
+            session.queue,
+            "User", "NeMoRails",
+            "guardrails", "→", "input_check",
+            {"query_preview": session.query[:80]},
+        )
+        # ── VibeCheck: safety + intent ────────────────────────────────────────
+        await _step_start(session.queue, "VibeCheck — checking your message...")
+        nemo_allowed, nemo_block = await check_input(session.query)
+        if not nemo_allowed:
+            await _pev(
+                session.queue,
+                "NeMoRails", "User",
+                "guardrails", "✗", "input_blocked",
+                {"reason": "policy_violation"},
+            )
+            await _step_done(session.queue, "VibeCheck — request blocked by safety guardrails")
+            await _emit(session.queue, "guardrail_block", {"message": nemo_block})
+            await session.queue.put(None)
+            return
+        await _pev(
+            session.queue,
+            "NeMoRails", "GenericShoppingAgent",
+            "guardrails", "✓", "input_allowed",
+            {"check": "passed"},
+        )
+
+        # ── Layer 2: LLM intent extraction (Gemini via LangChain) ─────────────
+        await _pev(
+            session.queue,
+            "GenericShoppingAgent", "Gemini",
+            "guardrails", "→", "intent_extraction",
+            {"model": "gemini", "prior_intent": bool(session.prior_intent_json)},
+        )
+        prior_dict = json.loads(session.prior_intent_json) if session.prior_intent_json else None
+        vi_intent, llm_err = await llm_extract_intent(session.query, prior_intent=prior_dict)
+
+        if llm_err:
+            await _pev(
+                session.queue,
+                "Gemini", "GenericShoppingAgent",
+                "guardrails", "⚠", "llm_error_fallback",
+                {"error": str(llm_err)[:120]},
+            )
+            intent = parse_intent(session.query)
+            await _step_done(session.queue, "VibeCheck — intent parsed (fallback)")
+        else:
+            # ── Layer 3: Guardrails AI — output schema validation ─────────────
+            await _pev(
+                session.queue,
+                "Gemini", "GuardrailsAI",
+                "guardrails", "→", "output_validation",
+                {
+                    "category": vi_intent.category if vi_intent else None,
+                    "brand": vi_intent.brand if vi_intent else None,
+                    "validated": vi_intent is not None,
+                },
+            )
+            if vi_intent:
+                await _pev(
+                    session.queue,
+                    "GuardrailsAI", "GenericShoppingAgent",
+                    "guardrails", "✓", "schema_valid",
+                    {
+                        "category": vi_intent.category,
+                        "brand": vi_intent.brand,
+                        "max_price": vi_intent.max_price,
+                        "size": vi_intent.size,
+                        "color": vi_intent.color,
+                    },
+                )
+                # Emit resolved intent for frontend match badges
+                await _emit(session.queue, "intent_resolved", {
+                    "brand": vi_intent.brand,
+                    "category": vi_intent.category,
+                    "color": vi_intent.color,
+                    "size": vi_intent.size,
+                    "max_price": vi_intent.max_price,
+                })
+
+            # Chitchat / greeting / non-shopping → respond and finish
+            if vi_intent and vi_intent.category in ("chitchat", "general", None):
+                await _step_done(session.queue, "VibeCheck — answering your question directly")
+                reply = await _chat_reply(session.query)
+                await _emit(session.queue, "chat_message", {"text": reply})
+                await session.queue.put(None)
+                return
+
+            # Vague shopping query → ask one clarifying question, store partial intent
+            if vi_intent and needs_followup(vi_intent):
+                await _step_done(session.queue, "VibeCheck — need more details from you")
+                question = generate_followup_question(vi_intent)
+                await _emit(session.queue, "chat_message", {
+                    "text": question,
+                    "needs_clarification": True,
+                    "partial_intent": vi_intent.model_dump(exclude_none=True),
+                })
+                await session.queue.put(None)
+                return
+
+            category = vi_intent.category if vi_intent else "products"
+            brand = vi_intent.brand if vi_intent else None
+            intent_summary = f"{brand} {category}".strip() if brand else category or "products"
+            await _step_done(session.queue, f"VibeCheck — looking for {intent_summary}")
+            intent = _to_a2a_intent(vi_intent, session.query) if vi_intent else parse_intent(session.query)
+
         merchant_ids = route_merchants(intent)
 
         await _pev(
@@ -268,6 +465,15 @@ async def run_generic_agent(session: ShoppingSession) -> None:
             {"merchants": merchant_ids, "brand": intent.brand, "category": intent.category},
         )
 
+        # ── SneakPeek: parallel merchant search ───────────────────────────────
+        merchant_names = ", ".join(m.title() for m in merchant_ids)
+        await _step_start(session.queue, f"SneakPeek — reaching out to {merchant_names}...")
+        results = await asyncio.gather(
+            *[_call_merchant(session, mid, intent) for mid in merchant_ids]
+        )
+        all_products = [p for prods in results for p in prods]
+
+        # ── AP2: IntentMandate — user authorizes agent after products confirmed ─
         session.intent_mandate = ap2.create_intent_mandate(
             query=session.query,
             user_id=session.user_id,
@@ -280,19 +486,18 @@ async def run_generic_agent(session: ShoppingSession) -> None:
             {"id": session.intent_mandate.id, "merchants": merchant_ids},
         )
 
-        # ── A2A: parallel calls to selected merchant agents ───────────────────
-        results = await asyncio.gather(
-            *[_call_merchant(session, mid, intent) for mid in merchant_ids]
-        )
-        all_products = [p for prods in results for p in prods]
-
         # Sort: rating desc, price asc — same as BaseMerchantAgent
         all_products.sort(key=lambda p: (-p["rating"], p["price"]))
         session.all_products = all_products
 
         if not all_products:
+            await _step_done(session.queue, "SneakPeek — no products found for this search")
             await _emit(session.queue, "error", {"message": f"No products found for '{session.query}'. Try a different search."})
             return
+
+        n = len(all_products)
+        m = len(merchant_ids)
+        await _step_done(session.queue, f"SneakPeek — found {n} option{'s' if n != 1 else ''} across {m} store{'s' if m != 1 else ''}!")
 
         await _emit(session.queue, "products_ready", {
             "products": all_products,

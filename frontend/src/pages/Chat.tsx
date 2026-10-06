@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2, CheckCircle2, ShoppingBag } from "lucide-react";
+import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2, CheckCircle2, ShoppingBag, Activity, GitBranch, ChevronRight, ChevronLeft } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord, type ChatAction } from "../api/chat";
 import { getCart, addToCart, removeFromCart, updateCartItemQuantity, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
@@ -11,8 +11,10 @@ import CompareModal from "../components/CompareModal";
 import CartDrawer from "../components/CartDrawer";
 import ChatSidebar from "../components/ChatSidebar";
 import AgentTrailPanel from "../components/AgentTrailPanel";
+import ProtocolTracePanel, { type ProtocolEvent } from "../components/ProtocolTracePanel";
 import ThemeToggle from "../components/ThemeToggle";
-import InlineCheckout, { SAVED_CARDS, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape } from "../components/InlineCheckout";
+import InlineCheckout, { SAVED_CARDS, type AutoState, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape } from "../components/InlineCheckout";
+import AutoStepBar from "../components/AutoStepBar";
 import InlineOrderTracker from "../components/InlineOrderTracker";
 import { useAuth } from "../auth/AuthContext";
 import { getProductVisual } from "../utils/productVisual";
@@ -162,43 +164,31 @@ function isAddToCartPhrase(text: string): boolean {
 }
 
 // Inline cart card — shown in chat after add-to-cart or when user asks to view cart.
+const AUTO_SECONDS = 10;
+const SESSION_CART_TIMER_ID = "session-cart";
+
+interface AutoTimer extends AutoState {
+  turnId: string;
+  stage: "cart" | "checkout";
+  product: ProductData;
+}
+
 function InlineCartCard({
   addedProduct,
   cartItems,
   onViewCart,
-  onCheckout,
+  auto,
+  onPauseToggle,
 }: {
   addedProduct?: ProductData;
   cartItems: import("../api/cart").CartItemData[];
   onViewCart: () => void;
-  onCheckout: (product: ProductData) => void;
+  auto?: AutoState;
+  onPauseToggle?: () => void;
 }) {
   const visual = addedProduct ? getProductVisual(addedProduct.title, addedProduct.category) : null;
   const VisualIcon = visual?.icon;
   const total = cartItems.reduce((sum, item) => sum + item.price, 0);
-  const checkoutProduct = addedProduct ?? (cartItems[0] ? {
-    product_id: cartItems[0].product_id,
-    merchant_id: cartItems[0].merchant_id,
-    merchant_name: cartItems[0].merchant_name,
-    title: cartItems[0].title,
-    brand: cartItems[0].brand,
-    category: cartItems[0].category,
-    price: cartItems[0].price,
-    currency: cartItems[0].currency,
-    size: cartItems[0].size,
-    color: cartItems[0].color,
-    available: true,
-    inventory: 1,
-    delivery_days: cartItems[0].delivery_days,
-    rating: cartItems[0].rating,
-    review_count: 0,
-    shipping_cost: 0,
-    rank_score: 0,
-    source: "cart",
-    image_url: cartItems[0].image_url,
-    weight_grams: null,
-    cushioning: null,
-  } as ProductData : null);
 
   return (
     <motion.div
@@ -273,14 +263,15 @@ function InlineCartCard({
           className="flex-1 py-2 text-xs font-semibold rounded-lg border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-bg)] transition-colors">
           View Cart
         </button>
-        {checkoutProduct && (
-          <button onClick={() => onCheckout(checkoutProduct)}
-            className="flex-1 py-2 text-xs font-bold rounded-lg text-white transition-opacity hover:opacity-90"
-            style={{ background: "linear-gradient(135deg, #2563eb, #7c3aed)" }}>
-            Proceed to Checkout →
-          </button>
-        )}
       </div>
+      {auto && (
+        <AutoStepBar
+          label="Checkout"
+          secondsLeft={auto.secondsLeft}
+          paused={auto.paused}
+          onPauseToggle={onPauseToggle!}
+        />
+      )}
     </motion.div>
   );
 }
@@ -395,6 +386,10 @@ export default function Chat() {
   const [pastedImage, setPastedImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
+  const checkoutCreateMsRef = useRef(new Map<string, number>());
+  const turnsRef = useRef<Turn[]>(turns);
+  turnsRef.current = turns;
+  const [autoTimer, setAutoTimer] = useState<AutoTimer | null>(null);
   const [loading, setLoading] = useState(false);
   // Product the agent just recommended and asked "Want me to add to cart?" —
   // drives the Add/Dismiss chips below the recommendation text.
@@ -410,8 +405,13 @@ export default function Chat() {
   const [selectedProducts, setSelectedProducts] = useState<Map<string, ProductData>>(new Map());
   const [showCompare, setShowCompare] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [loyaltyBalance, setLoyaltyBalance] = useState<number | null>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(true);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [rightTab, setRightTab] = useState<"trace" | "pipeline">("trace");
+  const [protocolEvents, setProtocolEvents] = useState<ProtocolEvent[]>([]);
   const [leftWidth, setLeftWidth] = useState(256);
   const [rightWidth, setRightWidth] = useState(() => Math.round((window.innerWidth - 48) * 0.40));
   const resizingRef = useRef<"left" | "right" | null>(null);
@@ -431,9 +431,9 @@ export default function Chat() {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Always points to the latest handleSend — lets recognition callbacks call
   // it directly without capturing a stale closure.
-  const handleSendRef = useRef<(() => void) | null>(null);
+  const handleSendRef = useRef<((override?: string) => void) | null>(null);
   // Same pattern for doCheckoutSummary — avoids TDZ when handleSend references it.
-  const doCheckoutSummaryRef = useRef<((userText: string, product: ProductData) => void) | null>(null);
+  const doCheckoutSummaryRef = useRef<((userText: string, product: ProductData, alreadyAdded?: boolean) => void) | null>(null);
   const attachCheckoutToActiveTurnRef = useRef<((turnId: string, product: ProductData) => void) | null>(null);
   const doAddToCartRef = useRef<((userText: string, product: ProductData) => void) | null>(null);
   const attachAddToCartToActiveTurnRef = useRef<((turnId: string, product: ProductData) => void) | null>(null);
@@ -486,12 +486,14 @@ export default function Chat() {
   const addProductToSessionCart = useCallback(async (product: ProductData) => {
     const item = await addToCart(product);
     await syncSessionCart(item.cart_item_id);
+    setAutoTimer({ turnId: SESSION_CART_TIMER_ID, stage: "cart", secondsLeft: AUTO_SECONDS, paused: false, product });
   }, [syncSessionCart]);
 
   const setSessionCartQuantity = useCallback(async (item: CartItemData, quantity: number) => {
     if (quantity < 1) await removeFromCart(item.cart_item_id);
     else await updateCartItemQuantity(item.cart_item_id, quantity);
     await syncSessionCart();
+    setAutoTimer((a) => (a?.stage === "cart" ? { ...a, secondsLeft: AUTO_SECONDS, paused: false } : a));
   }, [syncSessionCart]);
 
 
@@ -552,9 +554,20 @@ export default function Chat() {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   }, []);
 
-  // Auto-scroll to the newest turn, matching standard chat UX.
+  // Reveal the newest content only as far as needed, and only when the user is
+  // already near the bottom or has just sent a message, so their scrolling is respected.
+  const followBottomRef = useRef(true);
+  const lastTurnCountRef = useRef(0);
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    const sentNewMessage = turns.length > lastTurnCountRef.current;
+    lastTurnCountRef.current = turns.length;
+    if (!sentNewMessage && !followBottomRef.current) return;
+    const last = el.lastElementChild as HTMLElement | null;
+    if (!last) return;
+    const overflow = last.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom;
+    if (overflow > 0) el.scrollBy({ top: overflow + 24, behavior: "smooth" });
   }, [turns]);
 
   const updateActiveTurn = useCallback((updater: (turn: Turn) => Turn) => {
@@ -577,6 +590,7 @@ export default function Chat() {
     activeTurnId.current = null;
     switchToSession(crypto.randomUUID());
     setTurns([]);
+    setProtocolEvents([]);
     setSessionCartCount(0);
     setSessionCartIds(new Set());
     setSessionCartItems([]);
@@ -690,8 +704,8 @@ export default function Chat() {
     }
   }, [handleNewChat]);
 
-  const handleSend = useCallback(async () => {
-    const msg = input.trim();
+  const handleSend = useCallback(async (override?: string) => {
+    const msg = (override ?? input).trim();
     if (!msg || loading) return;
 
     // ── Add-to-cart intercept — "add it/this/to cart" → show cart card, not checkout ──
@@ -828,6 +842,7 @@ export default function Chat() {
 
     // Close any existing stream
     closeStream.current?.();
+    setProtocolEvents([]);
 
     if (imageForTurn) {
       try {
@@ -942,6 +957,7 @@ export default function Chat() {
           }
         }
       },
+      onProtocolEvent: (ev) => setProtocolEvents((prev) => [...prev, ev as unknown as ProtocolEvent]),
       onBlocked: (message) => {
         updateActiveTurn((turn) => ({ ...turn, blocked: message }));
         setLoading(false);
@@ -974,7 +990,7 @@ export default function Chat() {
   // ── Inline checkout flow ──────────────────────────────────────────────────
 
   // Step 1: user said "yes" to agent's cart question → create checkout summary turn
-  const doCheckoutSummary = useCallback(async (userText: string, product: ProductData) => {
+  const doCheckoutSummary = useCallback(async (userText: string, product: ProductData, alreadyAdded = false) => {
     setInput("");
     setPastedImage(null);
     setLoading(true);
@@ -1006,7 +1022,8 @@ export default function Chat() {
     ]);
 
     try {
-      await addToCart(product);
+      if (!alreadyAdded) await addToCart(product);
+      const createStart = performance.now();
       const res = await authFetch("/api/checkout/create", {
         method: "POST",
         body: JSON.stringify({
@@ -1017,6 +1034,7 @@ export default function Chat() {
       });
       if (!res.ok) throw new Error("Checkout creation failed");
       const checkoutData: InlineCheckoutDataShape = await res.json();
+      checkoutCreateMsRef.current.set(checkoutData.checkout_id, Math.round(performance.now() - createStart));
 
       // Persist so coming back from /cart restores this checkout without losing state
       try {
@@ -1025,6 +1043,7 @@ export default function Chat() {
         }));
       } catch { /* noop */ }
 
+      setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product });
       setTurns((prev) =>
         prev.map((t) =>
           t.id === turnId
@@ -1096,6 +1115,7 @@ export default function Chat() {
         }));
       } catch { /* noop */ }
 
+      setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product });
       setTurns((prev) => prev.map((t) => t.id === turnId ? {
         ...t,
         steps: t.steps.filter((s) => s.id !== "ca1").concat({ id: "ca1", message: "CartUp — checkout session ready", status: "done" as const }),
@@ -1145,6 +1165,7 @@ export default function Chat() {
         setSessionCartIds((prev) => new Set(prev).add(newItem.cart_item_id));
         setSessionCartItems(cartItems);
       }
+      setAutoTimer({ turnId, stage: "cart", secondsLeft: AUTO_SECONDS, paused: false, product });
       setTurns((prev) => prev.map((t) => t.id === turnId ? {
         ...t,
         steps: [{ id: "ca1", message: "CartUp — item added to cart", status: "done" as const }],
@@ -1179,6 +1200,7 @@ export default function Chat() {
         setSessionCartIds((prev) => new Set(prev).add(newItem.cart_item_id));
         setSessionCartItems(cartItems);
       }
+      setAutoTimer({ turnId, stage: "cart", secondsLeft: AUTO_SECONDS, paused: false, product });
       setTurns((prev) => prev.map((t) => t.id === turnId ? {
         ...t,
         steps: t.steps.filter((s) => s.id !== "ca1").concat({ id: "ca1", message: "CartUp — item added to cart", status: "done" as const }),
@@ -1225,6 +1247,19 @@ export default function Chat() {
     );
     setLoading(true);
 
+    const card = SAVED_CARDS.find((c) => c.id === selectedCard) ?? SAVED_CARDS[0];
+    const emitProto = (ev: Omit<ProtocolEvent, "type" | "ts">) =>
+      setProtocolEvents((prev) => [...prev, { type: "protocol_event", ts: new Date().toISOString(), ...ev }]);
+    emitProto({
+      source: checkoutData.merchant_name, target: "UCP Checkout", protocol: "REST", direction: "in",
+      label: "session_created", detail: {
+        endpoint: "POST /api/checkout/create",
+        duration_ms: checkoutCreateMsRef.current.get(checkoutData.checkout_id) ?? null,
+        merchant: checkoutData.merchant_name,
+        totals: { subtotal: checkoutData.subtotal, fulfillment: checkoutData.shipping, tax: checkoutData.tax, total: checkoutData.total },
+      },
+    });
+
     const updateSteps = (steps: Array<{ label: string; status: "pending" | "running" | "done" | "error" }>) => {
       setTurns((prev) =>
         prev.map((t) => {
@@ -1243,6 +1278,7 @@ export default function Chat() {
 
     try {
       // GreenLight: approve authorization
+      const approveStart = performance.now();
       const approveRes = await authFetch("/api/authorizations/approve", {
         method: "POST",
         body: JSON.stringify({
@@ -1261,6 +1297,20 @@ export default function Chat() {
       });
       if (!approveRes.ok) throw new Error("Authorization failed");
       const approveData = await approveRes.json();
+      emitProto({
+        source: "GreenLight", target: "ShoppingAgent", protocol: "REST", direction: "in",
+        label: "dpat_issued", detail: {
+          endpoint: "POST /api/authorizations/approve",
+          token_id: approveData.token_id,
+          authorization_id: approveData.authorization_id,
+          expires_at: approveData.expires_at,
+          duration_ms: Math.round(performance.now() - approveStart),
+        },
+      });
+      emitProto({
+        source: "ShoppingAgent", target: "PayIt", protocol: "UI", direction: "out",
+        label: "auth_ui_complete", detail: { note: "Browser step: approval confirmed in the UI. No AP2 message was exchanged." },
+      });
 
       updateSteps([
         { label: "GreenLight — authorization approved", status: "done" },
@@ -1270,6 +1320,7 @@ export default function Chat() {
       ]);
 
       // PayIt: execute payment
+      const execStart = performance.now();
       const execRes = await authFetch("/api/payments/execute", {
         method: "POST",
         body: JSON.stringify({
@@ -1290,6 +1341,21 @@ export default function Chat() {
       });
       if (!execRes.ok) throw new Error("Payment failed");
       const execData = await execRes.json();
+      emitProto({
+        source: "PayIt", target: "ShoppingAgent", protocol: "REST", direction: "in",
+        label: "payment_executed", detail: {
+          endpoint: "POST /api/payments/execute",
+          status: execData.status,
+          order_id: execData.order_id,
+          amount: execData.amount,
+          transaction_id: execData.transaction_id ?? null,
+          duration_ms: Math.round(performance.now() - execStart),
+        },
+      });
+      emitProto({
+        source: "TrackIt", target: "User", protocol: "REST", direction: "in",
+        label: "order_created", detail: { endpoint: "POST /api/payments/execute", order_id: execData.order_id },
+      });
 
       updateSteps([
         { label: "GreenLight — authorization approved", status: "done" },
@@ -1360,20 +1426,16 @@ export default function Chat() {
     }
   }, []);
 
-  // Cancel inline checkout — marks the turn as cancelled
-  const cancelCheckout = useCallback((turnId: string) => {
-    try { sessionStorage.removeItem(`talkshop_checkout_${sessionIdRef.current}`); } catch { /* noop */ }
-    setTurns((prev) =>
-      prev.map((t) =>
-        t.id === turnId
-          ? { ...t, checkout: { ...t.checkout!, phase: "cancelled" as const } }
-          : t
-      )
-    );
+  const restartCheckoutTimer = useCallback((turnId: string) => {
+    const t = turnsRef.current.find((x) => x.id === turnId);
+    if (t?.checkout?.phase === "summary") {
+      setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product: t.checkout.product });
+    }
   }, []);
 
   // Update selected card within a checkout turn
   const updateCheckoutCard = useCallback((turnId: string, cardId: string) => {
+    restartCheckoutTimer(turnId);
     setTurns((prev) =>
       prev.map((t) =>
         t.id === turnId ? { ...t, checkout: { ...t.checkout!, selectedCard: cardId } } : t
@@ -1390,7 +1452,32 @@ export default function Chat() {
         t.id === turnId ? { ...t, checkout: { ...t.checkout!, guestCard: card } } : t
       )
     );
-  }, []);
+    restartCheckoutTimer(turnId);
+  }, [restartCheckoutTimer]);
+
+  const togglePauseAuto = () =>
+    setAutoTimer((a) => (a && (a.paused ? { ...a, paused: false, secondsLeft: AUTO_SECONDS } : { ...a, paused: true })));
+
+  useEffect(() => {
+    if (!autoTimer || autoTimer.paused) return;
+    if (autoTimer.secondsLeft > 0) {
+      const id = setTimeout(
+        () => setAutoTimer((a) => (a && a.secondsLeft > 0 ? { ...a, secondsLeft: a.secondsLeft - 1 } : a)),
+        1000,
+      );
+      return () => clearTimeout(id);
+    }
+    setAutoTimer(null);
+    if (autoTimer.stage === "cart") {
+      setPendingCheckoutProduct(null);
+      lastRecommendedProductRef.current = null;
+      doCheckoutSummaryRef.current?.("proceed to checkout", autoTimer.product, true);
+      return;
+    }
+    const co = turnsRef.current.find((t) => t.id === autoTimer.turnId)?.checkout;
+    if (!co?.checkoutData || (co.isGuest && !co.guestCard?.number)) return;
+    doPayment(autoTimer.turnId, co.checkoutData, co.selectedCard, co.product);
+  }, [autoTimer, doPayment]);
 
   const BAR_COUNT = 32;
 
@@ -1579,6 +1666,27 @@ export default function Chat() {
     navigate("/login");
   };
 
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    if (!showProfile) return;
+    const handler = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setShowProfile(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showProfile]);
+
+  // Fetch loyalty balance when profile menu opens (registered users only)
+  useEffect(() => {
+    if (!showProfile || isGuest) return;
+    authFetch("/api/loyalty")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setLoyaltyBalance(d.balance); })
+      .catch(() => {});
+  }, [showProfile, isGuest]);
+
   const handleToggleSelect = useCallback((product: ProductData) => {
     setSelectedProducts((prev) => {
       const next = new Map(prev);
@@ -1623,38 +1731,73 @@ export default function Chat() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <a href="/dashboard" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">
-              Order Tracker ↗
-            </a>
-            <button
-              onClick={() => setShowCartDrawer(true)}
-              className="relative text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
-              title="Cart"
+          <div className="flex items-center gap-4">
+            {/* Dashboard */}
+            <Link
+              to="/dashboard"
+              className="text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
             >
-              <ShoppingCart size={18} />
-              {cartCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-semibold grid place-items-center">
-                  {cartCount}
-                </span>
-              )}
-            </button>
+              Dashboard
+            </Link>
+
+            {/* Daylight */}
             <ThemeToggle />
-            <div className="flex items-center gap-2 text-sm border-l border-[var(--color-border)] pl-3">
-              <span className="text-[var(--color-text-muted)]">{user?.name}</span>
+
+            {/* Profile */}
+            <div className="relative" ref={profileMenuRef}>
               <button
-                onClick={handleLogout}
-                title="Log out"
-                className="text-[var(--color-text-muted)] hover:text-rose-500 transition-colors"
+                onClick={() => setShowProfile((v) => !v)}
+                className="flex items-center gap-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
+                title="Profile"
               >
-                <LogOut size={15} />
+                <div className="w-6 h-6 rounded-full bg-[var(--color-primary-bg)] text-[var(--color-primary)] text-[11px] font-bold grid place-items-center select-none">
+                  {user?.name?.[0]?.toUpperCase() ?? "?"}
+                </div>
+                <ChevronDown size={12} className={`transition-transform duration-150 ${showProfile ? "rotate-180" : ""}`} />
               </button>
+
+              {showProfile && (
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg z-50 overflow-hidden">
+                  {/* User info */}
+                  <div className="px-4 py-3 border-b border-[var(--color-border)]">
+                    <p className="text-sm font-semibold text-[var(--color-text)] truncate">{user?.name}</p>
+                    <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">{user?.email}</p>
+                  </div>
+                  {/* Loyalty points (registered users only) */}
+                  {!isGuest && (
+                    <div className="px-4 py-2.5 flex items-center gap-2.5 border-b border-[var(--color-border)]">
+                      <Star size={13} className="text-amber-400 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-[var(--color-text)]">
+                          {loyaltyBalance !== null ? `${loyaltyBalance} pts` : "— pts"}
+                        </p>
+                        <p className="text-[10px] text-[var(--color-text-muted)]">Loyalty balance</p>
+                      </div>
+                    </div>
+                  )}
+                  {/* Logout */}
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
+                  >
+                    <LogOut size={13} />
+                    Log out
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
 
         {/* Content area */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-6">
+        <div
+          ref={scrollRef}
+          onScroll={() => {
+            const el = scrollRef.current;
+            if (el) followBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+          }}
+          className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-6"
+        >
           {turns.map((turn) => {
             const isActiveTurn = loading && turn.id === activeTurnId.current;
             return (
@@ -1738,47 +1881,14 @@ export default function Chat() {
                       </motion.div>
                     )}
 
-                    {/* Cart action chips — only on the last turn when agent asked "Want me to add to cart?" */}
-                    {turn.recommendation && pendingCheckoutProduct && !isActiveTurn && !turn.checkout &&
-                      turn.id === turns[turns.length - 1].id && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-2"
-                      >
-                        <button
-                          onClick={() => {
-                            doAddToCartRef.current?.("yes, add to cart", pendingCheckoutProduct);
-                            setPendingCheckoutProduct(null);
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--color-primary)] text-white text-xs font-semibold hover:bg-[var(--color-primary-dark)] transition-colors shadow-sm"
-                        >
-                          🛒 Yes, add to cart
-                        </button>
-                        <button
-                          onClick={() => {
-                            setPendingCheckoutProduct(null);
-                            lastRecommendedProductRef.current = null;
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--color-border)] text-xs text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
-                        >
-                          No thanks
-                        </button>
-                      </motion.div>
-                    )}
-
                     {/* Inline cart card — shown after add-to-cart or "show cart" */}
                     {(turn.cartAdded || turn.showCartInline) && (
                       <InlineCartCard
                         addedProduct={turn.cartAdded?.product}
                         cartItems={sessionCartItems}
                         onViewCart={() => setShowCartDrawer(true)}
-                        onCheckout={(product) => {
-                          doCheckoutSummaryRef.current?.("proceed to checkout", product);
-                          // Clear pending so the CTA chips disappear
-                          setPendingCheckoutProduct(null);
-                          lastRecommendedProductRef.current = null;
-                        }}
+                        auto={autoTimer?.turnId === turn.id && autoTimer.stage === "cart" ? autoTimer : undefined}
+                        onPauseToggle={togglePauseAuto}
                       />
                     )}
 
@@ -1786,12 +1896,8 @@ export default function Chat() {
                     {turn.checkout && (
                       <InlineCheckout
                         {...turn.checkout}
-                        onConfirm={() => {
-                          if (turn.checkout?.checkoutData) {
-                            doPayment(turn.id, turn.checkout.checkoutData, turn.checkout.selectedCard, turn.checkout.product);
-                          }
-                        }}
-                        onCancel={() => cancelCheckout(turn.id)}
+                        auto={autoTimer?.turnId === turn.id && autoTimer.stage === "checkout" ? autoTimer : undefined}
+                        onPauseToggle={togglePauseAuto}
                         onCardChange={(cardId) => updateCheckoutCard(turn.id, cardId)}
                         onGuestCardChange={(card) => updateGuestCard(turn.id, card)}
                       />
@@ -1923,16 +2029,13 @@ export default function Chat() {
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-lg">
                 {[
-                  "Running shoes size 10 under $100",
-                  "Blue running shoes arriving in 2 days",
-                  "Blue polo shirt in size M",
-                  "Sony noise cancelling earbuds",
+                  "Running shoes, size 10, under $100",
+                  "Nike running shoes",
+                  "Zara summer dress",
                 ].map((suggestion) => (
                   <button
                     key={suggestion}
-                    // Move focus to the chat box so Enter sends the suggestion
-                    // (otherwise focus stays on this chip and Enter re-clicks it).
-                    onClick={() => { setInput(suggestion); textareaRef.current?.focus(); }}
+                    onClick={() => handleSendRef.current?.(suggestion)}
                     className="text-sm px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
                   >
                     {suggestion}
@@ -1950,12 +2053,12 @@ export default function Chat() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
-              className="mx-6 mb-2 rounded-xl border border-[var(--color-primary)]/40 bg-[var(--color-surface)] overflow-hidden"
+              className="relative mx-6 mb-2 rounded-xl border border-[var(--color-primary)]/40 bg-[var(--color-surface)]"
             >
               {/* Header — always visible */}
               <button
-                onClick={() => setCartPanelOpen((v) => !v)}
-                className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[var(--color-bg)] transition-colors"
+                onClick={() => setShowCartDrawer(true)}
+                className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl hover:bg-[var(--color-bg)] transition-colors"
               >
                 <div className="flex items-center gap-2 text-sm text-[var(--color-primary)] font-semibold">
                   <ShoppingCart size={15} />
@@ -1965,88 +2068,18 @@ export default function Chat() {
                   <span className="text-xs text-[var(--color-text-muted)]">
                     ${sessionCartItems.reduce((s, i) => s + i.price * i.quantity, 0).toFixed(2)}
                   </span>
-                  {cartPanelOpen ? <ChevronUp size={14} className="text-[var(--color-primary)]" /> : <ChevronDown size={14} className="text-[var(--color-primary)]" />}
+                  <ChevronRight size={14} className="text-[var(--color-primary)]" />
                 </div>
               </button>
+              {autoTimer?.turnId === SESSION_CART_TIMER_ID && (
+                <AutoStepBar
+                  label="Checkout"
+                  secondsLeft={autoTimer.secondsLeft}
+                  paused={autoTimer.paused}
+                  onPauseToggle={togglePauseAuto}
+                />
+              )}
 
-              {/* Expanded item list */}
-              <AnimatePresence>
-                {cartPanelOpen && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-4 pb-3 flex flex-col gap-2 border-t border-[var(--color-border)]">
-                      {sessionCartItems.map((item) => {
-                        const visual = getProductVisual(item.title, item.category);
-                        const ItemIcon = visual.icon;
-                        return (
-                          <div key={item.cart_item_id} className="flex items-center gap-3 pt-2">
-                            <div className={`w-9 h-9 rounded-lg grid place-items-center shrink-0 ${visual.bg}`}>
-                              <ItemIcon size={16} className={visual.fg} strokeWidth={1.5} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-[var(--color-text)] line-clamp-1">{item.title}</p>
-                              <p className="text-[10px] text-[var(--color-text-muted)]">${item.price.toFixed(2)} · qty {item.quantity}</p>
-                            </div>
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await removeFromCart(item.cart_item_id);
-                                  setSessionCartItems((prev) => prev.filter((i) => i.cart_item_id !== item.cart_item_id));
-                                  setSessionCartIds((prev) => { const s = new Set(prev); s.delete(item.cart_item_id); return s; });
-                                  setSessionCartCount((n) => Math.max(0, n - 1));
-                                  getCart().then((items) => setCartCount(items.length)).catch(() => {});
-                                } catch { /* noop */ }
-                              }}
-                              className="text-[var(--color-text-muted)] hover:text-rose-500 transition-colors p-1 shrink-0"
-                              title="Remove"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                      <button
-                        onClick={() => {
-                          setCartPanelOpen(false);
-                          const item = sessionCartItems[0];
-                          const product: ProductData = {
-                            product_id: item.product_id,
-                            merchant_id: item.merchant_id,
-                            merchant_name: item.merchant_name,
-                            title: item.title,
-                            brand: item.brand,
-                            category: item.category,
-                            price: item.price,
-                            currency: item.currency,
-                            size: item.size,
-                            color: item.color,
-                            available: true,
-                            inventory: 1,
-                            delivery_days: item.delivery_days,
-                            rating: item.rating,
-                            review_count: 0,
-                            shipping_cost: 0,
-                            rank_score: 0,
-                            source: "cart",
-                            image_url: item.image_url,
-                            weight_grams: null,
-                            cushioning: null,
-                          };
-                          doCheckoutSummaryRef.current?.("Checkout from cart", product);
-                        }}
-                        className="mt-1 w-full py-2 rounded-lg bg-[var(--color-primary)] text-white text-xs font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        <ShoppingCart size={13} /> Checkout
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>
@@ -2099,33 +2132,6 @@ export default function Chat() {
             getCart().then((items) => setCartCount(items.length)).catch(() => {});
           }}
           sessionCartIds={sessionCartIds}
-          onCheckout={(cartItem: CartItemData) => {
-            setShowCartDrawer(false);
-            const product: ProductData = {
-              product_id: cartItem.product_id,
-              merchant_id: cartItem.merchant_id,
-              merchant_name: cartItem.merchant_name,
-              title: cartItem.title,
-              brand: cartItem.brand,
-              category: cartItem.category,
-              price: cartItem.price,
-              currency: cartItem.currency,
-              size: cartItem.size,
-              color: cartItem.color,
-              available: true,
-              inventory: 1,
-              delivery_days: cartItem.delivery_days,
-              rating: cartItem.rating,
-              review_count: 0,
-              shipping_cost: 0,
-              rank_score: 0,
-              source: "cart",
-              image_url: cartItem.image_url,
-              weight_grams: null,
-              cushioning: null,
-            };
-            doCheckoutSummaryRef.current?.("Checkout", product);
-          }}
         />
 
         {/* Input bar */}
@@ -2243,7 +2249,7 @@ export default function Chat() {
               </button>
               <button
                 type="button"
-                onClick={handleSend}
+                onClick={() => handleSend()}
                 disabled={loading || !input.trim()}
                 className="p-1.5 rounded-lg bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-light)] transition-colors disabled:opacity-40"
               >
@@ -2262,9 +2268,6 @@ export default function Chat() {
         />
       )}
       {(() => {
-        // Accumulate steps from ALL turns so the panel shows the complete pipeline
-        // even after payment (payment steps live in checkout turn, search steps in prior turn).
-        // When a search is loading, prefer the live active turn so in-progress steps animate.
         const activeTurn = turns.find((t) => t.id === activeTurnId.current);
         const sessionSteps = turns.flatMap((t) => t.steps);
         const displaySteps = loading
@@ -2272,17 +2275,80 @@ export default function Chat() {
           : sessionSteps;
         const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
         const lastTurnWithIntent   = [...turns].reverse().find((t) => Object.keys(t.intent).length > 0);
+
+        if (rightCollapsed) {
+          return (
+            <aside className="w-10 border-l border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col items-center pt-4 gap-4 shrink-0">
+              <button type="button" onClick={() => setRightCollapsed(false)} title="Expand panel"
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">
+                <ChevronLeft size={16} />
+              </button>
+              <Activity size={15} className="text-[var(--color-text-muted)]" />
+            </aside>
+          );
+        }
+
         return (
-          <AgentTrailPanel
-            collapsed={rightCollapsed}
-            onToggleCollapse={() => setRightCollapsed((c) => !c)}
-            width={rightWidth}
-            activeTurnSteps={displaySteps}
-            activeLoading={loading}
-            activeProducts={lastTurnWithProducts?.products}
-            activeIntent={lastTurnWithIntent?.intent}
-            activeRecommendation={activeTurn?.recommendation}
-          />
+          <aside
+            style={{ width: rightWidth }}
+            className="border-l border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col overflow-hidden shrink-0"
+          >
+            {/* Shared header with toggle */}
+            <div className="flex items-center justify-between px-3 py-2.5 shrink-0"
+              style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)" }}>
+              <div className="flex rounded-lg overflow-hidden border border-white/20 text-[9px] font-bold">
+                {([
+                  { id: "trace",    label: "Live Trace",     icon: <Activity size={9} /> },
+                  { id: "pipeline", label: "Agent Pipeline", icon: <GitBranch size={9} /> },
+                ] as const).map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setRightTab(t.id)}
+                    className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
+                      rightTab === t.id
+                        ? "bg-white/20 text-white"
+                        : "text-white/50 hover:text-white/80"
+                    }`}
+                  >
+                    {t.icon}{t.label}
+                    {t.id === "pipeline" && loading && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-0.5" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={() => setRightCollapsed(true)} title="Collapse"
+                className="text-white/50 hover:text-white transition-colors ml-2">
+                <ChevronRight size={15} />
+              </button>
+            </div>
+
+            {/* Panel content */}
+            {rightTab === "trace" ? (
+              <ProtocolTracePanel
+                events={protocolEvents}
+                flowState={
+                  protocolEvents.some((e) => e.label === "order_created") ? "complete"
+                  : protocolEvents.some((e) => e.label === "session_created") ? (loading ? "ordering" : "payment_ready")
+                  : loading ? "searching"
+                  : turns.some((t) => t.products.length > 0) ? "products_shown"
+                  : "idle"
+                }
+              />
+            ) : (
+              <AgentTrailPanel
+                collapsed={false}
+                onToggleCollapse={() => {}}
+                width={rightWidth}
+                activeTurnSteps={displaySteps}
+                activeLoading={loading}
+                activeProducts={lastTurnWithProducts?.products}
+                activeIntent={lastTurnWithIntent?.intent}
+                activeRecommendation={activeTurn?.recommendation}
+                embedMode={true}
+              />
+            )}
+          </aside>
         );
       })()}
     </div>

@@ -39,7 +39,7 @@ function CartAction({ product, cartItem, onAddToCart, onSetQuantity }: {
         className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[var(--color-primary)] text-white text-xs font-medium hover:bg-[var(--color-primary-light)] disabled:opacity-60 transition-colors"
       >
         {busy ? <Loader size={13} className="animate-spin" /> : <ShoppingCart size={13} />}
-        {busy ? "Adding..." : "Add to Cart"}
+        {busy ? "Selecting..." : "Select"}
       </button>
     );
   }

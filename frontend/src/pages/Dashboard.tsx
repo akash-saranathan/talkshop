@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
-  Loader, Wallet as WalletIcon, Package, Truck, PackageCheck,
+  Loader, Package, Truck, PackageCheck,
   ChevronDown, ChevronUp, ExternalLink, type LucideIcon,
 } from "lucide-react";
 import { authFetch } from "../api/client";
@@ -29,7 +29,6 @@ interface Order {
   estimated_delivery: string | null;
 }
 
-interface WalletBalance { balance: number; currency: string; }
 
 interface AuditEvent {
   event_id: string;
@@ -78,7 +77,7 @@ function formatExpected(iso: string | null): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function AISummary({ orders, wallet }: { orders: Order[]; wallet: WalletBalance | null }) {
+function AISummary({ orders }: { orders: Order[] }) {
   const paid    = orders.filter((o) => o.status === "paid");
   const blocked = orders.filter((o) => o.status === "blocked");
   const inFlight = paid.filter((o) => o.delivery_status !== "delivered");
@@ -98,9 +97,7 @@ function AISummary({ orders, wallet }: { orders: Order[]; wallet: WalletBalance 
     <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4 mb-5">
       <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">AI Summary</p>
       <p className="text-sm text-[var(--color-text)]">
-        {wallet && <span className="font-semibold text-[var(--color-primary)]">${wallet.balance.toFixed(2)} remaining</span>}
-        {wallet && insight && " · "}
-        {insight}
+          {insight}
       </p>
     </div>
   );
@@ -108,10 +105,8 @@ function AISummary({ orders, wallet }: { orders: Order[]; wallet: WalletBalance 
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  // Guests pay by card only — no wallet to show.
   const { isGuest } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [wallet, setWallet] = useState<WalletBalance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
@@ -127,11 +122,8 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.all([
       authFetch("/api/orders").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
-      isGuest
-        ? Promise.resolve(null)
-        : authFetch("/api/wallet").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
     ])
-      .then(([o, w]: [Order[], WalletBalance | null]) => { setOrders(o); setWallet(w); })
+      .then(([o]: [Order[]]) => { setOrders(o); })
       .catch(() => setError("Couldn't load your dashboard — please try again."))
       .finally(() => setLoading(false));
   }, [isGuest]);
@@ -176,17 +168,11 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
-      <AppHeader title="Order Tracker" backHref="/" backLabel="Chat" />
+      <AppHeader title="Order Tracker" backHref="/chat" backLabel="Chat" />
 
       <div className="flex-1 p-6 max-w-5xl mx-auto w-full">
         {/* KPI row */}
-        <div className={`grid grid-cols-2 gap-3 mb-5 ${isGuest ? "md:grid-cols-4" : "md:grid-cols-5"}`}>
-          {!isGuest && (
-            <div className="rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] text-white p-4">
-              <p className="text-xs text-white/70 flex items-center gap-1 mb-1"><WalletIcon size={12} /> Wallet</p>
-              <p className="text-xl font-bold">{loading ? "—" : wallet ? `$${wallet.balance.toFixed(2)}` : "$0.00"}</p>
-            </div>
-          )}
+        <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
           {[
             { label: "Items Ordered", value: paid.length,               cls: "text-[var(--color-primary)]" },
             { label: "In Transit",    value: inTransit.length,           cls: "text-blue-500" },
@@ -201,7 +187,7 @@ export default function Dashboard() {
         </div>
 
         {/* AI Summary */}
-        <AISummary orders={orders} wallet={wallet} />
+        <AISummary orders={orders} />
 
         {/* Filter bar */}
         {!loading && !error && orders.length > 0 && (
@@ -264,7 +250,7 @@ export default function Dashboard() {
           <div className="py-16 text-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
             <Package size={32} className="mx-auto text-[var(--color-text-muted)] mb-3 opacity-40" />
             <p className="text-sm text-[var(--color-text-muted)]">No orders yet — start a conversation to find and buy products.</p>
-            <a href="/" className="inline-block mt-4 text-sm text-[var(--color-primary)] hover:underline">Start shopping →</a>
+            <Link to="/chat" className="inline-block mt-4 text-sm text-[var(--color-primary)] hover:underline">Start shopping →</Link>
           </div>
         ) : visible.length === 0 ? (
           <div className="py-12 text-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">

@@ -12,6 +12,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, ChevronDown, ChevronUp, CreditCard, Package, Truck, MapPin, Loader, Lock, X, ShieldCheck } from "lucide-react";
+import AutoStepBar from "./AutoStepBar";
 import type { ProductData } from "../api/chat";
 import { getProductVisual, type ProductVisual } from "../utils/productVisual";
 
@@ -71,9 +72,14 @@ export interface InlineCheckoutData {
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
+export interface AutoState {
+  secondsLeft: number;
+  paused: boolean;
+}
+
 interface Props extends InlineCheckoutData {
-  onConfirm: () => void;
-  onCancel: () => void;
+  auto?: AutoState;
+  onPauseToggle?: () => void;
   onCardChange: (cardId: string) => void;
   onGuestCardChange?: (card: GuestCardInput) => void;
 }
@@ -282,15 +288,15 @@ function SecurePaymentModal({
 }
 
 function SummaryCard({
-  product, checkoutData, selectedCard, onCardChange, onConfirm, onCancel,
+  product, checkoutData, selectedCard, onCardChange, auto, onPauseToggle,
   isGuest, guestCard, onGuestCardChange,
 }: {
   product: ProductData;
   checkoutData: CheckoutData;
   selectedCard: string;
   onCardChange: (id: string) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
+  auto?: AutoState;
+  onPauseToggle?: () => void;
   isGuest?: boolean;
   guestCard?: GuestCardInput;
   onGuestCardChange?: (c: GuestCardInput) => void;
@@ -388,62 +394,28 @@ function SummaryCard({
           ) : (
             <>
               <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Pay with</p>
-              <div className="space-y-1.5">
-                {SAVED_CARDS.map((card) => (
-                  <button
-                    key={card.id}
-                    onClick={() => onCardChange(card.id)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm transition-colors ${
-                      selectedCard === card.id
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-text)]"
-                        : "border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/50"
-                    }`}
-                  >
+              {(() => {
+                const card = SAVED_CARDS.find((c) => c.id === selectedCard) ?? SAVED_CARDS[0];
+                return (
+                  <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-sm text-[var(--color-text)]">
                     <span>{cardNetworkIcon(card.network)}</span>
                     <span className="flex-1 text-left">{card.network} ···· {card.last4}</span>
                     <span className="text-xs text-[var(--color-text-muted)]">{card.expiry}</span>
-                    {card.isDefault && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">Default</span>
-                    )}
-                    {selectedCard === card.id && (
-                      <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] grid place-items-center shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
 
-        {/* Actions */}
-        <div className="px-4 py-3 flex gap-2.5">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-2 rounded-lg border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/40 hover:text-[var(--color-text)] transition-colors"
-          >
-            Cancel
-          </button>
-          {isGuest ? (
-            <button
-              onClick={onConfirm}
-              disabled={!guestCardReady}
-              title={guestCardReady ? undefined : "Enter your card details first"}
-              className="flex-[2] py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--color-primary)]"
-            >
-              <Lock size={14} /> Secure Payment
-            </button>
-          ) : (
-            <button
-              onClick={onConfirm}
-              className="flex-[2] py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors flex items-center justify-center gap-2"
-            >
-              <CreditCard size={14} />
-              Confirm & Pay ${checkoutData.total.toFixed(2)}
-            </button>
-          )}
-        </div>
+        {auto && (
+          <AutoStepBar
+            label="Payment"
+            secondsLeft={auto.secondsLeft}
+            paused={auto.paused}
+            onPauseToggle={onPauseToggle!}
+          />
+        )}
       </motion.div>
 
       {/* Secure payment modal — rendered outside the chat via portal */}
@@ -619,7 +591,7 @@ function ConfirmedCard({
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export default function InlineCheckout(props: Props) {
-  const { phase, product, checkoutData, selectedCard, onCardChange, onConfirm, onCancel,
+  const { phase, product, checkoutData, selectedCard, onCardChange, auto, onPauseToggle,
     processingSteps, orderId, confirmedTotal, error, isGuest, guestCard, onGuestCardChange,
     pointsEarned, loyaltyBalance } = props;
 
@@ -634,8 +606,8 @@ export default function InlineCheckout(props: Props) {
         checkoutData={checkoutData}
         selectedCard={selectedCard}
         onCardChange={onCardChange}
-        onConfirm={onConfirm}
-        onCancel={onCancel}
+        auto={auto}
+        onPauseToggle={onPauseToggle}
         isGuest={isGuest}
         guestCard={guestCard}
         onGuestCardChange={onGuestCardChange}

@@ -1,62 +1,14 @@
-define user ask commerce
-  "find me shoes"
-  "search for laptops"
-  "I need running shoes"
-  "show me electronics under $200"
-  "find lightweight sneakers size 10"
-  "recommend a product"
-  "what shoes do you have"
-
-define user ask credential exposure
-  "give the merchant my card number"
-  "share my CVV"
-  "send my full credit card details"
-  "give my banking credentials"
-  "what is my card number"
-  "share my payment details with the agent"
-  "provide the shop with my bank account"
-  "can you provide me card number"
-  "provide me my card number"
-  "give me my card number"
-  "tell me my card number"
-  "show me my card details"
-  "what is my CVV"
-  "what is my pin"
-  "tell me my pin"
-  "give me my credit card"
-  "show my card"
-  "share my card"
-  "provide card details"
-  "give card number"
-  "card number please"
-  "I want my card number"
-  "my account number"
-  "my bank account details"
-  "my card credentials"
-
-define user ask non-commerce
-  "what is the weather"
-  "tell me a joke"
-  "write me an essay"
-  "help me with my homework"
-
-define bot respond commerce
-  "I'll search for products that match your request."
+define bot refuse non-commerce
+  "I'm your personal shopping assistant — I'm not able to help with that. Ask me to find a product, compare prices, or check availability and I'll get right on it!"
 
 define bot refuse credential request
   "I can't share or expose payment credentials — that's a hard boundary I never cross. Card numbers, CVVs, and banking details stay in the secure vault and are never visible to me or any agent. If you'd like to make a purchase, I'll guide you through the authorized checkout flow. What can I help you find today?"
 
-define bot refuse non-commerce
-  "I'm your personal shopping assistant — I'm not able to help with that. Ask me to find a product, compare prices, or check availability and I'll get right on it!"
-
-define flow commerce request
-  user ask commerce
-  bot respond commerce
-
-define flow credential guard
-  user ask credential exposure
-  bot refuse credential request
-
-define flow scope guard
-  user ask non-commerce
-  bot refuse non-commerce
+define flow commerce scope
+  $verdict = execute classify_commerce_scope(text=$user_message)
+  if $verdict == "off_topic"
+    bot refuse non-commerce
+    stop
+  if $verdict == "credential_request"
+    bot refuse credential request
+    stop

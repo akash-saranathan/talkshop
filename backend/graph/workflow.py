@@ -28,6 +28,36 @@ from backend.graph import session_state
 from backend.models.intent import ShoppingIntent
 from backend.models.product import NormalizedProduct
 
+# ── A2A merchant agents (lazy-loaded) ────────────────────────────────────────
+
+_MERCHANT_AGENTS = None
+
+def _get_merchant_agents():
+    global _MERCHANT_AGENTS
+    if _MERCHANT_AGENTS is None:
+        from backend.a2a.merchants.nike import agent as nike
+        from backend.a2a.merchants.adidas import agent as adidas
+        from backend.a2a.merchants.zara import agent as zara
+        from backend.a2a.merchants.hm import agent as hm
+        from backend.a2a.merchants.fossil import agent as fossil
+        from backend.a2a.merchants.casio import agent as casio
+        _MERCHANT_AGENTS = [nike, adidas, zara, hm, fossil, casio]
+    return _MERCHANT_AGENTS
+
+def _select_merchants(intent: ShoppingIntent) -> list:
+    """Return only the A2A merchant agents relevant to this intent."""
+    agents = _get_merchant_agents()
+    brand = (intent.brand or "").lower()
+    category = (intent.category or "").lower().replace("_", " ").replace("-", " ")
+    relevant = []
+    for ag in agents:
+        if brand and ag.merchant_id.lower() == brand:
+            return [ag]  # exact brand match — only that agent
+        cats = " ".join(ag.categories)
+        if any(w in cats for w in category.split() if len(w) > 2):
+            relevant.append(ag)
+    return relevant if relevant else agents  # fallback: broadcast to all 6
+
 
 # ── State schema ──────────────────────────────────────────────────────────────
 
@@ -56,16 +86,75 @@ async def _emit(state: CommerceState, event_type: str, message: str, data: Any =
     if q:
         await q.put({"type": event_type, "message": message, "data": data, "ts": datetime.utcnow().isoformat()})
 
+async def _emit_protocol(state: CommerceState, *, source: str, target: str, protocol: str,
+                         direction: str, label: str, detail: dict):
+    q: Optional[asyncio.Queue] = state.get("sse_queue")
+    if q:
+        await q.put({
+            "type": "protocol_event",
+            "ts": datetime.utcnow().isoformat(),
+            "source": source, "target": target,
+            "protocol": protocol, "direction": direction,
+            "label": label, "detail": detail,
+        })
+
 
 # ── Graph nodes ───────────────────────────────────────────────────────────────
 
 async def input_guardrail(state: CommerceState) -> CommerceState:
+    from backend.guardrails.input_checks import run_input_checks
+    from backend.guardrails.nemo import check_input_detailed
+
     await _emit(state, "step_start", "VibeCheck is reviewing your request for safety...")
-    from backend.guardrails.nemo import check_input
-    allowed, block_msg = await check_input(state["user_message"])
-    if not allowed:
-        await _emit(state, "blocked", block_msg or "Request blocked by safety guardrail")
-        return {**state, "blocked": True, "error": block_msg}
+    message = state["user_message"]
+    await _emit_protocol(state, source="User", target="Input checks", protocol="internal",
+                         direction="in", label="input_check", detail={"query": message[:120]})
+
+    checks = run_input_checks(message)
+    blocked = next((c for c in checks if c["status"] == "blocked"), None)
+    if blocked:
+        await _emit_protocol(state, source="Input checks", target="ShoppingAgent", protocol="internal",
+                             direction="out", label="input_blocked",
+                             detail={"framework": "custom", "check": blocked["check"], "checks": checks})
+        await _emit(state, "blocked", blocked["reason"])
+        return {**state, "blocked": True, "error": blocked["reason"]}
+
+    nemo = await check_input_detailed(message)
+    credential_blocked = nemo["credential_check"] == "blocked"
+    checks.append({
+        "framework": "custom", "check": "credential_keyword",
+        "status": "blocked" if credential_blocked else "pass",
+        "reason": nemo["message"] if credential_blocked else None,
+    })
+    if credential_blocked:
+        await _emit_protocol(state, source="Input checks", target="ShoppingAgent", protocol="internal",
+                             direction="out", label="input_blocked",
+                             detail={"framework": "custom", "check": "credential_keyword", "checks": checks})
+        await _emit(state, "blocked", nemo["message"] or "Request blocked by safety guardrail")
+        return {**state, "blocked": True, "error": nemo["message"]}
+
+    await _emit_protocol(state, source="Input checks", target="ShoppingAgent", protocol="internal",
+                         direction="out", label="input_validation_pass",
+                         detail={"framework": "custom", "checks": checks})
+
+    if nemo["nemo"] == "pass":
+        await _emit_protocol(state, source="NeMo Guardrails", target="ShoppingAgent", protocol="internal",
+                             direction="out", label="nemo_pass",
+                             detail={"framework": "NeMo Guardrails", "policy": nemo["policy"],
+                                     "engine": nemo["engine"], "category": nemo["category"]})
+    elif nemo["nemo"] == "blocked":
+        await _emit_protocol(state, source="NeMo Guardrails", target="ShoppingAgent", protocol="internal",
+                             direction="out", label="nemo_blocked",
+                             detail={"framework": "NeMo Guardrails", "policy": nemo["policy"],
+                                     "engine": nemo["engine"], "category": nemo["category"],
+                                     "response": nemo["message"]})
+        await _emit(state, "blocked", nemo["message"] or "Request blocked by safety guardrail")
+        return {**state, "blocked": True, "error": nemo["message"]}
+    elif nemo["nemo"] == "error":
+        await _emit_protocol(state, source="NeMo Guardrails", target="ShoppingAgent", protocol="internal",
+                             direction="out", label=f"nemo_{nemo['nemo']}",
+                             detail={"framework": "NeMo Guardrails", "error": nemo.get("error")})
+
     await _emit(state, "step_done", "VibeCheck — all clear, ready to shop!")
     return {**state, "blocked": False}
 
@@ -105,7 +194,7 @@ async def extract_intent(state: CommerceState) -> CommerceState:
             return {**state, "chitchat": True}
         # "new_search" — fall through to full intent extraction below
 
-    intent, error = await vibecheck.extract_intent(state["user_message"], prior_intent=prior, image_base64=image)
+    intent, error, schema_ok = await vibecheck.extract_intent_checked(state["user_message"], prior_intent=prior, image_base64=image)
     if error or not intent:
         await _emit(state, "error", f"Could not understand request: {error}")
         return {**state, "error": error or "intent_extraction_failed", "blocked": True}
@@ -122,8 +211,59 @@ async def extract_intent(state: CommerceState) -> CommerceState:
     # so a later short follow-up — "budget is 50", "only black" — keeps
     # merging into the same search instead of starting over from nothing.
     session_state.save_context(session_id, intent.model_dump(mode="json"))
+    await _emit_protocol(state, source="ShoppingAgent", target="Gemini", protocol="internal",
+                         direction="out", label="intent_extraction",
+                         detail={"query": state["user_message"][:120]})
+    if schema_ok:
+        await _emit_protocol(state, source="Guardrails AI", target="ShoppingAgent", protocol="internal",
+                             direction="out", label="schema_valid",
+                             detail={"framework": "Guardrails AI", "validator": "ShoppingIntent",
+                                     "intent": {k: v for k, v in intent.model_dump().items() if v is not None}})
     await _emit(state, "step_done", f"VibeCheck — understood! Looking for {intent.category.replace('_', ' ')}", {"intent": intent.model_dump()})
     return {**state, "intent": intent}
+
+
+async def _run_a2a_sidecar(state: CommerceState, intent: ShoppingIntent) -> None:
+    """Emit A2A + UCP protocol events alongside the main product search."""
+    import time
+    from backend.a2a.models import ShoppingIntent as A2AIntent
+    from backend.merchants import catalog as merchant_catalog
+    a2a_intent = A2AIntent(
+        raw_query=intent.raw_query or "",
+        brand=intent.brand,
+        category=intent.category,
+        max_price=intent.max_price,
+        size=intent.size,
+        color=intent.color,
+        keywords=list(intent.preferences or []),
+    )
+    agents = _select_merchants(intent)
+    merchant_names = [ag.merchant_name for ag in agents]
+    await _emit_protocol(state, source="ShoppingAgent", target="MerchantNetwork", protocol="internal",
+                         direction="out", label="merchant_routing",
+                         detail={"merchants": [ag.merchant_id for ag in agents]})
+    for ag in agents:
+        await _emit_protocol(state, source="ShoppingAgent", target=f"{ag.merchant_name}Agent",
+                             protocol="A2A", direction="out", label="message/send",
+                             detail={"method": "message/send", "skill": "product_search",
+                                     "intent": {"category": intent.category, "brand": intent.brand}})
+        await _emit_protocol(state, source=f"{ag.merchant_name}Agent", target="UCPCatalog",
+                             protocol="UCP", direction="out", label="catalog_search",
+                             detail={"merchant": ag.merchant_id, "query": intent.category})
+        t0 = time.perf_counter()
+        products, checks = merchant_catalog.search_agent_checked(ag, a2a_intent)
+        duration_ms = round((time.perf_counter() - t0) * 1000, 1)
+        await _emit_protocol(state, source="UCPCatalog", target=f"{ag.merchant_name}Agent",
+                             protocol="UCP", direction="in", label="catalog_results",
+                             detail={"merchant": ag.merchant_id, "product_count": len(products),
+                                     "duration_ms": duration_ms})
+        await _emit_protocol(state, source=f"{ag.merchant_name}Agent", target="ShoppingAgent",
+                             protocol="A2A", direction="in", label="boundary_check",
+                             detail={"framework": "custom", "merchant": ag.merchant_id, "checks": checks})
+        await _emit_protocol(state, source=f"{ag.merchant_name}Agent", target="ShoppingAgent",
+                             protocol="A2A", direction="in", label="task_result",
+                             detail={"merchant": ag.merchant_id, "product_count": len(products),
+                                     "status": "completed", "duration_ms": duration_ms})
 
 
 async def mcp_product_search(state: CommerceState) -> CommerceState:
@@ -132,7 +272,12 @@ async def mcp_product_search(state: CommerceState) -> CommerceState:
     intent: ShoppingIntent = state["intent"]
     await _emit(state, "step_start", "SneakPeek is searching stores for your product...")
 
-    products, stats = await sneakpeek.search_and_rank(intent, top_n=50)
+    # Run main product search + A2A protocol sidecar in parallel
+    products_result, _ = await asyncio.gather(
+        sneakpeek.search_and_rank(intent, top_n=50),
+        _run_a2a_sidecar(state, intent),
+    )
+    products, stats = products_result
 
     total = stats["total_found"]
     await _emit(state, "step_done", f"SneakPeek — found {total} products across {len(stats['merchants'])} stores", stats)

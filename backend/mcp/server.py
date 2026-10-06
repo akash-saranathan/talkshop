@@ -10,10 +10,7 @@ from fastmcp import FastMCP
 
 from backend.models.product import NormalizedProduct
 from backend.models.checkout import CheckoutObject
-from backend.merchants import local as local_adapter
-from backend.merchants import shopify as shopify_adapter
-from backend.merchants import bestbuy as bestbuy_adapter
-from backend.merchants import dummyjson as dummyjson_adapter
+from backend.merchants import catalog as merchant_catalog
 
 mcp = FastMCP("commerce-server")
 
@@ -27,46 +24,24 @@ async def search_products(
     size: Optional[str] = None,
 ) -> list[dict]:
     """
-    Fan-out search across all merchant adapters in parallel.
-    Returns normalized product list — financial fields come from DB, not LLM.
+    Searches the six demo merchant catalogs via their merchant agents.
+    Returns normalized product list — financial fields come from the catalog, not LLM.
     """
-    local_task = asyncio.to_thread(
-        local_adapter.search_products,
+    products = await asyncio.to_thread(
+        merchant_catalog.search,
+        query=query,
         category=category,
         brand=brand,
         max_price=max_price,
         size=size,
     )
-    shopify_task = shopify_adapter.search_products(
-        category=category, brand=brand, max_price=max_price, size=size
-    )
-    bestbuy_task = bestbuy_adapter.search_products(
-        category=category, brand=brand, max_price=max_price, query=query
-    )
-    dummyjson_task = dummyjson_adapter.search_products(
-        category=category, brand=brand, max_price=max_price, query=query
-    )
-
-    local_results, shopify_results, bestbuy_results, dummyjson_results = await asyncio.gather(
-        local_task, shopify_task, bestbuy_task, dummyjson_task, return_exceptions=True
-    )
-
-    combined: list[NormalizedProduct] = []
-    for batch in (local_results, shopify_results, bestbuy_results, dummyjson_results):
-        if isinstance(batch, list):
-            combined.extend(batch)
-
-    # Always fall back to local if external adapters returned nothing useful
-    if not combined:
-        combined = await asyncio.to_thread(local_adapter.search_products, category=category)
-
-    return [p.model_dump() for p in combined]
+    return [p.model_dump() for p in products]
 
 
 @mcp.tool()
 async def get_product(product_id: str) -> Optional[dict]:
     """Fetch a single product by ID. Checks local DB first."""
-    product = await asyncio.to_thread(local_adapter.get_product, product_id)
+    product = await asyncio.to_thread(merchant_catalog.get_product, product_id)
     if product:
         return product.model_dump()
     return None
@@ -75,7 +50,7 @@ async def get_product(product_id: str) -> Optional[dict]:
 @mcp.tool()
 async def check_inventory(product_id: str, size: Optional[str] = None) -> dict:
     """Return stock level and delivery estimate for a product."""
-    product = await asyncio.to_thread(local_adapter.get_product, product_id)
+    product = await asyncio.to_thread(merchant_catalog.get_product, product_id)
     if not product:
         return {"available": False, "inventory": 0, "delivery_days": None, "error": "product_not_found"}
     return {
@@ -89,7 +64,7 @@ async def check_inventory(product_id: str, size: Optional[str] = None) -> dict:
 @mcp.tool()
 async def get_price(product_id: str, size: Optional[str] = None) -> dict:
     """Return current price for a product variant."""
-    product = await asyncio.to_thread(local_adapter.get_product, product_id)
+    product = await asyncio.to_thread(merchant_catalog.get_product, product_id)
     if not product:
         return {"error": "product_not_found"}
     return {
@@ -107,7 +82,7 @@ async def calculate_shipping(
     quantity: int = 1,
 ) -> dict:
     """Calculate shipping cost for a cart item."""
-    product = await asyncio.to_thread(local_adapter.get_product, product_id)
+    product = await asyncio.to_thread(merchant_catalog.get_product, product_id)
     if not product:
         return {"error": "product_not_found"}
     # Free shipping on orders over $50, else $5.99 flat
@@ -134,7 +109,7 @@ async def create_checkout(
     """
     import hashlib, json, uuid
 
-    product = await asyncio.to_thread(local_adapter.get_product, product_id)
+    product = await asyncio.to_thread(merchant_catalog.get_product, product_id)
     if not product:
         return {"error": "product_not_found"}
 

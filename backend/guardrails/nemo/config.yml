@@ -1,16 +1,7 @@
-models:
-  - type: main
-    engine: litellm
-    model: gemini/gemini-3.5-flash-lite
-
 rails:
   input:
     flows:
-      - credential guard
-      - scope guard
-  output:
-    flows:
-      - commerce request
+      - commerce scope
 
 instructions:
   - type: general

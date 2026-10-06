@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Loader, ChevronLeft, ChevronRight, Package } from "lucide-react";
 import { authFetch } from "../api/client";
 import { getProductVisual } from "../utils/productVisual";
@@ -125,12 +125,12 @@ export default function OrdersPanel({ collapsed, onToggleCollapse, width }: Prop
         })
       )}
 
-      <a
-        href="/dashboard"
+      <Link
+        to="/dashboard"
         className="text-xs text-[var(--color-primary)] hover:underline text-center mt-1"
       >
         View all in Dashboard →
-      </a>
+      </Link>
     </aside>
   );
 }
