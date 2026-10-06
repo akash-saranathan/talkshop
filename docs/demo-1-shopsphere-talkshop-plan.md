@@ -709,6 +709,7 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
 - **Bugs found while testing and fixed:**
   - **Account menu behind the panel:** it dropped down behind the Talkshop panel and couldn't be clicked.
   - **Login race:** a late visitor-session response could undo a fresh login on a cold start.
+  - **Size and colour asked twice:** "wait, I need teal Nike shoes of size 10", typed while answering a size question, was taken as size 10 for the current shoe. A clear new request now always starts a search. Talkshop also remembers the size and colour named in a request, fills them in when the shopper picks a product (if they're in stock), and shows the cards in that colour.
 
 ---
 

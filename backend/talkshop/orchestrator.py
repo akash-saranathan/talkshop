@@ -135,9 +135,11 @@ async def _search(t: Turn, text: str, args: dict) -> None:
     intro = " ".join(notes) or copy["intro"]
     s.shown = [p["product_id"] for p in products]
     s.last_query = text
+    _remember_wants(s, text, args, products)
     t.say(intro)
     t.emit("recommendations", intro=intro,
-           products=[{**p, "reason": copy["reasons"].get(p["product_id"])} for p in products])
+           products=[{**_in_colour(p, s.wants.get("color")), "reason": copy["reasons"].get(p["product_id"])}
+                     for p in products])
     t.stage(Stage.RECOMMENDED)
 
 
@@ -152,7 +154,55 @@ async def _select(t: Turn, product_id: str, *, from_page: bool = False) -> None:
     t.emit("product_selected", product=product, from_page=from_page)
     t.stage(Stage.PRODUCT_SELECTED)
     lead = (f"Let's get you the {product['name']}." if from_page else "Great choice.")
-    await _next_option(t, lead)
+    await _next_option(t, " ".join(x for x in (lead, _apply_wants(s)) if x))
+
+
+def _remember_wants(s: Session, text: str, args: dict, products: list[dict]) -> None:
+    """Keep the size/colour named in a request ("teal nike shoes of size 10") so
+    the shopper isn't asked again after picking. A request for a different kind
+    of product starts afresh; a follow-up in the same kind keeps what wasn't restated."""
+    vocab = sorted({c["name"] for p in products for c in p["colors"]})
+    color = parse.pick_color(" ".join(x for x in (text, args.get("color")) if x), vocab)
+    size = parse.asked_size(text) or (str(args["size"]) if args.get("size") else None)
+    category = args.get("category")
+    keep = {} if category and category != s.wants.get("category") else s.wants
+    s.wants = {**keep, **{k: v for k, v in (("size", size), ("color", color)) if v},
+               "category": category or keep.get("category")}
+
+
+def _in_colour(product: dict, color: Optional[str]) -> dict:
+    """Show a recommendation card in the colour the shopper asked for."""
+    match = next((c for c in product["colors"] if color and c["name"].lower() == color.lower()), None)
+    return {**product, "image_url": match["image_url"]} if match and match.get("image_url") else product
+
+
+def _apply_wants(s: Session) -> str:
+    """Pre-fill the size/colour asked for while searching, where this product has
+    them in stock. Returns what to tell the shopper (applied, or why not)."""
+    want_size, want_color = s.wants.get("size"), s.wants.get("color")
+    if not (want_size or want_color):
+        return ""
+    avail = tools.check_variant(s.product_id)
+    label = avail["option_label"]
+    notes = []
+    color = parse.pick_color(want_color, [c["name"] for c in avail["colors"]]) if want_color else None
+    if want_color and not color:
+        notes.append(f"It doesn't come in {want_color.lower()}.")
+    if want_size and avail["has_sizes"]:
+        size = parse.pick_size(want_size, [x["size"] for x in avail["sizes"]])
+        if size and any(x["size"] == size and x["available"] for x in avail["sizes"]):
+            s.size = size
+        else:
+            notes.append(f"{label} {size or want_size.upper()} isn't available in this one.")
+    if color:
+        if any(c["name"] == color and c["available"] for c in tools.check_variant(s.product_id, size=s.size)["colors"]):
+            s.color = color
+        else:
+            notes.append(f"{color} isn't available{f' in {label.lower()} {s.size}' if s.size else ''}.")
+    done = s.color and (s.size or not avail["has_sizes"])
+    if (s.size or s.color) and not done:  # the confirmation line shows both when nothing is left to ask
+        notes.insert(0, f"I've set {f'{label.lower()} {s.size}' if s.size else f'the colour to {s.color}'}, as you asked.")
+    return " ".join(notes)
 
 
 async def _next_option(t: Turn, lead: str = "") -> None:
@@ -173,6 +223,9 @@ async def _next_option(t: Turn, lead: str = "") -> None:
                choices=[{"value": x["size"], "available": x["available"]} for x in avail["sizes"]])
         t.stage(Stage.ASK_SIZE)
         return
+    if s.color is not None and not any(c["name"] == s.color and c["available"] for c in avail["colors"]):
+        lead = f"{lead} {s.color} isn't available in {label.lower()} {s.size}.".strip()
+        s.color = None
     if s.color is None:
         colors = [c for c in avail["colors"] if c["available"]]
         if len(colors) == 1:
@@ -491,11 +544,12 @@ async def _handle_text(t: Turn, text: str) -> None:
             t.say("No problem — it's saved in your ShopSphere cart. What else can I find for you?")
             t.stage(Stage.IN_CART)
             return
-    if s.stage == Stage.RECOMMENDED and s.shown:
+    new_request = s.allows("search") and parse.is_new_request(text)
+    if s.stage == Stage.RECOMMENDED and s.shown and not new_request:
         idx = parse.pick_shown(text, [p["name"] for p in _shown_products(s)])
         if idx is not None:
             return await _select(t, s.shown[idx])
-    if s.stage == Stage.ASK_SIZE and s.product_id:
+    if s.stage == Stage.ASK_SIZE and s.product_id and not new_request:
         avail = tools.check_variant(s.product_id)
         size = parse.pick_size(text, [x["size"] for x in avail["sizes"]])
         if size:
@@ -504,7 +558,7 @@ async def _handle_text(t: Turn, text: str) -> None:
             if color and s.stage == Stage.ASK_COLOR:      # "8 in black" answers both
                 await _choose_color(t, color)
             return
-    if s.stage == Stage.ASK_COLOR and s.product_id:
+    if s.stage == Stage.ASK_COLOR and s.product_id and not new_request:
         color = parse.pick_color(text, [c["name"] for c in tools.check_variant(s.product_id)["colors"]])
         if color:
             return await _choose_color(t, color)

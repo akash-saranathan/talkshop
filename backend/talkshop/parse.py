@@ -86,6 +86,22 @@ def pick_size(text: str, sizes: list[str]) -> Optional[str]:
     return None
 
 
+_ASKED_SIZE = re.compile(r"\bsize\s*(?:of\s*|is\s*|:\s*)?(\d{1,4}(?:\.5)?(?:gb|tb|mm)?|x{0,3}[sl]|m)\b"
+                         r"|\b(\d{1,2}(?:\.5)?)\s*size\b|\b(?:us|uk|eu)\s*(\d{1,2}(?:\.5)?)\b")
+
+
+def asked_size(text: str) -> Optional[str]:
+    """A size named inside a request ("teal nike shoes of size 10", "a medium tee
+    in size m", "uk 9") — checked later against what the chosen product offers."""
+    t = norm(text)
+    for word, num in _NUM_WORDS.items():
+        t = re.sub(rf"\bsize (?:of )?{word}\b", f"size {num}", t)
+    for phrase, code in sorted(_SIZE_WORDS.items(), key=lambda kv: -len(kv[0])):
+        t = re.sub(rf"\bsize (?:of )?{phrase}\b", f"size {code.lower()}", t)
+    m = _ASKED_SIZE.search(t)
+    return next((g for g in m.groups() if g), None) if m else None
+
+
 def pick_color(text: str, colors: list[str]) -> Optional[str]:
     t = norm(text)
     for alias, real in _COLOR_SYNONYMS.items():
@@ -136,6 +152,12 @@ NOT_CARRIED = ["gucci", "prada", "puma", "reebok", "new balance", "asics", "hoka
                "lululemon", "bose", "beats", "dell", "lenovo", "google", "pixel", "oneplus", "fossil", "michael kors",
                "coach", "louis vuitton", "chanel", "balenciaga", "vans", "skechers", "timberland", "north face",
                "patagonia", "uniqlo", "garmin", "fitbit", "microsoft", "versace", "burberry", "hermes"]
+
+
+def is_new_request(text: str) -> bool:
+    """"wait, I need teal nike shoes of size 10" — a request for a product, not an
+    answer to the question on screen, even though it contains a size."""
+    return bool(search_intent(text)) and bool(_REQUEST.search(norm(text)))
 
 
 def search_intent(text: str) -> Optional[dict]:

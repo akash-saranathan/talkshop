@@ -71,6 +71,7 @@ class Session:
     checkout_id: Optional[str] = None
     order_id: Optional[str] = None
     is_visitor: bool = False                                # not logged in yet (Phase 8)
+    wants: dict = field(default_factory=dict)               # size/colour asked for while searching — kept across picks
     history: list[dict] = field(default_factory=list)       # [{"role": "user"|"assistant", "text": ...}] for the LLM
     transcript: list[dict] = field(default_factory=list)    # every event sent, so the panel can rebuild itself
 

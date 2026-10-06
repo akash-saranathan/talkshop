@@ -60,7 +60,7 @@ Return ONLY a JSON object:
     "gender": "<women | men | null>",
     "color": "<colour named or null>",
     "product_index": <for select_product: 0-based index into SHOWN PRODUCTS, or null>,
-    "size": "<for choose_option: exactly one of the offered sizes, or null>",
+    "size": "<for choose_option: exactly one of the offered sizes; for search: the size the shopper named, or null>",
     "color_choice": "<for choose_option: exactly one of the offered colours, or null>",
     "delivery_method": "<for update_checkout: standard | express | null>",
     "quantity": <for update_checkout: number or null>

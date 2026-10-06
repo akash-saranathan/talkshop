@@ -348,3 +348,73 @@ def test_this_one_on_a_product_page_selects_it(client, shopper):
     sid = f"t-{uuid.uuid4().hex[:8]}"
     ev = turn(client, shopper, sid, text="I'll take this one", page={"type": "product", "product_id": "SSP002"})
     assert of(ev, "product_selected")[0]["product"]["product_id"] == "SSP002" and stage(ev) == "ASK_SIZE"
+
+
+# ── Size/colour named in the request are remembered ──────────────────────────
+
+def test_size_and_colour_from_the_request_are_not_asked_again(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    ev = turn(client, shopper, sid, text="wait I need teal colour nike shoes of size 10")
+    pegasus = next(p for p in of(ev, "recommendations")[0]["products"] if p["product_id"] == "SSP004")
+    teal = next(c for c in pegasus["colors"] if c["name"] == "Teal")
+    assert pegasus["image_url"] == teal["image_url"]          # the card shows the colour asked for
+    ev = turn(client, shopper, sid, action={"type": "select", "product_id": "SSP004"})
+    assert not of(ev, "ask_option")
+    assert of(ev, "variant_confirmed")[0]["sku"] == "SSP004-TEAL-10"
+    assert stage(ev) == "OFFER_CHECKOUT"
+
+
+def test_size_from_the_request_then_asks_only_colour(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text="I need running shoes under $150, size 8")
+    ev = turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    assert "I've set size 8, as you asked." in of(ev, "message")[0]["text"]
+    assert [a["option"] for a in of(ev, "ask_option")] == ["color"] and stage(ev) == "ASK_COLOR"
+    ev = turn(client, shopper, sid, text="Black")
+    assert of(ev, "variant_confirmed")[0]["sku"] == "SSP001-BLACK-8"
+
+
+def test_unavailable_requested_size_is_explained_and_asked(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text="I need running shoes under $150 in size 11")
+    ev = turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    assert "Size 11 isn't available in this one." in of(ev, "message")[0]["text"]
+    assert of(ev, "ask_option")[0]["option"] == "size" and stage(ev) == "ASK_SIZE"
+
+
+def test_a_different_kind_of_product_forgets_the_size(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text="teal nike shoes of size 10")
+    turn(client, shopper, sid, text="show me wallets")
+    turn(client, shopper, sid, text=SPEC_REQUEST)              # running shoes again, no size this time
+    ev = turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    assert of(ev, "ask_option")[0]["option"] == "size"
+
+
+@pytest.mark.parametrize("text,size", [
+    ("wait I need teal colour nike shoes of size 10", "10"), ("running shoes size 8.5", "8.5"),
+    ("a tee in size medium", "m"), ("uk 9 sneakers", "9"), ("what size is it", None),
+    ("black shoes for 2 people", None), ("running shoes under $150", None),
+])
+def test_size_named_in_a_request(text, size):
+    from backend.talkshop.parse import asked_size
+    assert asked_size(text) == size
+
+
+def test_new_request_mid_question_searches_instead_of_answering(client, shopper):
+    """The reported case: on Runner Pro X's size question, "…nike shoes of size 10"
+    is a new search, not size 10 for Runner Pro X."""
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)
+    turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    ev = turn(client, shopper, sid, text="wait I need teal colour nike shoes of size 10")
+    assert not of(ev, "variant_confirmed") and stage(ev) == "RECOMMENDED"
+    assert "SSP004" in [p["product_id"] for p in of(ev, "recommendations")[0]["products"]]
+    ev = turn(client, shopper, sid, action={"type": "select", "product_id": "SSP004"})
+    assert not of(ev, "ask_option") and of(ev, "variant_confirmed")[0]["sku"] == "SSP004-TEAL-10"
+
+
+@pytest.mark.parametrize("text", ["size 10", "10 in black", "Black.", "the second one", "I want size 9"])
+def test_plain_answers_are_not_new_requests(text):
+    from backend.talkshop.parse import is_new_request
+    assert not is_new_request(text)
