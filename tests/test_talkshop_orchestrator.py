@@ -17,6 +17,7 @@ from backend.talkshop import brain
 from backend.talkshop.state import ALLOWED, Stage
 
 REAL_DECIDE = brain.decide          # kept before the autouse fake replaces it
+REAL_RECOMMEND = brain.recommend
 SPEC_REQUEST = "I need running shoes under $150 for everyday running."
 VISA = {"number": "4242 4242 4242 4242", "exp_month": 12, "exp_year": 2030, "cvc": "123", "cardholder_name": "Test"}
 HOME = {"full_name": "Test Shopper", "line1": "1 Main St", "city": "Austin", "state": "TX", "postal_code": "78701"}
@@ -418,3 +419,75 @@ def test_new_request_mid_question_searches_instead_of_answering(client, shopper)
 def test_plain_answers_are_not_new_requests(text):
     from backend.talkshop.parse import is_new_request
     assert not is_new_request(text)
+
+
+def test_typo_in_colour_is_understood(client, shopper):
+    """The reported case: "tale" means Teal (here with the LLM faked out, so the parser's fallback)."""
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text="no can I get nike tale colour size 10 shoes")
+    ev = turn(client, shopper, sid, action={"type": "select", "product_id": "SSP004"})
+    assert not of(ev, "ask_option") and of(ev, "variant_confirmed")[0]["sku"] == "SSP004-TEAL-10"
+
+
+def test_colour_the_llm_understood_is_used(client, shopper, monkeypatch):
+    async def recommend(request, products):
+        return {"intro": "Here you go:", "reasons": brain.fallback_reasons(products),
+                "wants": {"color": "Teal"} if "sea green" in request else {}}
+    monkeypatch.setattr(brain, "recommend", recommend)
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text="I want nike shoes in a sea green shade, size 10")
+    ev = turn(client, shopper, sid, action={"type": "select", "product_id": "SSP004"})
+    assert of(ev, "variant_confirmed")[0]["sku"] == "SSP004-TEAL-10"
+
+
+def test_llm_cannot_invent_a_colour(monkeypatch):
+    """recommend() keeps only colours these products really come in."""
+    import asyncio
+
+    class FakeLLM:
+        def __init__(self, color):
+            self.color = color
+
+        async def ainvoke(self, _):
+            return type("R", (), {"content": json.dumps({"intro": "Hi", "reasons": {},
+                                                         "wants": {"color": self.color, "size": "10"}})})()
+
+    products = [{"product_id": "P1", "name": "Shoe", "brand": "B", "rating": 4.0, "review_count": 1, "tags": ["x"],
+                 "description": "d", "sizes": ["10"], "colors": [{"name": "Teal"}, {"name": "Coral"}]}]
+    loop = asyncio.new_event_loop()
+    try:
+        monkeypatch.setattr(brain, "_llm", lambda *a, **k: FakeLLM("teal"))
+        assert loop.run_until_complete(REAL_RECOMMEND("tale shoes", products))["wants"] == {"color": "Teal", "size": "10"}
+        monkeypatch.setattr(brain, "_llm", lambda *a, **k: FakeLLM("Purple"))
+        assert loop.run_until_complete(REAL_RECOMMEND("purple shoes", products))["wants"] == {"size": "10"}
+    finally:
+        loop.close()
+
+
+@pytest.mark.parametrize("text,colour", [
+    ("no can I get nike tale colour size 10 shoes", "Teal"), ("teel", "Teal"), ("blak please", "Black"),
+    ("burgandy", "Burgundy"), ("black", "Black"), ("while you are at it", None), ("a great deal", None),
+    ("tall shoes", None), ("what about the goal", None),
+])
+def test_colour_typos(text, colour):
+    from backend.talkshop.parse import pick_color
+    assert pick_color(text, ["Coral", "Teal", "Black", "White", "Navy", "Gold", "Grey", "Burgundy"]) == colour
+
+
+def test_reported_typo_request_mid_size_question(client, shopper):
+    """On Runner Pro X's size question: "no can I get nike tale colour size 10 shoes"."""
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)
+    turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    ev = turn(client, shopper, sid, text="no can I get nike tale colour size 10 shoes")
+    assert not of(ev, "variant_confirmed") and stage(ev) == "RECOMMENDED"
+    ev = turn(client, shopper, sid, action={"type": "select", "product_id": "SSP004"})
+    assert of(ev, "variant_confirmed")[0]["sku"] == "SSP004-TEAL-10"
+
+
+def test_unclear_product_mention_mid_question_goes_to_the_llm(client, shopper, fake_llm):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)
+    turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
+    ev = turn(client, shopper, sid, text="size 10 shoes please")
+    assert fake_llm["decide"][-1]["message"] == "size 10 shoes please" and not of(ev, "variant_confirmed")

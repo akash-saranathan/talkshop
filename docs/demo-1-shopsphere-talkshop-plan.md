@@ -710,6 +710,10 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
   - **Account menu behind the panel:** it dropped down behind the Talkshop panel and couldn't be clicked.
   - **Login race:** a late visitor-session response could undo a fresh login on a cold start.
   - **Size and colour asked twice:** "wait, I need teal Nike shoes of size 10", typed while answering a size question, was taken as size 10 for the current shoe. A clear new request now always starts a search. Talkshop also remembers the size and colour named in a request, fills them in when the shopper picks a product (if they're in stock), and shows the cards in that colour.
+  - **Typos and loose wording ("nike tale colour size 10"):** keyword matching dropped what it couldn't read. Now:
+    - The LLM reads every search request for size and colour (typos, shades like "sea green"), in the recommendation call it already makes, so there's no extra wait. Code accepts only colours the products really come in.
+    - A message that names a product is never taken as a quick answer to the question on screen. Unclear ones go to the LLM.
+    - A small typo matcher covers a model outage.
 
 ---
 

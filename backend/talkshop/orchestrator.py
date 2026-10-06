@@ -135,7 +135,7 @@ async def _search(t: Turn, text: str, args: dict) -> None:
     intro = " ".join(notes) or copy["intro"]
     s.shown = [p["product_id"] for p in products]
     s.last_query = text
-    _remember_wants(s, text, args, products)
+    _remember_wants(s, text, args, products, copy.get("wants") or {})
     t.say(intro)
     t.emit("recommendations", intro=intro,
            products=[{**_in_colour(p, s.wants.get("color")), "reason": copy["reasons"].get(p["product_id"])}
@@ -157,13 +157,17 @@ async def _select(t: Turn, product_id: str, *, from_page: bool = False) -> None:
     await _next_option(t, " ".join(x for x in (lead, _apply_wants(s)) if x))
 
 
-def _remember_wants(s: Session, text: str, args: dict, products: list[dict]) -> None:
+def _remember_wants(s: Session, text: str, args: dict, products: list[dict], understood: dict) -> None:
     """Keep the size/colour named in a request ("teal nike shoes of size 10") so
-    the shopper isn't asked again after picking. A request for a different kind
-    of product starts afresh; a follow-up in the same kind keeps what wasn't restated."""
+    the shopper isn't asked again after picking. `understood` is what the LLM
+    read from the request (typos, shades); the parser covers a model outage.
+    A request for a different kind of product starts afresh; a follow-up in the
+    same kind keeps what wasn't restated."""
     vocab = sorted({c["name"] for p in products for c in p["colors"]})
-    color = parse.pick_color(" ".join(x for x in (text, args.get("color")) if x), vocab)
-    size = parse.asked_size(text) or (str(args["size"]) if args.get("size") else None)
+    color = (understood.get("color")
+             or parse.pick_color(" ".join(x for x in (text, args.get("color")) if x), vocab))
+    size = (parse.asked_size(text) or understood.get("size")
+            or (str(args["size"]) if args.get("size") else None))
     category = args.get("category")
     keep = {} if category and category != s.wants.get("category") else s.wants
     s.wants = {**keep, **{k: v for k, v in (("size", size), ("color", color)) if v},
@@ -544,12 +548,15 @@ async def _handle_text(t: Turn, text: str) -> None:
             t.say("No problem — it's saved in your ShopSphere cart. What else can I find for you?")
             t.stage(Stage.IN_CART)
             return
-    new_request = s.allows("search") and parse.is_new_request(text)
-    if s.stage == Stage.RECOMMENDED and s.shown and not new_request:
+    # Short replies ("10", "teal", "the first one") are read exactly. A message
+    # that names a kind of product ("…can I get nike shoes in size 10") is never
+    # taken as a quick answer to the question on screen.
+    intent = parse.search_intent(text)
+    if s.stage == Stage.RECOMMENDED and s.shown and not intent:
         idx = parse.pick_shown(text, [p["name"] for p in _shown_products(s)])
         if idx is not None:
             return await _select(t, s.shown[idx])
-    if s.stage == Stage.ASK_SIZE and s.product_id and not new_request:
+    if s.stage == Stage.ASK_SIZE and s.product_id and not intent:
         avail = tools.check_variant(s.product_id)
         size = parse.pick_size(text, [x["size"] for x in avail["sizes"]])
         if size:
@@ -558,17 +565,18 @@ async def _handle_text(t: Turn, text: str) -> None:
             if color and s.stage == Stage.ASK_COLOR:      # "8 in black" answers both
                 await _choose_color(t, color)
             return
-    if s.stage == Stage.ASK_COLOR and s.product_id and not new_request:
+    if s.stage == Stage.ASK_COLOR and s.product_id and not intent:
         color = parse.pick_color(text, [c["name"] for c in tools.check_variant(s.product_id)["colors"]])
         if color:
             return await _choose_color(t, color)
 
-    # A clear product request needs no LLM round-trip to start searching
-    if s.allows("search"):
-        intent = parse.search_intent(text)
-        if intent:
-            t.status("VibeCheck", "Understanding your request…")
-            return await _search(t, text, intent)
+    # A clear product request needs no LLM round-trip to start searching. Mid-
+    # question, only an unmistakable request skips the LLM; anything in between
+    # ("size 10 shoes please") is the LLM's call — answer or new search.
+    mid_question = s.stage in (Stage.RECOMMENDED, Stage.ASK_SIZE, Stage.ASK_COLOR)
+    if s.allows("search") and intent and (not mid_question or parse.is_new_request(text)):
+        t.status("VibeCheck", "Understanding your request…")
+        return await _search(t, text, intent)
 
     # Everything else: the LLM chooses an action the stage allows
     t.status("VibeCheck", "Understanding your request…")

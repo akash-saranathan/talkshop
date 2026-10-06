@@ -109,7 +109,33 @@ def pick_color(text: str, colors: list[str]) -> Optional[str]:
     for c in sorted(colors, key=len, reverse=True):        # "light blue" before "blue"
         if re.search(rf"\b{re.escape(c.lower())}\b", t):
             return c
-    return None
+    # A small typo in a one-word colour ("tale" → Teal, "blak" → Black)
+    words = [w for w in re.findall(r"[a-z]+", t) if len(w) >= 4 and w not in _NOT_COLOURS]
+    close = [c for c in colors if " " not in c and len(c) >= 4 and any(_near(w, c.lower()) for w in words)]
+    return close[0] if len(close) == 1 else None
+
+
+# Everyday words a typo away from a colour name ("while" ~ white, "goal" ~ gold).
+_NOT_COLOURS = {"while", "whine", "write", "great", "greet", "goal", "bold", "cold", "told", "sold", "hold",
+                "fold", "mold", "glue", "true", "grew", "tall", "teen", "team", "tear", "real", "deal", "meal",
+                "seal", "steal", "liver", "wave", "save", "have", "alive", "love", "crown", "grown", "drown",
+                "frown", "blank", "block", "moral", "oral", "dream", "nose", "hose", "pose", "lose", "hint",
+                "tint", "mind", "pine", "rest", "tile"}
+
+
+def _near(word: str, colour: str) -> bool:
+    """Same first letter and one edit away, or the same letters reordered."""
+    if word[0] != colour[0] or abs(len(word) - len(colour)) > 1:
+        return False
+    if len(word) == len(colour) and sorted(word) == sorted(colour):
+        return True
+    prev = list(range(len(colour) + 1))                     # Levenshtein distance ≤ 1
+    for i, a in enumerate(word, 1):
+        cur = [i]
+        for j, b in enumerate(colour, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a != b)))
+        prev = cur
+    return prev[-1] <= 1
 
 
 def gender_of(text: str) -> Optional[str]:
@@ -143,7 +169,8 @@ _CATEGORY_WORDS = [  # longest/most specific first
 _BUDGET = re.compile(r"(?:under|below|less than|up to|max(?:imum)?|within|no more than|cheaper than)\s*\$?\s*(\d+(?:\.\d+)?)"
                      r"|\$\s*(\d+(?:\.\d+)?)\s*(?:or less|max|tops)")
 _REQUEST = re.compile(r"\b(need|want|looking for|show me|find|get me|buy|shopping for|do you have|any|"
-                      r"recommend|suggest|i'?d like|searching for|gift)\b")
+                      r"recommend|suggest|i'?d like|searching for|gift|(?:can|could|may) i (?:get|have|see)|"
+                      r"how about|what about|instead|actually|rather)\b")
 CARRIED_BRANDS = {"nike": "Nike", "adidas": "Adidas", "converse": "Converse", "levi's": "Levi's", "levis": "Levi's",
                   "ray-ban": "Ray-Ban", "rayban": "Ray-Ban", "sony": "Sony", "apple": "Apple", "samsung": "Samsung",
                   "jbl": "JBL"}

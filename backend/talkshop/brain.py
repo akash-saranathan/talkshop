@@ -5,7 +5,8 @@ Talkshop's LLM calls. Two jobs only:
                  (search / select / choose option / checkout / answer …) with
                  its arguments, e.g. the structured search intent.
   recommend()  — one-line reasons for the top 3, written only from the
-                 product facts ShopSphere returned.
+                 product facts ShopSphere returned, plus the size/colour the
+                 shopper asked for, read the way a person would (typos too).
 
 The model never produces prices, stock, totals or order numbers that get
 shown as fact — those come from tool results. Every call has a
@@ -118,7 +119,11 @@ async def decide(message: str, *, stage: str, allowed: list[str], context: dict,
 _RECOMMEND_SYSTEM = """You write short product recommendation copy for the ShopSphere store.
 Use ONLY the facts given (name, brand, price, rating, tags, description). Never invent features,
 discounts, stock or delivery promises. Do not repeat prices — the cards already show them.
-Return ONLY JSON: {"intro": "<one friendly sentence>", "reasons": {"<product_id>": "<max 12 words why it fits>"}}"""
+Also note the size and colour the shopper asked for, if any, reading them as a shop assistant would:
+typos ("tale" means Teal), shades ("sea green" may mean Teal), "a 10" means size 10. The colour must be
+EXACTLY one of the colours listed for these products; if nothing listed fits, use null.
+Return ONLY JSON: {"intro": "<one friendly sentence>", "reasons": {"<product_id>": "<max 12 words why it fits>"},
+"wants": {"color": "<a listed colour or null>", "size": "<size named by the shopper or null>"}}"""
 
 
 def fallback_reasons(products: list[dict]) -> dict:
@@ -127,10 +132,11 @@ def fallback_reasons(products: list[dict]) -> dict:
 
 async def recommend(request: str, products: list[dict]) -> dict:
     facts = [{"product_id": p["product_id"], "name": p["name"], "brand": p["brand"], "rating": p["rating"],
-              "review_count": p["review_count"], "tags": p["tags"], "description": p["description"]}
+              "review_count": p["review_count"], "tags": p["tags"], "description": p["description"],
+              "colors": [c["name"] for c in p["colors"]], "sizes": p["sizes"]}
              for p in products]
     default = {"intro": f"I found {len(products)} option{'s' if len(products) != 1 else ''} for you:",
-               "reasons": fallback_reasons(products)}
+               "reasons": fallback_reasons(products), "wants": {}}
     try:
         resp = await _ask(_llm(0.3), [
             SystemMessage(content=_RECOMMEND_SYSTEM),
@@ -139,8 +145,13 @@ async def recommend(request: str, products: list[dict]) -> dict:
         out = json.loads(extract_json_from_llm(_content_text(resp.content)))
         reasons = {pid: str(r)[:120] for pid, r in (out.get("reasons") or {}).items()
                    if pid in default["reasons"] and "$" not in str(r)}   # no invented prices
+        colours = {c["name"].lower(): c["name"] for p in products for c in p["colors"]}
+        wants = out.get("wants") if isinstance(out.get("wants"), dict) else {}
+        color = colours.get(str(wants.get("color") or "").strip().lower())   # only colours that exist
+        size = str(wants["size"]).strip()[:10] if wants.get("size") not in (None, "", "null") else None
         return {"intro": str(out.get("intro") or default["intro"])[:200],
-                "reasons": {**default["reasons"], **reasons}}
+                "reasons": {**default["reasons"], **reasons},
+                "wants": {k: v for k, v in (("color", color), ("size", size)) if v}}
     except Exception as exc:
         log.warning("talkshop.recommend fallback: %s", exc)
         return default
