@@ -769,6 +769,11 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
   - **Buttons:** Checkout now / Keep shopping.
   - **Pauses** when the shopper clicks into the chat box. **Doesn't run** while the panel is minimised, or for a conversation restored after a reload.
   - **Payment is unchanged:** moving to checkout never pays; GO AHEAD is still the only consent. A visitor's countdown ends at the sign-in card.
+- **Follow-up: "we don't sell that" blocker.** Asking for something outside ShopSphere's range (e.g. "no laptop tomatoes grocery") used to show unrelated top-rated products. Now:
+  1. A list of product types ShopSphere doesn't sell (groceries, furniture, pet supplies, books, toys, beauty, appliances, medicine, vehicles) gets a plain "ShopSphere doesn't sell…" reply with no cards.
+  2. "no"/"not"/"don't want" rules out the next item ("not a laptop, show me headphones" shows headphones).
+  3. For anything not on the list, the LLM checks in the recommendation call whether the results are the kind of thing asked for, so there's no extra wait. Only an explicit "doesn't fit" hides them, and it caught "garden hose", "yoga mat" and "cookware" in testing.
+  4. A mixed request ("a laptop and some tomatoes") shows the laptops with a note.
 - **For a production build:** the card fields would sit in a payment provider's hosted iframe (e.g. Stripe Elements), so the store's own page couldn't read them. Here they are a local, ShopSphere-only React component that posts straight to the tokenization endpoint.
 
 ---

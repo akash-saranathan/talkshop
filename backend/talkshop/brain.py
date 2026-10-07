@@ -71,6 +71,9 @@ Return ONLY a JSON object:
 
 Rules:
 - A new product request ("I need…", "show me…", "do you have…") is "search", even mid-flow.
+- ShopSphere sells ONLY clothing, shoes, accessories and electronics. A request for anything else (groceries,
+  furniture, toys…) is "answer": say plainly ShopSphere doesn't sell it and offer what it does sell. Never search.
+- Words after "no"/"not"/"don't want" are things the shopper does NOT want — never search for them.
 - Do NOT ask for size or colour before searching — search with what you have.
 - A question about a product shown ("is it good for flat feet?") is "answer", using only the facts given.
 - If the shopper agrees to check out, choose "checkout"; if they decline, "keep_shopping".
@@ -122,8 +125,18 @@ discounts, stock or delivery promises. Do not repeat prices — the cards alread
 Also note the size and colour the shopper asked for, if any, reading them as a shop assistant would:
 typos ("tale" means Teal), shades ("sea green" may mean Teal), "a 10" means size 10. The colour must be
 EXACTLY one of the colours listed for these products; if nothing listed fits, use null.
+Finally, judge whether these products are the KIND of thing the shopper asked for. ShopSphere only sells
+clothing, shoes, accessories (bags, watches, sunglasses, belts, wallets, scarves) and electronics (headphones,
+earbuds, speakers, laptops, phones, smartwatches, fitness trackers). If the shopper asked for a kind of product
+ShopSphere doesn't sell (e.g. tomatoes, a sofa, dog food, a garden hose) and none of these products is that kind of
+thing, set "fits" to false and "asked_for" to the KIND of product they asked for, as a short noun phrase that
+fits "ShopSphere doesn't sell ___" (e.g. "garden hoses", "cookware", "dog food"). Words after "no"/"not" are things
+they do NOT want. If they asked for several things, "fits" is true when these products match ANY of them.
+Price, colour, size or brand differences never make "fits" false, and vague requests ("a gift",
+"something nice") fit.
 Return ONLY JSON: {"intro": "<one friendly sentence>", "reasons": {"<product_id>": "<max 12 words why it fits>"},
-"wants": {"color": "<a listed colour or null>", "size": "<size named by the shopper or null>"}}"""
+"wants": {"color": "<a listed colour or null>", "size": "<size named by the shopper or null>"},
+"fits": <true|false>, "asked_for": "<the kind of product, if fits is false, else null>"}"""
 
 
 def fallback_reasons(products: list[dict]) -> dict:
@@ -133,10 +146,11 @@ def fallback_reasons(products: list[dict]) -> dict:
 async def recommend(request: str, products: list[dict]) -> dict:
     facts = [{"product_id": p["product_id"], "name": p["name"], "brand": p["brand"], "rating": p["rating"],
               "review_count": p["review_count"], "tags": p["tags"], "description": p["description"],
-              "colors": [c["name"] for c in p["colors"]], "sizes": p["sizes"]}
+              "colors": [c["name"] for c in p["colors"]], "sizes": p["sizes"],
+              "department": p.get("department"), "category": p.get("category")}
              for p in products]
     default = {"intro": f"I found {len(products)} option{'s' if len(products) != 1 else ''} for you:",
-               "reasons": fallback_reasons(products), "wants": {}}
+               "reasons": fallback_reasons(products), "wants": {}, "fits": True}
     try:
         resp = await _ask(_llm(0.3), [
             SystemMessage(content=_RECOMMEND_SYSTEM),
@@ -151,7 +165,10 @@ async def recommend(request: str, products: list[dict]) -> dict:
         size = str(wants["size"]).strip()[:10] if wants.get("size") not in (None, "", "null") else None
         return {"intro": str(out.get("intro") or default["intro"])[:200],
                 "reasons": {**default["reasons"], **reasons},
-                "wants": {k: v for k, v in (("color", color), ("size", size)) if v}}
+                "wants": {k: v for k, v in (("color", color), ("size", size)) if v},
+                # only an explicit false hides results; anything unclear shows them
+                "fits": out.get("fits") is not False,
+                "asked_for": str(out.get("asked_for") or "").strip()[:40] or None}
     except Exception as exc:
         log.warning("talkshop.recommend fallback: %s", exc)
         return default

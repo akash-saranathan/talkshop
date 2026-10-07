@@ -491,3 +491,74 @@ def test_unclear_product_mention_mid_question_goes_to_the_llm(client, shopper, f
     turn(client, shopper, sid, action={"type": "select", "product_id": "SSP001"})
     ev = turn(client, shopper, sid, text="size 10 shoes please")
     assert fake_llm["decide"][-1]["message"] == "size 10 shoes please" and not of(ev, "variant_confirmed")
+
+
+# ── Things ShopSphere doesn't sell ───────────────────────────────────────────
+
+@pytest.mark.parametrize("text,label", [
+    ("no laptop tomatoes grocery", "groceries"), ("I need tomatoes", "groceries"), ("I want a sofa", "furniture"),
+])
+def test_not_sold_gets_a_plain_answer_and_no_cards(client, shopper, fake_llm, text, label):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    turn(client, shopper, sid, text=SPEC_REQUEST)                    # mid-conversation, cards on screen
+    ev = turn(client, shopper, sid, text=text)
+    assert not of(ev, "recommendations")
+    msg = of(ev, "message")[0]["text"]
+    assert "doesn't sell" in msg and label in msg and "clothing, shoes, accessories and electronics" in msg
+    assert not any(c["message"] == text for c in fake_llm["decide"])   # answered without searching or the LLM
+
+
+def test_mixed_request_searches_what_is_sold_and_says_what_isnt(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    ev = turn(client, shopper, sid, text="show me a laptop and some tomatoes")
+    recs = of(ev, "recommendations")[0]
+    assert all(p["category"] == "laptops" for p in recs["products"])
+    assert "doesn't sell groceries or food like tomatoes" in recs["intro"]
+
+
+def test_not_a_laptop_means_not_a_laptop(client, shopper):
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    ev = turn(client, shopper, sid, text="I don't want a laptop, show me headphones")
+    assert all(p["category"] != "laptops" for p in of(ev, "recommendations")[0]["products"])
+
+
+def test_llm_says_results_do_not_fit(client, shopper, monkeypatch):
+    """Not on the blocker list: the LLM's relevance check stops unrelated cards."""
+    async def recommend(request, products):
+        return {"intro": "x", "reasons": {}, "wants": {}, "fits": False, "asked_for": "a garden hose"}
+    monkeypatch.setattr(brain, "recommend", recommend)
+    sid = f"t-{uuid.uuid4().hex[:8]}"
+    ev = turn(client, shopper, sid, text="I need a garden hose for my shoes area")
+    assert not of(ev, "recommendations") and "doesn't sell a garden hose" in of(ev, "message")[0]["text"]
+
+
+def test_recommend_reads_fits_safely(monkeypatch):
+    """Only an explicit false hides results; a garbled answer shows them."""
+    import asyncio
+
+    class FakeLLM:
+        def __init__(self, body):
+            self.body = body
+
+        async def ainvoke(self, _):
+            return type("R", (), {"content": self.body})()
+
+    products = [{"product_id": "P1", "name": "Shoe", "brand": "B", "rating": 4.0, "review_count": 1, "tags": ["x"],
+                 "description": "d", "sizes": [], "colors": [], "department": "shoes", "category": "shoes"}]
+    loop = asyncio.new_event_loop()
+    try:
+        for body, fits in [('{"intro": "Hi", "reasons": {}, "fits": false, "asked_for": "tomatoes"}', False),
+                           ('{"intro": "Hi", "reasons": {}}', True), ("not json", True)]:
+            monkeypatch.setattr(brain, "_llm", lambda *a, **k: FakeLLM(body))
+            assert loop.run_until_complete(REAL_RECOMMEND("x", products))["fits"] is fits
+    finally:
+        loop.close()
+
+
+@pytest.mark.parametrize("text,blocked", [
+    ("no laptop tomatoes grocery", True), ("no tomatoes, just sneakers", False), ("apple watch", False),
+    ("orange running shoes", False), ("a gift under $50", False), ("I want a sofa", True),
+])
+def test_not_sold_detection(text, blocked):
+    from backend.talkshop.parse import not_sold
+    assert bool(not_sold(text)) is blocked

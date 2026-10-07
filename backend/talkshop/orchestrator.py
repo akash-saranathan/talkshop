@@ -106,7 +106,10 @@ def _context(s: Session) -> dict:
 
 # ── steps ────────────────────────────────────────────────────────────────────
 
-async def _search(t: Turn, text: str, args: dict) -> None:
+NOT_SOLD_TAIL = "ShopSphere sells clothing, shoes, accessories and electronics. Is there something from those I can find for you?"
+
+
+async def _search(t: Turn, text: str, args: dict, note: str = "") -> None:
     s = t.s
     t.stage(Stage.SEARCHING)
     t.status("SneakPeek", "Searching ShopSphere…")
@@ -125,7 +128,15 @@ async def _search(t: Turn, text: str, args: dict) -> None:
         return
     t.status("VibeCheck", "Picking the best matches…")
     copy = await brain.recommend(text, products)
-    notes = []
+    # The LLM: none of these is the kind of thing asked for. (Skipped when the
+    # blocker already split off the part ShopSphere doesn't sell.)
+    if copy.get("fits") is False and not note:
+        s.shown = []
+        t.stage(Stage.GREETING)
+        asked = copy.get("asked_for") or "that"
+        t.say(f"Sorry, ShopSphere doesn't sell {asked}, so I won't show you unrelated products. {NOT_SOLD_TAIL}")
+        return
+    notes = [note] if note else []
     if result["brand_missing"] and args.get("brand"):
         notes.append(f"ShopSphere doesn't carry {args['brand']}, but here are similar options.")
     if "max_price" in result["relaxed"]:
@@ -617,6 +628,18 @@ async def _handle_text(t: Turn, text: str) -> None:
             t.say("No problem — it's saved in your ShopSphere cart. What else can I find for you?")
             t.stage(Stage.IN_CART)
             return
+    # Things ShopSphere doesn't sell at all: say so plainly — no unrelated
+    # product cards. A mixed request still searches for the part we do sell.
+    blocked = parse.not_sold(text) if s.allows("search") else None
+    if blocked:
+        label, word = blocked
+        wanted = parse.search_intent(text)
+        if not wanted:
+            t.say(f"Sorry, ShopSphere doesn't sell {label}, so I can't find {word} for you. {NOT_SOLD_TAIL}")
+            return
+        t.status("VibeCheck", "Understanding your request…")
+        return await _search(t, text, wanted, note=f"ShopSphere doesn't sell {label} like {word}, but here's the rest.")
+
     # Short replies ("10", "teal", "the first one") are read exactly. A message
     # that names a kind of product ("…can I get nike shoes in size 10") is never
     # taken as a quick answer to the question on screen.

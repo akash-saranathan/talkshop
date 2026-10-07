@@ -233,11 +233,55 @@ def is_new_request(text: str) -> bool:
     return bool(search_intent(text)) and bool(_REQUEST.search(norm(text)))
 
 
+# "no" / "not" rules out the next item only: "not a laptop", "don't want any
+# sofa" — but in "no laptop tomatoes" the tomatoes are still wanted.
+_NEGATION = re.compile(r"\b(?:no|not|don'?t|do not|never|without|instead of|rather than|except|other than)"
+                       r"\s+(?:(?:a|an|any|the|some|more|other|want|need|like|show|me|get|buy|really)\s+){0,3}$")
+
+
+def _wanted(pattern: str, t: str) -> Optional[re.Match]:
+    """First match of pattern that the shopper isn't ruling out ("no laptop", "not a sofa")."""
+    for m in re.finditer(rf"\b(?:{pattern})\b", t):
+        if not _NEGATION.search(t[:m.start()]):
+            return m
+    return None
+
+
+# Kinds of products ShopSphere doesn't sell at all (it sells clothing, shoes,
+# accessories and electronics). Asking for these gets a plain "we don't sell
+# that" instead of unrelated recommendations. Brand/colour words that clash
+# (Apple, Orange) are deliberately left out.
+NOT_SOLD = [
+    (r"(?:dog|cat|pet) food|pet supplies", "pet supplies"),          # before groceries: "dog food" isn't groceries
+    (r"grocer(?:y|ies)|food|tomato(?:es)?|potato(?:es)?|onions?|vegetables?|veggies|fruits?|bananas?|"
+     r"milk|eggs?|bread|rice|flour|sugar|meat|chicken|fish|snacks?|chocolates?|coffee|cereal", "groceries or food"),
+    (r"furniture|sofas?|couch(?:es)?|mattress(?:es)?|dining tables?|bookshel(?:f|ves)|wardrobes?", "furniture"),
+    (r"medicines?|medications?|pills|pharmacy|vitamins|supplements", "medicine"),
+    (r"cars?|bicycles?|motorcycles?|motorbikes?|scooters?", "vehicles"),
+    (r"books?|novels?|magazines?", "books"),
+    (r"toys?|lego|dolls?|board games?", "toys"),
+    (r"makeup|make-up|lipsticks?|perfumes?|shampoos?|skincare|cosmetics", "beauty products"),
+    (r"fridges?|refrigerators?|washing machines?|microwaves?|vacuum cleaners?|televisions?|tvs?", "home appliances"),
+]
+
+
+def not_sold(text: str) -> Optional[tuple[str, str]]:
+    """("groceries or food", "tomatoes") when the shopper asks for something
+    ShopSphere doesn't sell; None otherwise. "no tomatoes" doesn't count."""
+    t = norm(text)
+    for pattern, label in NOT_SOLD:
+        m = _wanted(pattern, t)
+        if m:
+            return label, m.group(0)
+    return None
+
+
 def search_intent(text: str) -> Optional[dict]:
     """A clear product request ("running shoes under $150 for everyday running")
-    parsed into search arguments, or None if the LLM should read it."""
+    parsed into search arguments, or None if the LLM should read it. Ruled-out
+    kinds ("no laptop, headphones please") are skipped."""
     t = norm(text)
-    category = next((cat for pattern, cat in _CATEGORY_WORDS if re.search(rf"\b(?:{pattern})\b", t)), None)
+    category = next((cat for pattern, cat in _CATEGORY_WORDS if _wanted(pattern, t)), None)
     if not category:
         return None
     if t.endswith("?") or text.strip().endswith("?"):
