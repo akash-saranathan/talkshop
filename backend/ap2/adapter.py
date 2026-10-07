@@ -158,6 +158,7 @@ class AP2Adapter:
         order_id: str,
         payment_ref: str,   # spt_xxx or mock_card_XXXX — NEVER raw card data
         user_id: str,
+        consent_id: str | None = None,
     ) -> AP2PaymentMandate:
         """
         PaymentMandate — issued by the agent on APPROVE & PAY.
@@ -180,6 +181,10 @@ class AP2Adapter:
             "payment_ref": payment_ref,        # opaque token only — no card number
             "user_authorization": user_authorization,
         }
+        if consent_id:
+            # Demo 2: the customer's GO AHEAD consent this authorization evidence was created from.
+            subject["customer_consent_id"] = consent_id
+            subject["totals"] = cart_mandate.credentialSubject.get("totals")
 
         return AP2PaymentMandate(
             **{

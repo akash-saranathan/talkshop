@@ -54,9 +54,13 @@ def test_full_chain_executes_with_session_intent(auth_headers):
     client = TestClient(app)
     session_id = "chain-" + auth_headers["Authorization"][-8:]
     session_state.save_context(session_id, {"raw_query": "Nike running shoes", "brand": "Nike", "category": "running_shoes"})
+    # The chat session's customer agent connects to Nike before checkout.
+    assert client.post("/api/trust/session", json={"merchant_id": "nike", "chat_session_id": session_id},
+                       headers=auth_headers).status_code == 200
 
     checkout = _checkout(client, auth_headers, session_id)
-    assert checkout["ap2"]["intent_mandate_id"].startswith("urn:ap2:mandate:intent:")
+    # Demo 2: a search intent is not payment consent, so it is never turned into an AP2 mandate.
+    assert checkout["ap2"]["intent_mandate_id"] is None
     assert checkout["ap2"]["cart_mandate_id"].startswith("urn:ap2:mandate:cart:")
     assert checkout["ap2"]["cart_verified"] is True
 
@@ -79,18 +83,19 @@ def test_checkout_without_session_has_no_intent(auth_headers):
     assert checkout["ap2"]["cart_verified"] is True
 
 
-def test_tampered_checkout_hash_blocked_before_payit_and_token_survives(auth_headers):
+def test_tampered_checkout_hash_blocked_before_payit_and_token_is_burned(auth_headers):
     client = TestClient(app)
     checkout = _checkout(client, auth_headers)
     approval = _approve(client, auth_headers, checkout)
 
     blocked = _execute(client, auth_headers, checkout, approval, checkout_hash="0" * 64)
     assert blocked["status"] == "blocked"
-    assert blocked["blocked_reason"] == "cart_mandate_checkout_hash_mismatch"
+    assert blocked["blocked_reason"] == "CHECKOUT_HASH_MISMATCH"
 
-    # The token was not consumed by the blocked attempt, so the genuine payment still succeeds.
-    genuine = _execute(client, auth_headers, checkout, approval)
-    assert genuine["status"] == "success"
+    # Single attempt per token: the blocked attempt burned it, so a retry is refused too.
+    retry = _execute(client, auth_headers, checkout, approval)
+    assert retry["status"] == "blocked"
+    assert retry["blocked_reason"] == "TOKEN_ALREADY_CONSUMED"
 
 
 def test_tampered_acp_token_blocked(auth_headers):

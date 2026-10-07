@@ -51,7 +51,7 @@ export default function ProductDetailModal({ product, adding, onClose, onSelect 
             src={product.image_url!}
             alt={product.title}
             onError={() => setImageFailed(true)}
-            className="w-full h-56 object-cover rounded-xl mb-4"
+            className="w-full h-56 object-contain bg-[#f3f2ef] rounded-xl mb-4"
           />
         ) : (
           <div className={`w-full h-56 rounded-xl grid place-items-center mb-4 ${visual.bg}`}>

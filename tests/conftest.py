@@ -22,4 +22,9 @@ def auth_headers() -> dict:
     })
     assert resp.status_code == 200, resp.text
     token = resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token}"}
+    # Like a real customer agent, connect to Nike first: checkout and payment
+    # require a trusted agent session with the merchant.
+    trust = client.post("/api/trust/session", json={"merchant_id": "nike"}, headers=headers)
+    assert trust.status_code == 200, trust.text
+    return headers

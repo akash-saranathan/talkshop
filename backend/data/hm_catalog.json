@@ -1,186 +1,365 @@
-[
-  {
-    "id": "hm_cotton_wrap_dress",
-    "title": "H&M Cotton Wrap Dress",
-    "brand": "H&M",
-    "category": "dresses",
-    "subcategory": "casual",
-    "price": 34.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "XS", "color": "Dusty Pink",    "available": true,  "inventory": 12 },
-      { "size": "S",  "color": "Dusty Pink",    "available": true,  "inventory": 14 },
-      { "size": "M",  "color": "Dusty Pink",    "available": true,  "inventory": 10 },
-      { "size": "L",  "color": "Dusty Pink",    "available": false, "inventory": 0  },
-      { "size": "S",  "color": "Sage Green",    "available": true,  "inventory": 9  },
-      { "size": "M",  "color": "Sage Green",    "available": true,  "inventory": 8  },
-      { "size": "L",  "color": "Sage Green",    "available": true,  "inventory": 5  }
-    ],
-    "shipping_days": 5,
-    "rating": 4.3,
-    "review_count": 820,
-    "image_url": "/assets/hm_cotton_wrap_dress.png",
-    "sku": "hm_cotton_wrap_dress",
-    "description": "Breezy cotton wrap dress with a flattering V-neck and tie waist."
+{
+  "merchant": {
+    "merchant_id": "hm",
+    "merchant_name": "H&M",
+    "categories": [
+      "dresses",
+      "clothing",
+      "apparel",
+      "fashion",
+      "tops",
+      "bottoms",
+      "knitwear"
+    ]
   },
-  {
-    "id": "hm_printed_maxi_dress",
-    "title": "H&M Printed Maxi Dress",
-    "brand": "H&M",
-    "category": "dresses",
-    "subcategory": "maxi",
-    "price": 39.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "XS", "color": "Tropical Print","available": true,  "inventory": 9  },
-      { "size": "S",  "color": "Tropical Print","available": true,  "inventory": 11 },
-      { "size": "M",  "color": "Tropical Print","available": true,  "inventory": 8  },
-      { "size": "L",  "color": "Tropical Print","available": true,  "inventory": 6  },
-      { "size": "XL", "color": "Tropical Print","available": false, "inventory": 0  }
+  "size_ranges": {
+    "apparel_men": [
+      "S",
+      "M",
+      "L",
+      "XL",
+      "XXL"
     ],
-    "shipping_days": 5,
-    "rating": 4.2,
-    "review_count": 650,
-    "image_url": "/assets/hm_printed_maxi_dress.png",
-    "sku": "hm_printed_maxi_dress",
-    "description": "Relaxed maxi dress with a tropical print — lightweight and easy to wear."
+    "apparel_women": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "jeans_women": [
+      "24",
+      "26",
+      "28",
+      "30",
+      "32"
+    ]
   },
-  {
-    "id": "hm_jersey_dress",
-    "title": "H&M Jersey Bodycon Dress",
-    "brand": "H&M",
-    "category": "dresses",
-    "subcategory": "bodycon",
-    "price": 24.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "XS", "color": "Black",         "available": true,  "inventory": 15 },
-      { "size": "S",  "color": "Black",         "available": true,  "inventory": 16 },
-      { "size": "M",  "color": "Black",         "available": true,  "inventory": 12 },
-      { "size": "L",  "color": "Black",         "available": true,  "inventory": 9  },
-      { "size": "S",  "color": "Navy",          "available": true,  "inventory": 10 },
-      { "size": "M",  "color": "Navy",          "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 5,
-    "rating": 4.1,
-    "review_count": 1200,
-    "image_url": "/assets/hm_jersey_dress.png",
-    "sku": "hm_jersey_dress",
-    "description": "Soft jersey bodycon dress — a wardrobe basic for any occasion."
-  },
-  {
-    "id": "hm_oversized_shirt",
-    "title": "H&M Oversized Oxford Shirt",
-    "brand": "H&M",
-    "category": "clothing",
-    "subcategory": "tops",
-    "price": 19.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "S",  "color": "White",         "available": true,  "inventory": 20 },
-      { "size": "M",  "color": "White",         "available": true,  "inventory": 18 },
-      { "size": "L",  "color": "White",         "available": true,  "inventory": 14 },
-      { "size": "XL", "color": "White",         "available": true,  "inventory": 9  },
-      { "size": "M",  "color": "Light Blue",    "available": true,  "inventory": 15 },
-      { "size": "L",  "color": "Light Blue",    "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 5,
-    "rating": 4.2,
-    "review_count": 1890,
-    "image_url": "/assets/hm_oversized_shirt.png",
-    "sku": "hm_oversized_shirt",
-    "description": "Relaxed-fit oxford shirt in crisp cotton — easy to dress up or down."
-  },
-  {
-    "id": "hm_slim_jeans",
-    "title": "H&M Slim Fit Jeans",
-    "brand": "H&M",
-    "category": "clothing",
-    "subcategory": "bottoms",
-    "price": 29.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "28", "color": "Light Denim",   "available": true,  "inventory": 13 },
-      { "size": "30", "color": "Light Denim",   "available": true,  "inventory": 15 },
-      { "size": "32", "color": "Light Denim",   "available": true,  "inventory": 12 },
-      { "size": "34", "color": "Light Denim",   "available": true,  "inventory": 8  },
-      { "size": "30", "color": "Dark Denim",    "available": true,  "inventory": 11 },
-      { "size": "32", "color": "Dark Denim",    "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 5,
-    "rating": 4.3,
-    "review_count": 2400,
-    "image_url": "/assets/hm_slim_jeans.png",
-    "sku": "hm_slim_jeans",
-    "description": "Slim-fit five-pocket jeans in stretch denim — a reliable everyday staple."
-  },
-  {
-    "id": "hm_linen_shorts",
-    "title": "H&M Linen Shorts",
-    "brand": "H&M",
-    "category": "clothing",
-    "subcategory": "bottoms",
-    "price": 22.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "S",  "color": "Sand",          "available": true,  "inventory": 16 },
-      { "size": "M",  "color": "Sand",          "available": true,  "inventory": 14 },
-      { "size": "L",  "color": "Sand",          "available": true,  "inventory": 11 },
-      { "size": "XL", "color": "Sand",          "available": false, "inventory": 0  },
-      { "size": "M",  "color": "Olive",         "available": true,  "inventory": 10 },
-      { "size": "L",  "color": "Olive",         "available": true,  "inventory": 8  }
-    ],
-    "shipping_days": 5,
-    "rating": 4.2,
-    "review_count": 1050,
-    "image_url": "/assets/hm_linen_shorts.png",
-    "sku": "hm_linen_shorts",
-    "description": "Breathable linen blend shorts with an elasticated waist — summer essential."
-  },
-  {
-    "id": "hm_floral_blouse",
-    "title": "H&M Floral Satin Blouse",
-    "brand": "H&M",
-    "category": "clothing",
-    "subcategory": "tops",
-    "price": 27.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "XS", "color": "Floral Pink",   "available": true,  "inventory": 11 },
-      { "size": "S",  "color": "Floral Pink",   "available": true,  "inventory": 13 },
-      { "size": "M",  "color": "Floral Pink",   "available": true,  "inventory": 9  },
-      { "size": "L",  "color": "Floral Pink",   "available": true,  "inventory": 6  },
-      { "size": "M",  "color": "Floral Blue",   "available": true,  "inventory": 8  },
-      { "size": "L",  "color": "Floral Blue",   "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 5,
-    "rating": 4.3,
-    "review_count": 730,
-    "image_url": "/assets/hm_floral_blouse.png",
-    "sku": "hm_floral_blouse",
-    "description": "Lightweight satin blouse with a delicate floral print and tie neck."
-  },
-  {
-    "id": "hm_knit_cardigan",
-    "title": "H&M Knit Cardigan",
-    "brand": "H&M",
-    "category": "clothing",
-    "subcategory": "knitwear",
-    "price": 34.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "XS", "color": "Cream",         "available": true,  "inventory": 10 },
-      { "size": "S",  "color": "Cream",         "available": true,  "inventory": 12 },
-      { "size": "M",  "color": "Cream",         "available": true,  "inventory": 9  },
-      { "size": "L",  "color": "Cream",         "available": false, "inventory": 0  },
-      { "size": "S",  "color": "Brown",         "available": true,  "inventory": 8  },
-      { "size": "M",  "color": "Brown",         "available": true,  "inventory": 7  }
-    ],
-    "shipping_days": 5,
-    "rating": 4.4,
-    "review_count": 890,
-    "image_url": "/assets/hm_knit_cardigan.png",
-    "sku": "hm_knit_cardigan",
-    "description": "Soft open-front cardigan with ribbed trim — the perfect layering piece."
-  }
-]
+  "products": [
+    {
+      "product_id": "hm_pleated_dress",
+      "slug": "hm-pleated-chiffon-dress",
+      "name": "H&M Pleated Chiffon Dress",
+      "brand": "H&M",
+      "department": "clothing",
+      "category": "dresses",
+      "subcategory": "casual",
+      "gender": "women",
+      "price": 34.99,
+      "currency": "USD",
+      "rating": 4.3,
+      "review_count": 820,
+      "delivery_days": 5,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "apparel_women",
+      "colors": [
+        {
+          "name": "Cream",
+          "hex": "#efe6d2",
+          "photo": {
+            "pixabay_id": 4202487,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Light pleated chiffon dress with a soft, flowing skirt.",
+      "tags": [
+        "dress",
+        "pleated",
+        "chiffon"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "hm_denim_dress",
+      "slug": "hm-tiered-denim-dress",
+      "name": "H&M Tiered Denim Dress",
+      "brand": "H&M",
+      "department": "clothing",
+      "category": "dresses",
+      "subcategory": "midi",
+      "gender": "women",
+      "price": 39.99,
+      "currency": "USD",
+      "rating": 4.2,
+      "review_count": 650,
+      "delivery_days": 5,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "apparel_women",
+      "colors": [
+        {
+          "name": "Denim Blue",
+          "hex": "#4a6f9c",
+          "photo": {
+            "pixabay_id": 8568399,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Relaxed tiered midi dress in soft washed denim.",
+      "tags": [
+        "denim",
+        "midi",
+        "casual"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "hm_oversized_shirt",
+      "slug": "hm-oxford-shirt",
+      "name": "H&M Oxford Shirt",
+      "brand": "H&M",
+      "department": "clothing",
+      "category": "clothing",
+      "subcategory": "tops",
+      "gender": "men",
+      "price": 19.99,
+      "currency": "USD",
+      "rating": 4.2,
+      "review_count": 1890,
+      "delivery_days": 5,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "apparel_men",
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#f5f5f2",
+          "photo": {
+            "pixabay_id": 3740340,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "Pink",
+          "hex": "#e8a0b4",
+          "photo": {
+            "pixabay_id": 3740347,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "Navy",
+          "hex": "#1f2a44",
+          "photo": {
+            "pixabay_id": 2947549,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Oxford shirt in crisp cotton, easy to dress up or down.",
+      "tags": [
+        "shirt",
+        "oxford",
+        "cotton"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "hm_slim_jeans",
+      "slug": "hm-skinny-high-jeans",
+      "name": "H&M Skinny High Jeans",
+      "brand": "H&M",
+      "department": "clothing",
+      "category": "clothing",
+      "subcategory": "bottoms",
+      "gender": "women",
+      "price": 29.99,
+      "currency": "USD",
+      "rating": 4.3,
+      "review_count": 2400,
+      "delivery_days": 5,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "jeans_women",
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#1c1c1e",
+          "photo": {
+            "pixabay_id": 4514891,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "Blue",
+          "hex": "#2f5fb3",
+          "photo": {
+            "pixabay_id": 4514892,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "High-rise skinny jeans in stretch denim, a reliable everyday staple.",
+      "tags": [
+        "jeans",
+        "skinny",
+        "stretch"
+      ],
+      "out_of_stock": [
+        {
+          "size": "24",
+          "color": "Black"
+        }
+      ]
+    },
+    {
+      "product_id": "hm_chino_shorts",
+      "slug": "hm-chino-shorts",
+      "name": "H&M Chino Shorts",
+      "brand": "H&M",
+      "department": "clothing",
+      "category": "clothing",
+      "subcategory": "bottoms",
+      "gender": "men",
+      "price": 22.99,
+      "currency": "USD",
+      "rating": 4.2,
+      "review_count": 1050,
+      "delivery_days": 5,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "apparel_men",
+      "colors": [
+        {
+          "name": "Sand",
+          "hex": "#d8c49b",
+          "photo": {
+            "pixabay_id": 601564,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Breathable cotton chino shorts, a summer essential.",
+      "tags": [
+        "shorts",
+        "summer",
+        "chino"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "hm_embroidered_blouse",
+      "slug": "hm-embroidered-blouse",
+      "name": "H&M Embroidered Blouse",
+      "brand": "H&M",
+      "department": "clothing",
+      "category": "clothing",
+      "subcategory": "tops",
+      "gender": "women",
+      "price": 27.99,
+      "currency": "USD",
+      "rating": 4.3,
+      "review_count": 730,
+      "delivery_days": 5,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "apparel_women",
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#f5f5f2",
+          "photo": {
+            "pixabay_id": 18664,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Lightweight white blouse with delicate embroidery.",
+      "tags": [
+        "blouse",
+        "embroidered",
+        "summer"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "hm_knit_cardigan",
+      "slug": "hm-patterned-knit-cardigan",
+      "name": "H&M Patterned Knit Cardigan",
+      "brand": "H&M",
+      "department": "clothing",
+      "category": "clothing",
+      "subcategory": "knitwear",
+      "gender": "women",
+      "price": 34.99,
+      "currency": "USD",
+      "rating": 4.4,
+      "review_count": 890,
+      "delivery_days": 5,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "apparel_women",
+      "colors": [
+        {
+          "name": "Black/White",
+          "hex": "#3a3a3a",
+          "photo": {
+            "pixabay_id": 3831827,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "Burgundy",
+          "hex": "#7a1f2b",
+          "photo": {
+            "pixabay_id": 3831826,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Soft open-front cardigan with a jacquard pattern, the perfect layering piece.",
+      "tags": [
+        "cardigan",
+        "knit",
+        "layering"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "hm_knit_sweater",
+      "slug": "hm-oversized-knit-sweater",
+      "name": "H&M Oversized Knit Sweater",
+      "brand": "H&M",
+      "department": "clothing",
+      "category": "clothing",
+      "subcategory": "knitwear",
+      "gender": "women",
+      "price": 32.99,
+      "currency": "USD",
+      "rating": 4.4,
+      "review_count": 1120,
+      "delivery_days": 5,
+      "is_new": true,
+      "option_label": "Size",
+      "sizes": "apparel_women",
+      "colors": [
+        {
+          "name": "Beige",
+          "hex": "#d9c7a7",
+          "photo": {
+            "pixabay_id": 3847148,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "Rose",
+          "hex": "#d9a3a6",
+          "photo": {
+            "pixabay_id": 3847119,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Cosy oversized sweater in a chunky knit.",
+      "tags": [
+        "sweater",
+        "knit",
+        "oversized"
+      ],
+      "out_of_stock": []
+    }
+  ]
+}

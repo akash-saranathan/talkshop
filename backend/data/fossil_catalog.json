@@ -1,145 +1,296 @@
-[
-  {
-    "id": "fossil_gen6_smartwatch",
-    "title": "Fossil Gen 6 Smartwatch",
-    "brand": "Fossil",
-    "category": "watches",
-    "subcategory": "smartwatch",
-    "price": 199.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "44mm", "color": "Black Stainless", "available": true,  "inventory": 8  },
-      { "size": "44mm", "color": "Silver Stainless","available": true,  "inventory": 6  },
-      { "size": "44mm", "color": "Rose Gold",       "available": false, "inventory": 0  },
-      { "size": "42mm", "color": "Black Stainless", "available": true,  "inventory": 5  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.4,
-    "review_count": 1250,
-    "image_url": "/assets/fossil_gen6.png",
-    "sku": "fossil_gen6_smartwatch",
-    "description": "Wear OS smartwatch with health tracking, GPS, and fast charging."
+{
+  "merchant": {
+    "merchant_id": "fossil",
+    "merchant_name": "Fossil",
+    "categories": [
+      "watches",
+      "accessories",
+      "smartwatch"
+    ]
   },
-  {
-    "id": "fossil_neutra_chrono",
-    "title": "Fossil Neutra Chronograph",
-    "brand": "Fossil",
-    "category": "watches",
-    "subcategory": "chronograph",
-    "price": 149.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "44mm", "color": "Brown Leather",   "available": true,  "inventory": 9  },
-      { "size": "44mm", "color": "Black Leather",   "available": true,  "inventory": 7  },
-      { "size": "44mm", "color": "Navy Leather",    "available": false, "inventory": 0  }
+  "size_ranges": {
+    "watch_28": [
+      "28mm"
     ],
-    "shipping_days": 3,
-    "rating": 4.5,
-    "review_count": 780,
-    "image_url": "/assets/fossil_neutra_chrono.png",
-    "sku": "fossil_neutra_chrono",
-    "description": "Three-eye chronograph with a minimalist dial and genuine leather strap."
+    "watch_36_40": [
+      "36mm",
+      "40mm"
+    ],
+    "watch_42": [
+      "42mm"
+    ],
+    "watch_42_44": [
+      "42mm",
+      "44mm"
+    ],
+    "watch_44": [
+      "44mm"
+    ],
+    "watch_50": [
+      "50mm"
+    ]
   },
-  {
-    "id": "fossil_minimalist_watch",
-    "title": "Fossil Minimalist Watch",
-    "brand": "Fossil",
-    "category": "watches",
-    "subcategory": "minimalist",
-    "price": 89.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "40mm", "color": "Silver/White",    "available": true,  "inventory": 12 },
-      { "size": "40mm", "color": "Gold/White",      "available": true,  "inventory": 10 },
-      { "size": "40mm", "color": "Rose Gold/Blush", "available": true,  "inventory": 8  },
-      { "size": "36mm", "color": "Silver/White",    "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.3,
-    "review_count": 1640,
-    "image_url": "/assets/fossil_minimalist.png",
-    "sku": "fossil_minimalist_watch",
-    "description": "Slim dress watch with a clean dial and stainless steel bracelet."
-  },
-  {
-    "id": "fossil_machine_auto",
-    "title": "Fossil Machine Automatic",
-    "brand": "Fossil",
-    "category": "watches",
-    "subcategory": "automatic",
-    "price": 229.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "42mm", "color": "Gunmetal/Black",  "available": true,  "inventory": 5  },
-      { "size": "42mm", "color": "Silver/Blue",     "available": true,  "inventory": 4  },
-      { "size": "42mm", "color": "Rose Gold/Brown", "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 4,
-    "rating": 4.6,
-    "review_count": 430,
-    "image_url": "/assets/fossil_machine_auto.png",
-    "sku": "fossil_machine_auto",
-    "description": "Self-winding automatic movement visible through exhibition caseback."
-  },
-  {
-    "id": "fossil_ladies_carlie",
-    "title": "Fossil Ladies Carlie Watch",
-    "brand": "Fossil",
-    "category": "watches",
-    "subcategory": "ladies",
-    "price": 109.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "28mm", "color": "Rose Gold/Pink",  "available": true,  "inventory": 9  },
-      { "size": "28mm", "color": "Gold/White",      "available": true,  "inventory": 8  },
-      { "size": "28mm", "color": "Silver/White",    "available": true,  "inventory": 7  },
-      { "size": "28mm", "color": "Rose Gold/Black", "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.5,
-    "review_count": 960,
-    "image_url": "/assets/fossil_carlie.png",
-    "sku": "fossil_ladies_carlie",
-    "description": "Feminine three-hand watch with a crystal-set bezel and mesh bracelet."
-  },
-  {
-    "id": "fossil_hybrid_smartwatch",
-    "title": "Fossil Hybrid Smartwatch HR",
-    "brand": "Fossil",
-    "category": "watches",
-    "subcategory": "smartwatch",
-    "price": 129.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "42mm", "color": "Black/Black",     "available": true,  "inventory": 7  },
-      { "size": "42mm", "color": "Brown/Black",     "available": true,  "inventory": 5  },
-      { "size": "42mm", "color": "Navy/Brown",      "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.2,
-    "review_count": 560,
-    "image_url": "/assets/fossil_hybrid_hr.png",
-    "sku": "fossil_hybrid_smartwatch",
-    "description": "Analog watch face with smart features and heart rate tracking."
-  },
-  {
-    "id": "fossil_nate_chrono",
-    "title": "Fossil Nate Chronograph",
-    "brand": "Fossil",
-    "category": "watches",
-    "subcategory": "chronograph",
-    "price": 169.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "50mm", "color": "Black/Black",     "available": true,  "inventory": 6  },
-      { "size": "50mm", "color": "Silver/Brown",    "available": true,  "inventory": 5  },
-      { "size": "50mm", "color": "Gold/Brown",      "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.4,
-    "review_count": 380,
-    "image_url": "/assets/fossil_nate_chrono.png",
-    "sku": "fossil_nate_chrono",
-    "description": "Bold oversized chronograph with a sporty leather strap."
-  }
-]
+  "products": [
+    {
+      "product_id": "fossil_gen6_smartwatch",
+      "slug": "fossil-gen-6-smartwatch",
+      "name": "Fossil Gen 6 Smartwatch",
+      "brand": "Fossil",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "smartwatch",
+      "gender": "unisex",
+      "price": 199.99,
+      "currency": "USD",
+      "rating": 4.4,
+      "review_count": 1250,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_42_44",
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#1c1c1e",
+          "photo": {
+            "pixabay_id": 889639,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Wear OS smartwatch with health tracking, GPS and fast charging.",
+      "tags": [
+        "smartwatch",
+        "fitness",
+        "gps"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "fossil_neutra_chrono",
+      "slug": "fossil-neutra-chronograph",
+      "name": "Fossil Neutra Chronograph",
+      "brand": "Fossil",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "chronograph",
+      "gender": "men",
+      "price": 149.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 780,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_44",
+      "colors": [
+        {
+          "name": "Brown",
+          "hex": "#7a4a2a",
+          "photo": {
+            "pixabay_id": 4895498,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Chronograph with a minimalist dial and genuine leather strap.",
+      "tags": [
+        "chronograph",
+        "leather strap",
+        "classic"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "fossil_minimalist_watch",
+      "slug": "fossil-minimalist-watch",
+      "name": "Fossil Minimalist Watch",
+      "brand": "Fossil",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "minimalist",
+      "gender": "unisex",
+      "price": 89.99,
+      "currency": "USD",
+      "rating": 4.3,
+      "review_count": 1640,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_36_40",
+      "colors": [
+        {
+          "name": "Gold",
+          "hex": "#c9a74a",
+          "photo": {
+            "pixabay_id": 4895499,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "Silver",
+          "hex": "#c0c3c7",
+          "photo": {
+            "pixabay_id": 183145,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Slim dress watch with a clean dial.",
+      "tags": [
+        "minimalist",
+        "dress watch",
+        "slim"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "fossil_machine_auto",
+      "slug": "fossil-machine-automatic",
+      "name": "Fossil Machine Automatic",
+      "brand": "Fossil",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "automatic",
+      "gender": "men",
+      "price": 229.99,
+      "currency": "USD",
+      "rating": 4.6,
+      "review_count": 430,
+      "delivery_days": 4,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_42",
+      "colors": [
+        {
+          "name": "Silver",
+          "hex": "#c0c3c7",
+          "photo": {
+            "pixabay_id": 4623183,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Self-winding automatic movement on show through an open-heart dial.",
+      "tags": [
+        "automatic",
+        "skeleton",
+        "mechanical"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "fossil_ladies_carlie",
+      "slug": "fossil-carlie-watch",
+      "name": "Fossil Carlie Watch",
+      "brand": "Fossil",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "ladies",
+      "gender": "women",
+      "price": 109.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 960,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_28",
+      "colors": [
+        {
+          "name": "Gold",
+          "hex": "#c9a74a",
+          "photo": {
+            "pixabay_id": 140488,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "Silver",
+          "hex": "#c0c3c7",
+          "photo": {
+            "pixabay_id": 3737339,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Feminine three-hand watch with a slim bracelet.",
+      "tags": [
+        "ladies",
+        "bracelet",
+        "elegant"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "fossil_hybrid_smartwatch",
+      "slug": "fossil-hybrid-smartwatch-hr",
+      "name": "Fossil Hybrid Smartwatch HR",
+      "brand": "Fossil",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "smartwatch",
+      "gender": "men",
+      "price": 129.99,
+      "currency": "USD",
+      "rating": 4.2,
+      "review_count": 560,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_42",
+      "colors": [
+        {
+          "name": "Black/Brown",
+          "hex": "#3b2a20",
+          "photo": {
+            "pixabay_id": 1766858,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Analog watch face with smart features and heart-rate tracking.",
+      "tags": [
+        "hybrid",
+        "smartwatch",
+        "leather strap"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "fossil_nate_chrono",
+      "slug": "fossil-nate-chronograph",
+      "name": "Fossil Nate Chronograph",
+      "brand": "Fossil",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "chronograph",
+      "gender": "men",
+      "price": 169.99,
+      "currency": "USD",
+      "rating": 4.4,
+      "review_count": 380,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_50",
+      "colors": [
+        {
+          "name": "Two-Tone",
+          "hex": "#b8a27a",
+          "photo": {
+            "pixabay_id": 466360,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Bold oversized chronograph with a stainless steel bracelet.",
+      "tags": [
+        "chronograph",
+        "oversized",
+        "sporty"
+      ],
+      "out_of_stock": []
+    }
+  ]
+}

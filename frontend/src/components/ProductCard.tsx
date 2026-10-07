@@ -127,7 +127,7 @@ export default function ProductCard({ product, index, selected = false, onToggle
               alt={product.title}
               onError={() => setImageFailed(true)}
               onClick={() => setShowLightbox(true)}
-              className="h-28 w-full rounded-lg object-cover cursor-zoom-in"
+              className="h-36 w-full rounded-lg object-contain bg-[#f3f2ef] cursor-zoom-in"
             />
             <div
               onClick={() => setShowLightbox(true)}

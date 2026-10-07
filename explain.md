@@ -598,7 +598,9 @@ The right panel has two tabs:
 
 # Live Trace — Current Flow (Real Runtime)
 
-This section describes what the app actually does today. Every JSON block was captured from a real run of the backend (Gemini calls, NeMo, Guardrails AI and the merchant catalogs were all live). Where a value is not captured, the document says so.
+> **Superseded for the main chat's purchase steps.** Stages 7–10 below describe the earlier order (DPAT first, ACP derived from it, payment driven by the browser). The main chat now uses the rectified Demo 2 flow: see [Demo 2 — Rectified Orchestration](#demo-2--rectified-orchestration) at the end of this document. Stages 1–6 still apply, with the agent trust stage added after routing.
+
+This section describes what the app did before the Demo 2 rework. Every JSON block was captured from a real run of the backend (Gemini calls, NeMo, Guardrails AI and the merchant catalogs were all live). Where a value is not captured, the document says so.
 
 ## How to read the Live Trace
 
@@ -745,7 +747,7 @@ A shopping request produces `nemo_pass` with `category: commerce_allowed`. If cl
 
 ## Stage 5 — UCP Catalog
 
-**What it does:** the Nike agent queries its own catalog, `backend/data/nike_catalog.json`, and returns matching items.
+**What it does:** the Nike agent queries its own catalog, `backend/data/nike_catalog.json`, and returns matching items. Each catalog product lists its colours, and every colour has its own studio photo (see [Merchant Catalog & Product Photos](#merchant-catalog--product-photos)).
 
 **Why UCP:** the Universal Commerce Protocol describes catalog lookups and checkout as standard operations. Here it is used as the catalog structure, not as a network service.
 
@@ -760,32 +762,35 @@ A shopping request produces `nemo_pass` with `category: commerce_allowed`. If cl
   "target": "NikeAgent",
   "protocol": "UCP",
   "direction": "in",
-  "detail": {"merchant": "nike", "product_count": 46, "duration_ms": 1.2}
+  "detail": {"merchant": "nike", "product_count": 8, "duration_ms": 279.8}
 }
 ```
 
-`product_count` is the raw match count from the catalog. The product cards show fewer, because the deterministic filter also applies size, colour and price.
+`product_count` is the number of matching size and colour variants the catalog returned for "show me Nike running shoes size 9". The chat then ranks them and shows the top picks.
 
 **Real product (one card's data):**
 
 ```json
 {
   "merchant_id": "nike",
-  "product_id": "nike_zoom_fly_6-9-pink-white",
+  "product_id": "nike_zoom_fly_6-9-black",
   "title": "Nike Zoom Fly 6",
   "category": "running_shoes",
   "price": 139.99,
   "currency": "USD",
   "size": "9",
-  "color": "Pink/White",
+  "color": "Black",
   "available": true,
-  "inventory": 4,
+  "inventory": 15,
   "delivery_days": 3,
   "rating": 4.8,
   "review_count": 412,
+  "image_url": "/catalog/nike-zoom-fly-6/black.webp",
   "source": "merchant_catalog"
 }
 ```
+
+`image_url` points at the photo for this card's colour, so a Coral Pegasus card shows the coral shoe and a Teal card shows the teal one.
 
 ## Stage 6 — Merchant boundary checks (custom)
 
@@ -820,25 +825,25 @@ A shopping request produces `nemo_pass` with `category: commerce_allowed`. If cl
 
 **Benefit:** the total the user approves is the total that gets charged.
 
-**Real request body:** `{"product_id": "nike_zoom_fly_6-9-pink-white", "merchant_id": "nike", "quantity": 1}`
+**Real request body:** `{"product_id": "nike_zoom_fly_6-9-black", "merchant_id": "nike", "quantity": 1}`
 
 **Real response:**
 
 ```json
 {
-  "checkout_id": "CHK_3FA7B824",
+  "checkout_id": "CHK_E9140BCD",
   "merchant_id": "nike",
-  "product_id": "nike_zoom_fly_6-9-pink-white",
+  "product_id": "nike_zoom_fly_6-9-black",
   "product_title": "Nike Zoom Fly 6",
   "quantity": 1,
   "size": "9",
-  "color": "Pink/White",
+  "color": "Black",
   "subtotal": 139.99,
   "shipping": 0.0,
   "tax": 11.48,
   "total": 151.47,
   "currency": "USD",
-  "checkout_hash": "9ac2541f1f2c547cf0b6e352ba73b54450befbc75b724f24923a1ea9c3c30087"
+  "checkout_hash": "d4a39e7ae5f479f7ad07cedff344f0307e578f92855c9d3a386532097e9e69ed"
 }
 ```
 
@@ -945,7 +950,9 @@ This section explains how each protocol is represented in the POC. The goal is a
 - **A2A:** "Our merchant agents use A2A-style messages and task results. The chat calls them in-process, and the same agents are available over HTTP."
 - **UCP:** "Our catalog and checkout use UCP-style concepts: products, variants, totals and fulfillment. This is not the UCP wire protocol."
 - **AP2:** "Our purchase carries AP2-style cart and payment mandates as verifiable-credential-style objects, bound to the checkout hash, with a demo signature. They're verified before payment."
-- **ACP:** "Our payment uses an ACP-style shared payment token, derived from and bound to the DPAT authorization. It has the same amount, currency and expiry, and it's verified before the 12 payment checks run."
+- **ACP:** "An ACP-style scoped, single-use payment token is the only payment credential that reaches the merchant. It's issued after GO AHEAD, bound to the merchant, checkout, amount, currency and expiry, and verified by the merchant before payment."
+- **DPAT:** "Our internal single-use enforcement token. The verified authorization is mapped to it, and the payment service runs 12 deterministic checks before the mock processor charges. It is not an industry protocol."
+- **Agent trust:** "Before checkout, the merchant verifies the customer agent's identity, platform, delegation and scope with deterministic checks. The signature is a demo key, not production PKI."
 
 ### Guardrails
 
@@ -963,3 +970,169 @@ Our approach reproduces the key roles, sequence and interaction patterns of each
 - **Path to real integrations:** each role sits behind its own module. Swapping a mock merchant, credential provider or payment processor for a real endpoint keeps the overall agentic-commerce flow the same.
 
 The purpose of this POC is functional demonstration and architectural validation. It shows how these protocol roles and sequences can work together, and gives a concrete base to extend toward official protocol endpoints.
+
+## Merchant Catalog & Product Photos
+
+The six merchant catalogs (Nike, Adidas, Zara, H&M, Fossil, Casio) were rebuilt so the data is clean and every product colour has its own real photo from Pixabay. The format follows the ShopSphere catalog from the Demo 1 build.
+
+### What changed
+
+| Before | Now |
+|---|---|
+| One stock photo per product, from Wikimedia Commons. Often the wrong brand (a FILA shoe on the "Nike Zoom Fly 6" card) or a store scene. 18 products had no photo. | One studio photo per colour. Every product has a photo for every colour it sells. |
+| Photos shown as-is, cropped into the card. | Background removed, product centred on the same soft grey backdrop with a floor shadow, so the grid looks like one store. |
+| Colours were invented and had no photo behind them. | A product only offers colours it has a convincing photo for. |
+| Every size and colour combination written out as a variant row (5–10 rows per product). | Sizes come from a named size range. Stock is written as exceptions (`out_of_stock`). |
+| Some descriptions had broken characters. | Clean descriptions, plus tags, department, gender and a hex swatch for each colour. |
+
+**Totals:** 46 products and 60 colour photos across the six merchants.
+
+### The catalog format
+
+Each merchant file, `backend/data/<merchant>_catalog.json`, has three parts: the merchant, the size ranges it uses, and its products.
+
+```json
+{
+  "merchant": {"merchant_id": "nike", "merchant_name": "Nike", "categories": ["shoes", "running", "sneakers", "sportswear", "apparel", "clothing"]},
+  "size_ranges": {"shoe_unisex": ["6", "7", "8", "9", "10", "11", "12"]},
+  "products": [ ... ]
+}
+```
+
+One real product:
+
+```json
+{
+  "product_id": "nike_pegasus_42",
+  "slug": "nike-air-zoom-pegasus-42",
+  "name": "Nike Air Zoom Pegasus 42",
+  "brand": "Nike",
+  "department": "shoes",
+  "category": "running",
+  "subcategory": "shoes",
+  "gender": "unisex",
+  "price": 99.99,
+  "currency": "USD",
+  "rating": 4.6,
+  "review_count": 1240,
+  "delivery_days": 2,
+  "is_new": false,
+  "option_label": "Size",
+  "sizes": "shoe_unisex",
+  "colors": [
+    {"name": "Coral", "hex": "#f0705a", "photo": {"pixabay_id": 1324431, "mode": "studio"}},
+    {"name": "Teal",  "hex": "#2bb3b1", "photo": {"pixabay_id": 2799608, "mode": "studio"}}
+  ],
+  "description": "Lightweight daily trainer with React foam cushioning and a smooth ride.",
+  "tags": ["everyday running", "cushioned", "road"],
+  "out_of_stock": [{"size": "11", "color": "Teal"}]
+}
+```
+
+**How the app reads it:** when a merchant agent loads its catalog, it expands each product into one variant per size and colour. Stock levels are deterministic, between 3 and 15, so they look varied but never change between runs. Out-of-stock entries become `available: false` with zero stock. The rest of the app (search, A2A results, checkout, AP2 and ACP) sees the same product shape as before, so no other part of the flow had to change.
+
+### How the photos are made
+
+1. **Pick:** each colour names a hand-picked Pixabay photo by its id. Photos were chosen by eye from Pixabay search results, preferring a single product on a plain background.
+2. **Download:** `scripts/fetch_catalog_photos.py` fetches the photo through the Pixabay API, using `PIXABAY_API_KEY` from `.env`.
+3. **Cut out:** the product is separated from its background. The `mode` on each photo says how:
+   - `studio` removes the background with rembg, a background-removal model.
+   - `largest` does the same, then keeps only the biggest shape, which drops props such as jeans or a bag.
+   - `onblack` separates a product shot on a plain black backdrop by brightness.
+4. **Compose:** the cut-out is centred on the grey backdrop with a soft shadow and saved as an 800×800 WebP at `frontend/public/catalog/<slug>/<colour>.webp`.
+5. **Record:** the source page, photographer and licence of every photo are written to `backend/data/catalog_images.json`.
+
+```json
+"nike-air-zoom-pegasus-42": {
+  "Coral": {"pixabay_id": 1324431, "mode": "studio", "page_url": "https://pixabay.com/photos/shoe-sports-training-sneaker-1324431/", "photographer": "stux", "license": "Pixabay Content License"}
+}
+```
+
+**Why photos are stored locally:** Pixabay's API terms don't allow apps to link to Pixabay image URLs permanently. Downloading also means the demo works offline once the photos exist.
+
+**Where photos show:** each product card gets the photo for its own colour through `image_url`. Cards and the product detail view show the whole square photo on the matching backdrop instead of cropping it. The checkout adapter uses the selected colour's photo too.
+
+### Changing the catalog
+
+The single source of truth is `scripts/build_merchant_catalogs.py`. To add a product, add a colour or swap a photo, edit it there, then run:
+
+```bash
+.venv/Scripts/python scripts/build_merchant_catalogs.py          # rewrites the six catalog files
+.venv-photos/Scripts/python scripts/fetch_catalog_photos.py      # makes any missing or changed photos
+```
+
+Then restart the backend. The photo script only redoes photos whose id or mode changed, and deletes photos no product uses any more. It runs in its own environment, `.venv-photos`, so rembg and its ~170 MB model stay out of the app's packages.
+
+### Products that changed to fit Pixabay
+
+Pixabay has no photos of some exact models, so the catalog was adjusted to what it does have:
+
+- **Removed:** Nike Pro Compression Shorts, Nike React Infinity Run 4, Casio F-91W and Casio Databank. No usable photo existed.
+- **Replaced:** Nike Air Max 270 became the Air Max 90, the square G-Shock GW-M5610 became the G-Shock GA-100, and the Casio Baby-G became the G-Shock DW-6900.
+- **Renamed to match their photos:** Zara Linen Sundress, Zara Bow-Neck Blouse, Zara Evening Gown, Fossil Carlie Watch, Casio Edifice EFR-539, H&M Pleated Chiffon Dress, H&M Tiered Denim Dress, H&M Oxford Shirt, H&M Skinny High Jeans, H&M Chino Shorts, H&M Embroidered Blouse and H&M Patterned Knit Cardigan.
+- **Added:** H&M Oversized Knit Sweater.
+
+### Search improvement
+
+Search now also matches a product's department and tags. Before, a broad ask like "zara evening dress", which the intent step turns into the category "clothing", skipped the dresses because they sit in their own "dresses" category. Dresses are in the clothing department, so they now come back. Tags help keyword searches such as "g-shock" or "linen".
+
+### Honest notes
+
+- Pixabay rarely has the exact model, so many photos show a similar product from the right brand rather than the exact one. Fossil watches are generic watches.
+- A few cut-outs have small flaws, such as a faint smear under the green G-Shock.
+- The generic protocol path (`/api/generic/stream`) still uses its own Unsplash photo pools. The new photos are used in the main chat.
+
+**Talk track:** "Every product photo is a real, licence-free Pixabay photo that we cut out and put on one studio backdrop, so the store looks consistent. Each colour has its own photo, and the catalog only sells colours we actually have a picture of."
+
+**Don't say:** "These are official brand product photos." They are stock photos of similar products.
+
+---
+
+# Demo 2 — Rectified Orchestration
+
+The main chat now follows the business scenario: **an authenticated Talkshop customer, unknown to Nike, buys through their own shopping agent.** Full details, live evidence and test results are in [demo2_implementation_report.md](demo2_implementation_report.md). Work is tracked in [demo2_orchestration_plan.md](demo2_orchestration_plan.md).
+
+## Guest vs known
+
+| Relationship | Values | Primary demo |
+|---|---|---|
+| Talkshop account | authenticated · talkshop_guest | authenticated |
+| Merchant relationship | merchant_guest · merchant_member | merchant_guest |
+
+"Continue as Talkshop guest (testing)" on the login page is a secondary path. Nike only ever sees a pseudonymous customer reference.
+
+## The flow
+
+1. Input checks and NeMo Guardrails, then Gemini extracts the shopping intent. The intent is what the customer wants, not permission to spend.
+2. The brand is named, so the request routes straight to Nike.
+3. **Customer Agent → Nike Agent** (A2A-style, in-process).
+4. **Agent trust:** Nike runs 8 deterministic checks on the agent's credential and opens a trusted session. If any check fails, nothing is searched, checked out or charged.
+5. Nike's catalog (UCP-style) returns products. The customer picks one; that is not a payment approval.
+6. Nike creates the checkout, stores it, and returns totals, delivery date and a checkout hash. AP2 cart evidence binds it.
+7. The **order proposal** shows product, totals, delivery and the payment method as brand + last4.
+8. **GO AHEAD** is the only thing that authorizes payment. It is bound to the exact checkout, total and payment method.
+9. AP2 authorization evidence, then an ACP-style scoped token, then Nike verifies trust, token and evidence.
+10. If Nike's delivery date changed, payment pauses for YES / NO.
+11. The verified authorization maps to the internal DPAT; the 12 payment checks run; the mock processor charges; Nike creates the order and returns ORDER_CONFIRMED.
+
+## In the right panel
+
+The **Story** tab (default) shows one row per step: Input · Intent · Routing · A2A · Agent trust · UCP · Human · Checkout · AP2 · Human (GO AHEAD) · ACP · Payment · Nike · A2A. Each row has **View details** with the raw event. The Live and Flow tabs show the same events in more detail.
+
+## Demo scenarios
+
+A small **Demo scenario** picker under the message box triggers the failure cases on stage:
+
+| Scenario | What the audience sees |
+|---|---|
+| Invalid agent credential | The search stops at Agent trust. No products, no checkout. |
+| Merchant changes delivery date | After GO AHEAD, payment pauses and asks YES / NO. |
+| Agent tries to charge $20 more | Nike rejects the charge as outside the token's scope. No payment, no order. |
+
+Reset the picker to **Normal** for the happy path.
+
+## Talk track
+
+"You're signed in to your own assistant, and you've never shopped with Nike. Your agent connects to Nike's agent, and Nike checks who the agent is and what you allowed it to do before showing anything. You pick the shoes — that's not a payment yet. Nike builds the checkout, and you see the exact total, delivery date and the card as Visa •••• 4242. Only when you say GO AHEAD does your agent get a single-use token for exactly that amount at Nike. Nike verifies it, our payment service runs 12 checks, and the order comes back. The card number never reaches the AI or Nike."
+
+**Don't say:** "fully compliant", "live A2A network call", "production payment" or "DPAT protocol".

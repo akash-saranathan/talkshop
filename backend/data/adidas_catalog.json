@@ -1,181 +1,328 @@
-[
-  {
-    "id": "adidas_ultraboost_22",
-    "title": "Adidas Ultraboost 22",
-    "brand": "Adidas",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 109.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "Black/White",  "available": true,  "inventory": 6  },
-      { "size": "9",  "color": "Black/White",  "available": true,  "inventory": 9  },
-      { "size": "10", "color": "Black/White",  "available": true,  "inventory": 7  },
-      { "size": "11", "color": "Black/White",  "available": false, "inventory": 0  },
-      { "size": "10", "color": "Cloud White",  "available": true,  "inventory": 5  },
-      { "size": "11", "color": "Cloud White",  "available": true,  "inventory": 4  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.7,
-    "review_count": 2100,
-    "image_url": "/assets/adidas_ultraboost_22.png",
-    "sku": "adidas_ultraboost_22",
-    "description": "Premium energy-return runner with Boost midsole and Primeknit upper."
+{
+  "merchant": {
+    "merchant_id": "adidas",
+    "merchant_name": "Adidas",
+    "categories": [
+      "shoes",
+      "running",
+      "sneakers",
+      "sportswear",
+      "apparel",
+      "clothing"
+    ]
   },
-  {
-    "id": "adidas_solarboost_4",
-    "title": "Adidas Solarboost 4",
-    "brand": "Adidas",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 94.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "Navy/Orange",  "available": true,  "inventory": 8  },
-      { "size": "9",  "color": "Navy/Orange",  "available": true,  "inventory": 10 },
-      { "size": "10", "color": "Navy/Orange",  "available": true,  "inventory": 7  },
-      { "size": "11", "color": "Navy/Orange",  "available": true,  "inventory": 5  },
-      { "size": "9",  "color": "White/Blue",   "available": true,  "inventory": 6  },
-      { "size": "10", "color": "White/Blue",   "available": false, "inventory": 0  }
+  "size_ranges": {
+    "apparel_men": [
+      "S",
+      "M",
+      "L",
+      "XL",
+      "XXL"
     ],
-    "shipping_days": 3,
-    "rating": 4.5,
-    "review_count": 890,
-    "image_url": "/assets/adidas_solarboost_4.png",
-    "sku": "adidas_solarboost_4",
-    "description": "Energised long-run shoe with Boost cushioning and supportive upper."
+    "apparel_unisex": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "shoe_unisex": [
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12"
+    ]
   },
-  {
-    "id": "adidas_supernova_rise",
-    "title": "Adidas Supernova Rise",
-    "brand": "Adidas",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 84.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "Grey/Green",   "available": true,  "inventory": 11 },
-      { "size": "9",  "color": "Grey/Green",   "available": true,  "inventory": 9  },
-      { "size": "10", "color": "Grey/Green",   "available": true,  "inventory": 7  },
-      { "size": "11", "color": "Grey/Green",   "available": false, "inventory": 0  },
-      { "size": "10", "color": "Black",        "available": true,  "inventory": 5  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.4,
-    "review_count": 540,
-    "image_url": "/assets/adidas_supernova_rise.png",
-    "sku": "adidas_supernova_rise",
-    "description": "Versatile everyday trainer with responsive DREAMSTRIKE+ midsole."
-  },
-  {
-    "id": "adidas_sl20",
-    "title": "Adidas SL20.3",
-    "brand": "Adidas",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 79.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "White/Silver", "available": true,  "inventory": 8  },
-      { "size": "9",  "color": "White/Silver", "available": true,  "inventory": 10 },
-      { "size": "10", "color": "White/Silver", "available": true,  "inventory": 6  },
-      { "size": "11", "color": "White/Silver", "available": true,  "inventory": 4  },
-      { "size": "9",  "color": "Black/Gold",   "available": true,  "inventory": 5  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.3,
-    "review_count": 320,
-    "image_url": "/assets/adidas_sl20.png",
-    "sku": "adidas_sl20",
-    "description": "Lightweight speed shoe with Lightstrike cushioning for tempo training."
-  },
-  {
-    "id": "adidas_forum_low",
-    "title": "Adidas Forum Low",
-    "brand": "Adidas",
-    "category": "sneakers",
-    "subcategory": "shoes",
-    "price": 89.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "White/Blue",   "available": true,  "inventory": 12 },
-      { "size": "9",  "color": "White/Blue",   "available": true,  "inventory": 14 },
-      { "size": "10", "color": "White/Blue",   "available": true,  "inventory": 10 },
-      { "size": "11", "color": "White/Blue",   "available": true,  "inventory": 8  },
-      { "size": "10", "color": "Cloud White",  "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.5,
-    "review_count": 1650,
-    "image_url": "/assets/adidas_forum_low.png",
-    "sku": "adidas_forum_low",
-    "description": "Retro basketball silhouette reimagined for everyday street style."
-  },
-  {
-    "id": "adidas_nmd_r1",
-    "title": "Adidas NMD R1",
-    "brand": "Adidas",
-    "category": "sneakers",
-    "subcategory": "shoes",
-    "price": 119.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "Black/Red",    "available": true,  "inventory": 7  },
-      { "size": "9",  "color": "Black/Red",    "available": true,  "inventory": 9  },
-      { "size": "10", "color": "Black/Red",    "available": false, "inventory": 0  },
-      { "size": "10", "color": "Olive/White",  "available": true,  "inventory": 5  },
-      { "size": "11", "color": "Olive/White",  "available": true,  "inventory": 4  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.6,
-    "review_count": 1980,
-    "image_url": "/assets/adidas_nmd_r1.png",
-    "sku": "adidas_nmd_r1",
-    "description": "Urban runner icon with Boost cushioning and Primeknit sock-like upper."
-  },
-  {
-    "id": "adidas_adicolor_tshirt",
-    "title": "Adidas Adicolor T-Shirt",
-    "brand": "Adidas",
-    "category": "sportswear",
-    "subcategory": "tops",
-    "price": 29.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "S",  "color": "White",        "available": true,  "inventory": 20 },
-      { "size": "M",  "color": "White",        "available": true,  "inventory": 18 },
-      { "size": "L",  "color": "White",        "available": true,  "inventory": 14 },
-      { "size": "XL", "color": "White",        "available": true,  "inventory": 8  },
-      { "size": "M",  "color": "Black",        "available": true,  "inventory": 15 },
-      { "size": "L",  "color": "Black",        "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.3,
-    "review_count": 760,
-    "image_url": "/assets/adidas_adicolor_tshirt.png",
-    "sku": "adidas_adicolor_tshirt",
-    "description": "Classic three-stripe tee in soft jersey fabric — an everyday essential."
-  },
-  {
-    "id": "adidas_tiro_pants",
-    "title": "Adidas Tiro 23 Track Pants",
-    "brand": "Adidas",
-    "category": "sportswear",
-    "subcategory": "bottoms",
-    "price": 44.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "S",  "color": "Black/White",  "available": true,  "inventory": 12 },
-      { "size": "M",  "color": "Black/White",  "available": true,  "inventory": 14 },
-      { "size": "L",  "color": "Black/White",  "available": true,  "inventory": 10 },
-      { "size": "XL", "color": "Black/White",  "available": false, "inventory": 0  },
-      { "size": "M",  "color": "Navy/Gold",    "available": true,  "inventory": 8  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.5,
-    "review_count": 1100,
-    "image_url": "/assets/adidas_tiro_pants.png",
-    "sku": "adidas_tiro_pants",
-    "description": "Slim-fit training pants with zip pockets and side stripe detailing."
-  }
-]
+  "products": [
+    {
+      "product_id": "adidas_ultraboost_22",
+      "slug": "adidas-ultraboost-22",
+      "name": "Adidas Ultraboost 22",
+      "brand": "Adidas",
+      "department": "shoes",
+      "category": "running",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 109.99,
+      "currency": "USD",
+      "rating": 4.7,
+      "review_count": 2100,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#f5f5f2",
+          "photo": {
+            "pixabay_id": 5418991,
+            "mode": "onblack"
+          }
+        },
+        {
+          "name": "Grey",
+          "hex": "#8e9196",
+          "photo": {
+            "pixabay_id": 2554690,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Premium energy-return runner with a Boost midsole and Primeknit upper.",
+      "tags": [
+        "cushioned",
+        "energy return",
+        "road"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "adidas_solarboost_4",
+      "slug": "adidas-solarboost-4",
+      "name": "Adidas Solarboost 4",
+      "brand": "Adidas",
+      "department": "shoes",
+      "category": "running",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 94.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 890,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "White/Navy",
+          "hex": "#dfe3ea",
+          "photo": {
+            "pixabay_id": 974715,
+            "mode": "largest"
+          }
+        }
+      ],
+      "description": "Energised long-run shoe with Boost cushioning and a supportive upper.",
+      "tags": [
+        "long distance",
+        "supportive",
+        "road"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "adidas_supernova_rise",
+      "slug": "adidas-supernova-rise",
+      "name": "Adidas Supernova Rise",
+      "brand": "Adidas",
+      "department": "shoes",
+      "category": "running",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 84.99,
+      "currency": "USD",
+      "rating": 4.4,
+      "review_count": 540,
+      "delivery_days": 3,
+      "is_new": true,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#1c1c1e",
+          "photo": {
+            "pixabay_id": 5418985,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Versatile everyday trainer with a responsive Dreamstrike+ midsole.",
+      "tags": [
+        "everyday running",
+        "responsive"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "adidas_sl20",
+      "slug": "adidas-sl203",
+      "name": "Adidas SL20.3",
+      "brand": "Adidas",
+      "department": "shoes",
+      "category": "running",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 79.99,
+      "currency": "USD",
+      "rating": 4.3,
+      "review_count": 320,
+      "delivery_days": 2,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#f5f5f2",
+          "photo": {
+            "pixabay_id": 5418982,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Lightweight speed shoe with Lightstrike cushioning for tempo training.",
+      "tags": [
+        "lightweight",
+        "tempo",
+        "speed"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "adidas_forum_low",
+      "slug": "adidas-forum-low",
+      "name": "Adidas Forum Low",
+      "brand": "Adidas",
+      "department": "shoes",
+      "category": "sneakers",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 89.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 1650,
+      "delivery_days": 2,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "Navy/Gold",
+          "hex": "#2b2f4a",
+          "photo": {
+            "pixabay_id": 2498994,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Retro basketball silhouette reimagined for everyday street style.",
+      "tags": [
+        "retro",
+        "basketball",
+        "lifestyle"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "adidas_nmd_r1",
+      "slug": "adidas-nmd_r1",
+      "name": "Adidas NMD_R1",
+      "brand": "Adidas",
+      "department": "shoes",
+      "category": "sneakers",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 119.99,
+      "currency": "USD",
+      "rating": 4.6,
+      "review_count": 1980,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#1c1c1e",
+          "photo": {
+            "pixabay_id": 5418990,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Urban runner icon with Boost cushioning and a sock-like Primeknit upper.",
+      "tags": [
+        "lifestyle",
+        "boost",
+        "streetwear"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "adidas_adicolor_tshirt",
+      "slug": "adidas-adicolor-t-shirt",
+      "name": "Adidas Adicolor T-Shirt",
+      "brand": "Adidas",
+      "department": "clothing",
+      "category": "sportswear",
+      "subcategory": "tops",
+      "gender": "unisex",
+      "price": 29.99,
+      "currency": "USD",
+      "rating": 4.3,
+      "review_count": 760,
+      "delivery_days": 2,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "apparel_unisex",
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#f5f5f2",
+          "photo": {
+            "pixabay_id": 9611374,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Classic tee in soft cotton jersey, an everyday essential.",
+      "tags": [
+        "t-shirt",
+        "cotton",
+        "everyday"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "adidas_tiro_pants",
+      "slug": "adidas-tiro-23-track-pants",
+      "name": "Adidas Tiro 23 Track Pants",
+      "brand": "Adidas",
+      "department": "clothing",
+      "category": "sportswear",
+      "subcategory": "bottoms",
+      "gender": "men",
+      "price": 44.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 1100,
+      "delivery_days": 2,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "apparel_men",
+      "colors": [
+        {
+          "name": "Navy",
+          "hex": "#1f2a44",
+          "photo": {
+            "pixabay_id": 2685231,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Slim-fit training pants with zip pockets for training and travel.",
+      "tags": [
+        "track pants",
+        "training",
+        "slim fit"
+      ],
+      "out_of_stock": []
+    }
+  ]
+}

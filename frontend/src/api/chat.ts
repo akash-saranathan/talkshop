@@ -90,13 +90,17 @@ export interface ChatCallbacks {
   onError: (message: string) => void;
   onDone: () => void;
   onProtocolEvent?: (event: Record<string, unknown>) => void;
+  /** Demo-only failure scenario forwarded to the server, e.g. "bad_agent_credential". */
+  demo?: string;
 }
 
 export function streamChat(message: string, sessionId: string, callbacks: ChatCallbacks): () => void {
   // EventSource can't set custom headers, so the token travels as a query
   // param here — the backend's get_current_user() accepts either.
   const token = getToken();
-  const params = new URLSearchParams({ message, session_id: sessionId, ...(token ? { token } : {}) });
+  const params = new URLSearchParams({
+    message, session_id: sessionId, ...(token ? { token } : {}), ...(callbacks.demo ? { demo: callbacks.demo } : {}),
+  });
   const url = `/api/chat/stream?${params}`;
   const es = new EventSource(url);
 

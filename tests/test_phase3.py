@@ -434,22 +434,22 @@ def test_health_endpoint(client):
 
 def test_checkout_create_for_known_product(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "nike_pegasus_42-9-coral",
+        "merchant_id": "nike",
         "quantity": 1,
     }, headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert "checkout_id" in data
     assert "checkout_hash" in data
-    assert data["product_id"] == "RW001"
+    assert data["product_id"] == "nike_pegasus_42-9-coral"
     assert data["total"] > 0
 
 
 def test_checkout_create_unknown_product(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
         "product_id": "NONEXISTENT_999",
-        "merchant_id": "MERCHANT_A",
+        "merchant_id": "nike",
         "quantity": 1,
     }, headers=auth_headers)
     assert resp.status_code == 404
@@ -457,8 +457,8 @@ def test_checkout_create_unknown_product(client, auth_headers):
 
 def test_checkout_create_requires_auth(client):
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "nike_pegasus_42-9-coral",
+        "merchant_id": "nike",
         "quantity": 1,
     })
     assert resp.status_code == 401
@@ -467,8 +467,8 @@ def test_checkout_create_requires_auth(client):
 def test_approve_then_revoke(client, auth_headers):
     # First create a checkout
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "nike_pegasus_42-9-coral",
+        "merchant_id": "nike",
         "quantity": 1,
     }, headers=auth_headers)
     assert resp.status_code == 200
@@ -504,8 +504,8 @@ def test_approve_then_revoke(client, auth_headers):
 
 def test_revoke_already_revoked_is_idempotent(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "nike_pegasus_42-9-coral",
+        "merchant_id": "nike",
         "quantity": 1,
     }, headers=auth_headers)
     co = resp.json()
@@ -532,8 +532,8 @@ def test_revoke_already_revoked_is_idempotent(client, auth_headers):
 
 def test_audit_trail_returns_events(client, auth_headers):
     resp = client.post("/api/checkout/create", json={
-        "product_id": "RW001",
-        "merchant_id": "MERCHANT_A",
+        "product_id": "nike_pegasus_42-9-coral",
+        "merchant_id": "nike",
         "quantity": 1,
     }, headers=auth_headers)
     co = resp.json()

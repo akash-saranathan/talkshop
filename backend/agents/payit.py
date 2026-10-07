@@ -20,6 +20,7 @@ async def execute_payment(
     checkout_total: float,
     checkout_hash: str,
     consent_exists: bool,
+    processor_wallet: Optional[dict] = None,
 ) -> tuple[Optional[PaymentResult], list[GuardrailEvent], Optional[str]]:
     """
     Validate then charge. Returns (result, guardrail_events, blocked_reason).
@@ -42,7 +43,7 @@ async def execute_payment(
             return None, events, blocked_reason
 
         with tracer.start_as_current_span("mock_processor.process_payment") as proc_span:
-            result = await mock_processor.process_payment(request)
+            result = await mock_processor.process_payment(request, processor_wallet)
             proc_span.set_attribute("status", result.status)
 
         return result, events, None

@@ -114,8 +114,8 @@ export default function Login() {
                   <UserPlus size={18} />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-[var(--color-text)]">Continue as Guest</p>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Browse and buy without an account — enter your card at checkout</p>
+                  <p className="text-sm font-bold text-[var(--color-text)]">Continue as Talkshop guest <span className="font-normal text-[var(--color-text-muted)]">(testing)</span></p>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">No Talkshop account. Add a card at checkout, kept by the card processor as a reference only</p>
                 </div>
               </button>
             </motion.div>
@@ -128,7 +128,7 @@ export default function Login() {
                 className="flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] mb-4 transition-colors">
                 <ArrowLeft size={14} /> Back
               </button>
-              <h2 className="font-semibold text-[var(--color-text)] mb-0.5">Continue as Guest</h2>
+              <h2 className="font-semibold text-[var(--color-text)] mb-0.5">Continue as Talkshop guest</h2>
               <p className="text-xs text-[var(--color-text-muted)] mb-4">Just your name and email — you'll enter payment details at checkout.</p>
               <form onSubmit={handleSubmit} className="flex flex-col gap-3">
                 <input value={name} onChange={(e) => setName(e.target.value)}

@@ -2,7 +2,6 @@
 Product source for Talk Shop search: the six demo merchant catalogs.
 Each catalog variant becomes one NormalizedProduct so cards, cart and checkout keep their existing shape.
 """
-import json
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -34,17 +33,12 @@ _BACKEND_DIR = Path(__file__).resolve().parents[1]
 _PUBLIC_DIR = _BACKEND_DIR.parent / "frontend" / "public"
 
 
-@lru_cache(maxsize=1)
-def _image_sources() -> dict:
-    path = _BACKEND_DIR / "data" / "merchant_image_sources.json"
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-
-
-def _image_url(product_base_id: str) -> str | None:
-    entry = _image_sources().get(product_base_id)
-    if not entry or not (_PUBLIC_DIR / entry["file"].lstrip("/")).exists():
+def _image_url(product: dict, colour: str) -> str | None:
+    """The studio photo for this colour, if scripts/fetch_catalog_photos.py has made it."""
+    url = product.get("images", {}).get(colour)
+    if not url or not (_PUBLIC_DIR / url.lstrip("/")).exists():
         return None
-    return entry["file"]
+    return url
 
 
 def _to_products(agent, product: dict, variants: list[dict]) -> list[NormalizedProduct]:
@@ -66,7 +60,7 @@ def _to_products(agent, product: dict, variants: list[dict]) -> list[NormalizedP
             delivery_days=product.get("shipping_days", 5),
             rating=product.get("rating", 0.0),
             review_count=product.get("review_count", 0),
-            image_url=_image_url(base_id),
+            image_url=_image_url(product, v["color"]),
             source="merchant_catalog",
         )
         for v in variants

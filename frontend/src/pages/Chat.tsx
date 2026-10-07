@@ -13,7 +13,7 @@ import ChatSidebar from "../components/ChatSidebar";
 import AgentTrailPanel from "../components/AgentTrailPanel";
 import ProtocolTracePanel, { type ProtocolEvent } from "../components/ProtocolTracePanel";
 import ThemeToggle from "../components/ThemeToggle";
-import InlineCheckout, { SAVED_CARDS, type AutoState, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape } from "../components/InlineCheckout";
+import InlineCheckout, { type AutoState, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape, type PaymentMethod, type CardInput, type ProcessingStep, type ConfirmedOrder } from "../components/InlineCheckout";
 import AutoStepBar from "../components/AutoStepBar";
 import InlineOrderTracker from "../components/InlineOrderTracker";
 import { useAuth } from "../auth/AuthContext";
@@ -380,13 +380,16 @@ function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
 export default function Chat() {
   const navigate = useNavigate();
   const { user, logout, isGuest } = useAuth();
-  // Remembers the guest card entered during this session — never persisted to storage.
-  const sessionGuestCardRef = useRef<import("../components/InlineCheckout").GuestCardInput | null>(null);
+  // Saved payment method references from the server (brand + last4 only, never a card number).
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  // Demo-only failure scenario chosen in the composer (off by default).
+  const [demoScenario, setDemoScenario] = useState<string>("");
+  const demoScenarioRef = useRef(demoScenario);
+  demoScenarioRef.current = demoScenario;
   const [input, setInput] = useState("");
   const [pastedImage, setPastedImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const checkoutCreateMsRef = useRef(new Map<string, number>());
   const turnsRef = useRef<Turn[]>(turns);
   turnsRef.current = turns;
   const [autoTimer, setAutoTimer] = useState<AutoTimer | null>(null);
@@ -611,7 +614,6 @@ export default function Chat() {
       try {
         const orderSaved   = JSON.parse(sessionStorage.getItem(`talkshop_order_${id}`) ?? "null");
         const checkoutSaved = JSON.parse(sessionStorage.getItem(`talkshop_checkout_${id}`) ?? "null");
-        const guestCardSaved = JSON.parse(sessionStorage.getItem(`talkshop_guestcard_${id}`) ?? "null");
 
         if (orderSaved?.orderId && orderSaved.product) {
           // Hide the search-results products for the ordered product
@@ -624,13 +626,7 @@ export default function Chat() {
           rawTurns.push({
             id: crypto.randomUUID(),
             userMessage: "Checkout",
-            steps: [
-              { id: "ca1",   message: "CartUp — checkout session ready",        status: "done" as const },
-              { id: "pay-0", message: "GreenLight — authorization approved",     status: "done" as const },
-              { id: "pay-1", message: "GreenLight — DPAT token issued",          status: "done" as const },
-              { id: "pay-2", message: "PayIt — payment processed",               status: "done" as const },
-              { id: "pay-3", message: "TrackIt — order recorded",                status: "done" as const },
-            ],
+            steps: [{ id: "ca1", message: "Order confirmed", status: "done" as const }],
             products: [],
             recommendation: "",
             blocked: null,
@@ -638,11 +634,10 @@ export default function Chat() {
             checkout: {
               phase: "confirmed" as const,
               product: orderSaved.product,
-              selectedCard: orderSaved.selectedCard ?? SAVED_CARDS[0].id,
-              orderId: orderSaved.orderId,
-              confirmedTotal: orderSaved.amount,
-              pointsEarned: orderSaved.pointsEarned,
-              loyaltyBalance: orderSaved.loyaltyBalance,
+              order: (orderSaved.order as ConfirmedOrder | undefined) ?? {
+                order_id: orderSaved.orderId, merchant_name: orderSaved.product.merchant_name,
+                product_title: orderSaved.product.title, total: orderSaved.amount,
+              },
             },
           });
         } else if (checkoutSaved?.checkoutData && checkoutSaved.product) {
@@ -650,7 +645,7 @@ export default function Chat() {
           rawTurns.push({
             id: crypto.randomUUID(),
             userMessage: "Checkout",
-            steps: [{ id: "ca1", message: "CartUp — checkout session ready", status: "done" as const }],
+            steps: [{ id: "ca1", message: "Checkout ready — waiting for your GO AHEAD", status: "done" as const }],
             products: [],
             recommendation: "",
             blocked: null,
@@ -659,9 +654,7 @@ export default function Chat() {
               phase: "summary" as const,
               product: checkoutSaved.product,
               checkoutData: checkoutSaved.checkoutData,
-              selectedCard: checkoutSaved.selectedCard ?? SAVED_CARDS[0].id,
-              isGuest,
-              guestCard: guestCardSaved ?? (isGuest ? { number: "", expiry: "", cvc: "", name: "" } : undefined),
+              paymentMethodId: checkoutSaved.paymentMethodId ?? checkoutSaved.checkoutData?.payment_method?.payment_method_id,
             },
           });
         }
@@ -672,7 +665,7 @@ export default function Chat() {
       switchToSession(crypto.randomUUID());
       setTurns([]);
     }
-  }, [switchToSession, isGuest]);
+  }, [switchToSession]);
 
   const handleSelectSession = useCallback(async (clickedId: string) => {
     if (clickedId === sessionIdRef.current) return;
@@ -860,6 +853,7 @@ export default function Chat() {
     }
 
     const close = streamChat(msg, sessionIdRef.current, {
+      demo: demoScenarioRef.current === "bad_agent_credential" ? "bad_agent_credential" : undefined,
       onStep: (event: AgentEvent) => {
         updateActiveTurn((turn) => {
           const prevSteps = turn.steps;
@@ -990,6 +984,50 @@ export default function Chat() {
   // ── Inline checkout flow ──────────────────────────────────────────────────
 
   // Step 1: user said "yes" to agent's cart question → create checkout summary turn
+  // ── Demo 2 purchase: product selection → merchant checkout → order proposal ──
+  // Nothing here authorizes payment. Spending consent is only GO AHEAD (doGoAhead).
+  const appendServerEvents = useCallback((events?: ProtocolEvent[]) => {
+    if (events?.length) setProtocolEvents((prev) => [...prev, ...events]);
+  }, []);
+
+  const refreshPaymentMethods = useCallback(async (): Promise<PaymentMethod[]> => {
+    try {
+      const res = await authFetch("/api/payment-methods");
+      if (!res.ok) return [];
+      const data = await res.json();
+      const list: PaymentMethod[] = data.payment_methods ?? [];
+      setPaymentMethods(list);
+      return list;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  useEffect(() => { void refreshPaymentMethods(); }, [refreshPaymentMethods, user?.user_id]);
+
+  const persistCheckout = (product: ProductData, checkoutData: InlineCheckoutDataShape, paymentMethodId?: string) => {
+    try {
+      sessionStorage.setItem(`talkshop_checkout_${sessionIdRef.current}`, JSON.stringify({ product, checkoutData, paymentMethodId }));
+    } catch { /* noop */ }
+  };
+
+  const requestProposal = useCallback(async (product: ProductData): Promise<{ checkoutData?: InlineCheckoutDataShape; error?: string; reason?: string }> => {
+    try {
+      const res = await authFetch("/api/purchase/checkout", {
+        method: "POST",
+        body: JSON.stringify({ product_id: product.product_id, quantity: 1, chat_session_id: sessionIdRef.current }),
+      });
+      const data = await res.json().catch(() => ({}));
+      appendServerEvents(data.events);
+      if (!res.ok || data.status !== "proposed") {
+        return { error: data.message ?? "Could not prepare your order. Please try again.", reason: data.reason };
+      }
+      return { checkoutData: data.proposal as InlineCheckoutDataShape };
+    } catch {
+      return { error: "Could not prepare your order. Please try again." };
+    }
+  }, [appendServerEvents]);
+
   const doCheckoutSummary = useCallback(async (userText: string, product: ProductData, alreadyAdded = false) => {
     setInput("");
     setPastedImage(null);
@@ -1000,90 +1038,38 @@ export default function Chat() {
 
     const turnId = crypto.randomUUID();
     activeTurnId.current = turnId;
-
     setTurns((prev) => [
       ...prev,
       {
         id: turnId,
         userMessage: userText,
-        steps: [{ id: "c1", message: "CartUp — preparing your order...", status: "running" as const }],
+        steps: [{ id: "c1", message: "Customer Agent — asking the merchant for a checkout...", status: "running" as const }],
         products: [],
         recommendation: "",
         blocked: null,
         intent: {},
-        checkout: {
-          phase: "setup" as const,
-          product,
-          selectedCard: SAVED_CARDS[0].id,
-          isGuest,
-          guestCard: isGuest ? (sessionGuestCardRef.current ?? { number: "", expiry: "", cvc: "", name: "" }) : undefined,
-        },
+        checkout: { phase: "setup" as const, product },
       },
     ]);
 
-    try {
-      if (!alreadyAdded) await addToCart(product);
-      const createStart = performance.now();
-      const res = await authFetch("/api/checkout/create", {
-        method: "POST",
-        body: JSON.stringify({
-          product_id: product.product_id,
-          merchant_id: product.merchant_id,
-          quantity: 1,
-          session_id: sessionIdRef.current,
-        }),
-      });
-      if (!res.ok) throw new Error("Checkout creation failed");
-      const checkoutData: InlineCheckoutDataShape = await res.json();
-      checkoutCreateMsRef.current.set(checkoutData.checkout_id, Math.round(performance.now() - createStart));
-
-      // Persist so coming back from /cart restores this checkout without losing state
-      try {
-        sessionStorage.setItem(`talkshop_checkout_${sessionIdRef.current}`, JSON.stringify({
-          product, checkoutData, selectedCard: SAVED_CARDS[0].id,
-        }));
-      } catch { /* noop */ }
-
-      setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product });
-      setTurns((prev) =>
-        prev.map((t) =>
-          t.id === turnId
-            ? {
-                ...t,
-                steps: [{ id: "c1", message: "CartUp — checkout session ready", status: "done" as const }],
-                checkout: {
-                  phase: "summary" as const,
-                  product,
-                  checkoutData,
-                  selectedCard: SAVED_CARDS[0].id,
-                  isGuest,
-                  guestCard: isGuest ? (sessionGuestCardRef.current ?? { number: "", expiry: "", cvc: "", name: "" }) : undefined,
-                },
-              }
-            : t
-        )
-      );
-    } catch {
-      setTurns((prev) =>
-        prev.map((t) =>
-          t.id === turnId
-            ? {
-                ...t,
-                steps: [],
-                checkout: {
-                  phase: "failed" as const,
-                  product,
-                  selectedCard: SAVED_CARDS[0].id,
-                  error: "Could not prepare your order. Please try again.",
-                },
-              }
-            : t
-        )
-      );
-    } finally {
-      setLoading(false);
+    if (!alreadyAdded) {
+      try { await addToCart(product); } catch { /* the cart is a convenience; checkout doesn't depend on it */ }
     }
-  }, []);
+    const { checkoutData, error, reason } = await requestProposal(product);
+    setTurns((prev) => prev.map((t) => {
+      if (t.id !== turnId) return t;
+      if (!checkoutData) {
+        return { ...t, steps: [], checkout: { phase: "failed" as const, product, error, errorReason: reason } };
+      }
+      return {
+        ...t,
+        steps: [{ id: "c1", message: `${checkoutData.merchant_name} — checkout ready, waiting for your GO AHEAD`, status: "done" as const }],
+        checkout: { phase: "summary" as const, product, checkoutData, paymentMethodId: checkoutData.payment_method?.payment_method_id },
+      };
+    }));
+    if (checkoutData) persistCheckout(product, checkoutData, checkoutData.payment_method?.payment_method_id);
+    setLoading(false);
+  }, [requestProposal]);
   // Keep the ref current on every render so callers never see a stale closure.
   doCheckoutSummaryRef.current = doCheckoutSummary;
 
@@ -1097,48 +1083,26 @@ export default function Chat() {
 
     setTurns((prev) => prev.map((t) => t.id === turnId ? {
       ...t,
-      steps: [...t.steps, { id: "ca1", message: "CartUp — preparing your order...", status: "running" as const }],
+      steps: [...t.steps, { id: "ca1", message: "Customer Agent — asking the merchant for a checkout...", status: "running" as const }],
     } : t));
 
-    try {
-      await addToCart(product);
-      const res = await authFetch("/api/checkout/create", {
-        method: "POST",
-        body: JSON.stringify({ product_id: product.product_id, merchant_id: product.merchant_id, quantity: 1, session_id: sessionIdRef.current }),
-      });
-      if (!res.ok) throw new Error("Checkout creation failed");
-      const checkoutData: InlineCheckoutDataShape = await res.json();
-      setCartCount((n) => n + 1);
-
-      try {
-        sessionStorage.setItem(`talkshop_checkout_${sessionIdRef.current}`, JSON.stringify({
-          product, checkoutData, selectedCard: SAVED_CARDS[0].id,
-        }));
-      } catch { /* noop */ }
-
-      setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product });
-      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+    try { await addToCart(product); setCartCount((n) => n + 1); } catch { /* checkout doesn't depend on the cart */ }
+    const { checkoutData, error, reason } = await requestProposal(product);
+    setTurns((prev) => prev.map((t) => {
+      if (t.id !== turnId) return t;
+      const others = t.steps.filter((s) => s.id !== "ca1");
+      if (!checkoutData) {
+        return { ...t, steps: others, checkout: { phase: "failed" as const, product, error, errorReason: reason } };
+      }
+      return {
         ...t,
-        steps: t.steps.filter((s) => s.id !== "ca1").concat({ id: "ca1", message: "CartUp — checkout session ready", status: "done" as const }),
-        checkout: {
-          phase: "summary" as const, product, checkoutData,
-          selectedCard: SAVED_CARDS[0].id, isGuest,
-          guestCard: isGuest ? (sessionGuestCardRef.current ?? { number: "", expiry: "", cvc: "", name: "" }) : undefined,
-        },
-      } : t));
-    } catch {
-      setTurns((prev) => prev.map((t) => t.id === turnId ? {
-        ...t,
-        steps: t.steps.filter((s) => s.id !== "ca1"),
-        checkout: {
-          phase: "failed" as const, product, selectedCard: SAVED_CARDS[0].id,
-          error: "Could not prepare your order. Please try again.",
-        },
-      } : t));
-    } finally {
-      setLoading(false);
-    }
-  }, [isGuest]);
+        steps: others.concat({ id: "ca1", message: `${checkoutData.merchant_name} — checkout ready, waiting for your GO AHEAD`, status: "done" as const }),
+        checkout: { phase: "summary" as const, product, checkoutData, paymentMethodId: checkoutData.payment_method?.payment_method_id },
+      };
+    }));
+    if (checkoutData) persistCheckout(product, checkoutData, checkoutData.payment_method?.payment_method_id);
+    setLoading(false);
+  }, [requestProposal]);
   attachCheckoutToActiveTurnRef.current = attachCheckoutToActiveTurn;
 
   // Add to cart (frontend intercept — creates a new turn with a cart-added card)
@@ -1216,306 +1180,162 @@ export default function Chat() {
   }, []);
   attachAddToCartToActiveTurnRef.current = attachAddToCartToActiveTurn;
 
-  // Step 2: user clicked "Confirm & Pay" → run DPAT + payment inline
-  const doPayment = useCallback(async (
-    turnId: string,
-    checkoutData: InlineCheckoutDataShape,
-    selectedCard: string,
-    product: ProductData,
-  ) => {
-    // Make this the active turn so the panel tracks payment steps
-    activeTurnId.current = turnId;
-
-    const initPS = [
-      { label: "GreenLight — requesting DPAT authorization…", status: "running" as const },
-      { label: "GreenLight — DPAT token ready", status: "pending" as const },
-      { label: "PayIt — executing payment…", status: "pending" as const },
-      { label: "TrackIt — recording your order…", status: "pending" as const },
-    ];
-    setTurns((prev) =>
-      prev.map((t) =>
-        t.id === turnId
-          ? {
-              ...t,
-              steps: [
-                ...t.steps.filter((s) => s.id === "c1" || s.id === "ca1"),
-                { id: "pay-0", message: "GreenLight — requesting DPAT authorization…", status: "running" as const },
-              ],
-              checkout: { ...t.checkout!, phase: "processing" as const, processingSteps: initPS },
-            }
-          : t
-      )
-    );
-    setLoading(true);
-
-    const card = SAVED_CARDS.find((c) => c.id === selectedCard) ?? SAVED_CARDS[0];
-    const emitProto = (ev: Omit<ProtocolEvent, "type" | "ts">) =>
-      setProtocolEvents((prev) => [...prev, { type: "protocol_event", ts: new Date().toISOString(), ...ev }]);
-    emitProto({
-      source: checkoutData.merchant_name, target: "UCP Checkout", protocol: "REST", direction: "in",
-      label: "session_created", detail: {
-        endpoint: "POST /api/checkout/create",
-        duration_ms: checkoutCreateMsRef.current.get(checkoutData.checkout_id) ?? null,
-        merchant: checkoutData.merchant_name,
-        totals: { subtotal: checkoutData.subtotal, fulfillment: checkoutData.shipping, tax: checkoutData.tax, total: checkoutData.total },
-      },
-    });
-
-    const ap2Cart = (checkoutData as unknown as {
-      ap2?: { intent_mandate_id: string | null; cart_mandate_id: string; cart_verified: boolean; cart_reason: string | null };
-    }).ap2;
-    if (ap2Cart) {
-      emitProto({
-        source: "ShoppingAgent", target: "AP2 verifier", protocol: "AP2", direction: "in",
-        label: "ap2_cart_mandate", detail: { endpoint: "POST /api/checkout/create", ...ap2Cart },
-      });
+  // ── GO AHEAD: the only thing that authorizes payment ─────────────────────
+  // One server call runs consent → AP2 evidence → ACP token → merchant verification
+  // → internal DPAT + 12 checks → processor → order, and returns its trace events.
+  const GO_AHEAD_STEPS = [
+    "Recording your GO AHEAD for this exact checkout",
+    "AP2 authorization evidence",
+    "ACP scoped payment token",
+    "Merchant verifies agent, token and evidence",
+    "Internal DPAT · 12 payment checks",
+    "Merchant creates your order",
+  ];
+  const STEP_FOR_LABEL: Record<string, number> = {
+    customer_consent_received: 0, reconsent_received: 0, ap2_payment_authorization: 1, acp_token_issued: 2,
+    acp_token_verified: 3, ap2_evidence_verified: 3, internal_dpat_issued: 4, payment_checks: 4, psp_result: 4,
+    order_created: 5, order_confirmed: 5,
+  };
+  const stepsFromEvents = (events: ProtocolEvent[], ok: boolean): ProcessingStep[] => {
+    let reached = -1;
+    for (const ev of events) {
+      const i = STEP_FOR_LABEL[ev.label];
+      if (i !== undefined) reached = Math.max(reached, i);
     }
+    return GO_AHEAD_STEPS.map((label, i) => ({
+      label,
+      status: i <= reached ? "done" : !ok && i === reached + 1 ? "error" : "pending",
+    }));
+  };
 
-    const updateSteps = (steps: Array<{ label: string; status: "pending" | "running" | "done" | "error" }>) => {
-      setTurns((prev) =>
-        prev.map((t) => {
-          if (t.id !== turnId) return t;
-          const agentSteps = steps
-            .filter((s) => s.status !== "pending")
-            .map((s, i) => ({ id: `pay-${i}`, message: s.label, status: s.status as "running" | "done" | "error" }));
-          return {
-            ...t,
-            steps: [...t.steps.filter((s) => s.id === "c1" || s.id === "ca1"), ...agentSteps],
-            checkout: { ...t.checkout!, processingSteps: steps },
-          };
-        })
-      );
-    };
-
-    try {
-      // GreenLight: approve authorization
-      const approveStart = performance.now();
-      const approveRes = await authFetch("/api/authorizations/approve", {
-        method: "POST",
-        body: JSON.stringify({
-          checkout_id: checkoutData.checkout_id,
-          checkout_hash: checkoutData.checkout_hash,
-          merchant_id: checkoutData.merchant_id,
-          total: checkoutData.total,
-          currency: checkoutData.currency,
-          product_id: checkoutData.product_id,
-          product_title: checkoutData.product_title,
-          merchant_name: checkoutData.merchant_name,
-          subtotal: checkoutData.subtotal,
-          tax: checkoutData.tax,
-          shipping: checkoutData.shipping,
-          card_brand: card.network,
-          card_last4: card.last4,
-        }),
-      });
-      if (!approveRes.ok) throw new Error("Authorization failed");
-      const approveData = await approveRes.json();
-      emitProto({
-        source: "GreenLight", target: "ShoppingAgent", protocol: "REST", direction: "in",
-        label: "dpat_issued", detail: {
-          endpoint: "POST /api/authorizations/approve",
-          token_id: approveData.token_id,
-          authorization_id: approveData.authorization_id,
-          expires_at: approveData.expires_at,
-          duration_ms: Math.round(performance.now() - approveStart),
-        },
-      });
-      const approvedProtocols = (approveData.protocols ?? {}) as {
-        ap2_payment_mandate_id?: string; acp_spt_id?: string; acp_maximum_amount_cents?: number;
-        acp_currency?: string; acp_expiration?: number; dpat_token_id?: string;
-      };
-      emitProto({
-        source: "ShoppingAgent", target: "AP2 verifier", protocol: "AP2", direction: "out",
-        label: "ap2_payment_mandate", detail: {
-          endpoint: "POST /api/authorizations/approve",
-          payment_mandate_id: approvedProtocols.ap2_payment_mandate_id ?? null,
-          payment_ref: approveData.token_id,
-          duration_ms: Math.round(performance.now() - approveStart),
-        },
-      });
-      emitProto({
-        source: "ACP", target: "ShoppingAgent", protocol: "ACP", direction: "in",
-        label: "acp_spt_issued", detail: {
-          endpoint: "POST /api/authorizations/approve",
-          spt_id: approvedProtocols.acp_spt_id ?? null,
-          bound_to_dpat: approvedProtocols.dpat_token_id ?? null,
-          maximum_amount_cents: approvedProtocols.acp_maximum_amount_cents ?? null,
-          currency: approvedProtocols.acp_currency ?? null,
-          expiration: approvedProtocols.acp_expiration ?? null,
-          duration_ms: Math.round(performance.now() - approveStart),
-        },
-      });
-
-      updateSteps([
-        { label: "GreenLight — authorization approved", status: "done" },
-        { label: "GreenLight — DPAT token issued", status: "done" },
-        { label: "PayIt — executing payment…", status: "running" },
-        { label: "TrackIt — recording your order…", status: "pending" },
-      ]);
-
-      // PayIt: execute payment
-      const execStart = performance.now();
-      const execRes = await authFetch("/api/payments/execute", {
-        method: "POST",
-        body: JSON.stringify({
-          token_id: approveData.token_id,
-          checkout_id: checkoutData.checkout_id,
-          checkout_hash: checkoutData.checkout_hash,
-          merchant_id: checkoutData.merchant_id,
-          merchant_name: checkoutData.merchant_name,
-          total: checkoutData.total,
-          currency: checkoutData.currency,
-          product_id: checkoutData.product_id,
-          product_title: checkoutData.product_title,
-          subtotal: checkoutData.subtotal,
-          tax: checkoutData.tax,
-          shipping: checkoutData.shipping,
-          payment_method: "card",
-        }),
-      });
-      if (!execRes.ok) throw new Error("Payment failed");
-      const execData = await execRes.json();
-      const executedProtocols = (execData.protocols ?? {}) as { acp_spt_id?: string; acp_verified?: boolean };
-      if (executedProtocols.acp_verified) {
-        emitProto({
-          source: "ShoppingAgent", target: "PayIt", protocol: "ACP", direction: "out",
-          label: "acp_spt_verified", detail: {
-            endpoint: "POST /api/payments/execute",
-            spt_id: executedProtocols.acp_spt_id ?? null,
-            verified: true,
-            duration_ms: Math.round(performance.now() - execStart),
-          },
-        });
-      }
-      const guardrailEvents = (execData.guardrail_events ?? []) as Array<{
-        check_name: string; passed: boolean; reason_code: string | null;
-      }>;
-      if (guardrailEvents.length > 0) {
-        emitProto({
-          source: "PayIt", target: "Payment guardrails", protocol: "guardrails", direction: "in",
-          label: "payment_guardrails", detail: {
-            endpoint: "POST /api/payments/execute",
-            checks: guardrailEvents.map((e) => ({
-              check: e.check_name,
-              status: e.passed ? "pass" : "blocked",
-              reason: e.passed ? null : e.reason_code,
-            })),
-          },
-        });
-      }
-      emitProto({
-        source: "PayIt", target: "ShoppingAgent", protocol: "REST", direction: "in",
-        label: "payment_executed", detail: {
-          endpoint: "POST /api/payments/execute",
-          status: execData.status,
-          order_id: execData.order_id,
-          amount: execData.amount,
-          transaction_id: execData.transaction_id ?? null,
-          duration_ms: Math.round(performance.now() - execStart),
-        },
-      });
-      emitProto({
-        source: "TrackIt", target: "User", protocol: "REST", direction: "in",
-        label: "order_created", detail: { endpoint: "POST /api/payments/execute", order_id: execData.order_id },
-      });
-
-      updateSteps([
-        { label: "GreenLight — authorization approved", status: "done" },
-        { label: "GreenLight — DPAT token issued", status: "done" },
-        { label: "PayIt — payment processed", status: "done" },
-        { label: "TrackIt — order recorded", status: "done" },
-      ]);
-
-      // Small delay so the user sees all steps green before flipping to confirmed
-      await new Promise((r) => setTimeout(r, 600));
-
-      // Persist confirmed order so session restore shows confirmation, not product cards
+  const finishPurchase = useCallback((turnId: string, data: {
+    status: string; events?: ProtocolEvent[]; message?: string; reason?: string; order?: ConfirmedOrder;
+  }, product: ProductData) => {
+    appendServerEvents(data.events);
+    if (data.status === "approved" && data.order) {
       try {
-        sessionStorage.setItem(`talkshop_order_${sessionIdRef.current}`, JSON.stringify({
-          orderId: execData.order_id,
-          amount: execData.amount,
-          product,
-          selectedCard,
-          pointsEarned: execData.points_earned ?? null,
-          loyaltyBalance: execData.loyalty_balance ?? null,
-        }));
+        sessionStorage.setItem(`talkshop_order_${sessionIdRef.current}`, JSON.stringify({ order: data.order, product }));
         sessionStorage.removeItem(`talkshop_checkout_${sessionIdRef.current}`);
       } catch { /* noop */ }
-
-      setTurns((prev) =>
-        prev.map((t) =>
-          t.id === turnId
-            ? {
-                ...t,
-                checkout: {
-                  phase: "confirmed" as const,
-                  product,
-                  selectedCard,
-                  orderId: execData.order_id,
-                  confirmedTotal: execData.amount,
-                  pointsEarned: execData.points_earned ?? undefined,
-                  loyaltyBalance: execData.loyalty_balance ?? undefined,
-                },
-              }
-            : t
-        )
-      );
-
-      // Clear session cart and reset all ProductCard qty states
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t,
+        steps: [...t.steps.filter((s) => s.id === "c1" || s.id === "ca1"),
+          { id: "pay-0", message: `${data.order!.merchant_name} — order confirmed`, status: "done" as const }],
+        checkout: { phase: "confirmed" as const, product, order: data.order },
+      } : t));
       setCartCount(0);
       setSessionCartCount(0);
       setSessionCartIds(new Set());
       setSessionCartItems([]);
       setCartPanelOpen(false);
       setProductCardResetKey((k) => k + 1);
-    } catch (err) {
-      setTurns((prev) =>
-        prev.map((t) =>
-          t.id === turnId
-            ? {
-                ...t,
-                checkout: {
-                  ...t.checkout!,
-                  phase: "failed" as const,
-                  error: "Payment failed. Please check your card details and try again.",
-                },
-              }
-            : t
-        )
-      );
+      return;
+    }
+    if (data.status === "reconsent_required") {
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t, checkout: { ...t.checkout!, phase: "reconsent" as const, reconsentMessage: data.message },
+      } : t));
+      return;
+    }
+    if (data.status === "cancelled") {
+      try { sessionStorage.removeItem(`talkshop_checkout_${sessionIdRef.current}`); } catch { /* noop */ }
+      setTurns((prev) => prev.map((t) => t.id === turnId ? {
+        ...t, checkout: { ...t.checkout!, phase: "cancelled" as const, note: data.message },
+      } : t));
+      return;
+    }
+    setTurns((prev) => prev.map((t) => t.id === turnId ? {
+      ...t,
+      checkout: { ...t.checkout!, phase: "failed" as const,
+        error: data.message ?? "The payment was not completed.", errorReason: data.reason },
+    } : t));
+  }, [appendServerEvents]);
+
+  const runPurchaseCall = useCallback(async (turnId: string, url: string, body: object) => {
+    const t = turnsRef.current.find((x) => x.id === turnId);
+    if (!t?.checkout) return;
+    const product = t.checkout.product;
+    activeTurnId.current = turnId;
+    setTurns((prev) => prev.map((x) => x.id === turnId ? {
+      ...x,
+      checkout: { ...x.checkout!, phase: "processing" as const,
+        processingSteps: GO_AHEAD_STEPS.map((label, i) => ({ label, status: i === 0 ? "running" as const : "pending" as const })) },
+    } : x));
+    setLoading(true);
+    try {
+      const res = await authFetch(url, { method: "POST", body: JSON.stringify(body) });
+      const data = await res.json();
+      const events: ProtocolEvent[] = data.events ?? [];
+      const ok = data.status === "approved" || data.status === "reconsent_required" || data.status === "cancelled";
+      setTurns((prev) => prev.map((x) => x.id === turnId ? {
+        ...x, checkout: { ...x.checkout!, processingSteps: stepsFromEvents(events, ok) },
+      } : x));
+      await new Promise((r) => setTimeout(r, 700));  // let the customer see the finished steps
+      finishPurchase(turnId, data, product);
+    } catch {
+      finishPurchase(turnId, { status: "rejected", message: "Could not reach the merchant. Nothing was charged." }, product);
     } finally {
       setLoading(false);
     }
+  }, [finishPurchase]);
+
+  const doGoAhead = useCallback((turnId: string) => {
+    const co = turnsRef.current.find((t) => t.id === turnId)?.checkout;
+    if (!co?.checkoutData || !co.paymentMethodId) return;
+    const demo = demoScenarioRef.current;
+    void runPurchaseCall(turnId, "/api/purchase/go-ahead", {
+      checkout_id: co.checkoutData.checkout_id,
+      checkout_hash: co.checkoutData.checkout_hash,
+      total: co.checkoutData.total,
+      currency: co.checkoutData.currency,
+      payment_method_id: co.paymentMethodId,
+      demo: demo === "delivery_change" || demo === "tampered_amount" ? demo : undefined,
+    });
+  }, [runPurchaseCall]);
+
+  const doReconsent = useCallback((turnId: string, decision: "yes" | "no") => {
+    const co = turnsRef.current.find((t) => t.id === turnId)?.checkout;
+    if (!co?.checkoutData) return;
+    void runPurchaseCall(turnId, "/api/purchase/reconsent", { checkout_id: co.checkoutData.checkout_id, decision });
+  }, [runPurchaseCall]);
+
+  const cancelCheckout = useCallback((turnId: string) => {
+    try { sessionStorage.removeItem(`talkshop_checkout_${sessionIdRef.current}`); } catch { /* noop */ }
+    setTurns((prev) => prev.map((t) => t.id === turnId ? {
+      ...t, checkout: { ...t.checkout!, phase: "cancelled" as const, note: "Checkout cancelled. Nothing was charged." },
+    } : t));
   }, []);
 
-  const restartCheckoutTimer = useCallback((turnId: string) => {
-    const t = turnsRef.current.find((x) => x.id === turnId);
-    if (t?.checkout?.phase === "summary") {
-      setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product: t.checkout.product });
+  const selectPaymentMethod = useCallback((turnId: string, paymentMethodId: string) => {
+    setTurns((prev) => prev.map((t) => t.id === turnId ? { ...t, checkout: { ...t.checkout!, paymentMethodId } } : t));
+  }, []);
+
+  // The typed card goes straight to the mock processor's tokenize endpoint; only its reference comes back.
+  const addCard = useCallback(async (turnId: string, card: CardInput): Promise<string | null> => {
+    const [mm, yy] = card.expiry.split("/").map(Number);
+    try {
+      const res = await authFetch("/api/psp/tokenize", {
+        method: "POST",
+        body: JSON.stringify({ number: card.number.replace(/\s/g, ""), exp_month: mm, exp_year: 2000 + yy, cvc: card.cvc }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const messages: Record<string, string> = {
+          card_number_invalid: "That card number isn't valid.",
+          cvc_invalid: "CVC must be 3 or 4 digits.",
+          card_expired: "That card has expired.",
+        };
+        return messages[data.error] ?? "The card processor rejected that card.";
+      }
+      await refreshPaymentMethods();
+      selectPaymentMethod(turnId, data.payment_method.payment_method_id);
+      return null;
+    } catch {
+      return "Could not reach the card processor. Please try again.";
     }
-  }, []);
+  }, [refreshPaymentMethods, selectPaymentMethod]);
 
-  // Update selected card within a checkout turn
-  const updateCheckoutCard = useCallback((turnId: string, cardId: string) => {
-    restartCheckoutTimer(turnId);
-    setTurns((prev) =>
-      prev.map((t) =>
-        t.id === turnId ? { ...t, checkout: { ...t.checkout!, selectedCard: cardId } } : t
-      )
-    );
-  }, []);
 
-  // Update guest card fields and remember for the rest of the session
-  const updateGuestCard = useCallback((turnId: string, card: NonNullable<InlineCheckoutData["guestCard"]>) => {
-    sessionGuestCardRef.current = card;
-    try { sessionStorage.setItem(`talkshop_guestcard_${sessionIdRef.current}`, JSON.stringify(card)); } catch { /* noop */ }
-    setTurns((prev) =>
-      prev.map((t) =>
-        t.id === turnId ? { ...t, checkout: { ...t.checkout!, guestCard: card } } : t
-      )
-    );
-    restartCheckoutTimer(turnId);
-  }, [restartCheckoutTimer]);
 
   const togglePauseAuto = () =>
     setAutoTimer((a) => (a && (a.paused ? { ...a, paused: false, secondsLeft: AUTO_SECONDS } : { ...a, paused: true })));
@@ -1530,16 +1350,13 @@ export default function Chat() {
       return () => clearTimeout(id);
     }
     setAutoTimer(null);
+    // The countdown only ever moves cart → order proposal. Payment needs an explicit GO AHEAD.
     if (autoTimer.stage === "cart") {
       setPendingCheckoutProduct(null);
       lastRecommendedProductRef.current = null;
       doCheckoutSummaryRef.current?.("proceed to checkout", autoTimer.product, true);
-      return;
     }
-    const co = turnsRef.current.find((t) => t.id === autoTimer.turnId)?.checkout;
-    if (!co?.checkoutData || (co.isGuest && !co.guestCard?.number)) return;
-    doPayment(autoTimer.turnId, co.checkoutData, co.selectedCard, co.product);
-  }, [autoTimer, doPayment]);
+  }, [autoTimer]);
 
   const BAR_COUNT = 32;
 
@@ -1958,10 +1775,13 @@ export default function Chat() {
                     {turn.checkout && (
                       <InlineCheckout
                         {...turn.checkout}
-                        auto={autoTimer?.turnId === turn.id && autoTimer.stage === "checkout" ? autoTimer : undefined}
-                        onPauseToggle={togglePauseAuto}
-                        onCardChange={(cardId) => updateCheckoutCard(turn.id, cardId)}
-                        onGuestCardChange={(card) => updateGuestCard(turn.id, card)}
+                        paymentMethods={paymentMethods}
+                        isTalkshopGuest={isGuest}
+                        onPaymentMethodChange={(id) => selectPaymentMethod(turn.id, id)}
+                        onAddCard={(card) => addCard(turn.id, card)}
+                        onGoAhead={() => doGoAhead(turn.id)}
+                        onCancel={() => cancelCheckout(turn.id)}
+                        onReconsent={(decision) => doReconsent(turn.id, decision)}
                       />
                     )}
 
@@ -2319,6 +2139,20 @@ export default function Chat() {
               </button>
             </div>
           )}
+          <div className="flex items-center justify-end gap-1.5 mt-1.5 text-[10px] text-[var(--color-text-muted)]">
+            <label htmlFor="demo-scenario">Demo scenario</label>
+            <select
+              id="demo-scenario"
+              value={demoScenario}
+              onChange={(e) => setDemoScenario(e.target.value)}
+              className={`rounded-md border px-1.5 py-0.5 bg-[var(--color-surface)] ${demoScenario ? "border-amber-400 text-amber-700" : "border-[var(--color-border)]"}`}
+            >
+              <option value="">Normal</option>
+              <option value="bad_agent_credential">Invalid agent credential (trust fails)</option>
+              <option value="delivery_change">Merchant changes delivery date</option>
+              <option value="tampered_amount">Agent tries to charge $20 more</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -2391,7 +2225,7 @@ export default function Chat() {
                 events={protocolEvents}
                 flowState={
                   protocolEvents.some((e) => e.label === "order_created") ? "complete"
-                  : protocolEvents.some((e) => e.label === "session_created") ? (loading ? "ordering" : "payment_ready")
+                  : protocolEvents.some((e) => e.label === "checkout_created") ? (loading ? "ordering" : "payment_ready")
                   : loading ? "searching"
                   : turns.some((t) => t.products.length > 0) ? "products_shown"
                   : "idle"

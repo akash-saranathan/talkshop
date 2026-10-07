@@ -77,14 +77,14 @@ def test_db_creates_all_tables(tmp_db):
     assert expected.issubset(set(tables))
 
 
-def test_db_seeds_three_merchants(tmp_db):
+def test_db_seeds_legacy_and_a2a_merchants(tmp_db):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
     from backend.db.schema import Merchant
     engine = create_engine(f"sqlite:///{tmp_db}")
     with Session(engine) as s:
         count = s.query(Merchant).count()
-    assert count == 3
+    assert count == 9  # 3 legacy merchants + the 6 A2A merchant agents
 
 
 def test_db_seeds_137_products(tmp_db):
@@ -115,13 +115,13 @@ def test_health_endpoint(client):
     assert r.json()["status"] == "ok"
 
 
-def test_merchants_returns_three(client):
+def test_merchants_returns_legacy_and_a2a(client):
     r = client.get("/api/merchants")
     assert r.status_code == 200
     data = r.json()
-    assert len(data) == 3
+    assert len(data) == 9
     ids = {m["merchant_id"] for m in data}
-    assert ids == {"MERCHANT_A", "MERCHANT_B", "MERCHANT_C"}
+    assert ids == {"MERCHANT_A", "MERCHANT_B", "MERCHANT_C", "nike", "adidas", "zara", "hm", "fossil", "casio"}
 
 
 def test_products_returns_137(client):

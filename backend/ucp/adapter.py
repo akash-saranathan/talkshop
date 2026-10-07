@@ -31,6 +31,14 @@ _FREE_SHIPPING_THRESHOLD = 100.0
 _SESSIONS: dict[str, UCPCheckoutSession] = {}
 
 
+def _colour_photo(product: dict) -> str | None:
+    """Merchant catalog products carry one photo per colour; use the selected variant's colour."""
+    images = product.get("images") or {}
+    variants = product.get("variants") or []
+    colour = variants[0].get("color") if variants else None
+    return images.get(colour) or next(iter(images.values()), None)
+
+
 class UCPAdapter:
 
     def create_session(
@@ -62,7 +70,7 @@ class UCPAdapter:
             id=product["id"],
             title=product["title"],
             price=product["price"],
-            image_url=product.get("image_url"),
+            image_url=product.get("image_url") or _colour_photo(product),
         )
 
         line_item = UCPLineItemResponse(

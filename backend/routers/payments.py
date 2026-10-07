@@ -9,7 +9,7 @@ Endpoints:
   GET  /api/orders/{order_id}  — single order detail
 """
 import json
-import uuid
+from types import SimpleNamespace
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,14 +21,17 @@ from backend.agents import payit, trackit
 from backend.ap2.adapter import AP2Adapter
 from backend.ap2.models import AP2PaymentMandate
 from backend.auth.dependencies import CurrentUser, get_current_user
-from backend.config.agents import PAYIT, TRACKIT
-from backend.db.schema import AcpSharedToken, AuditEvent, CartItem, DelegatedToken, LoyaltyPoints, LoyaltyTransaction, Merchant, Order, PaymentAuthorization, Product, Wallet
+from backend.config.agents import PAYIT
+from backend.db.schema import AcpSharedToken, AuditEvent, CartItem, DelegatedToken, Merchant, Order, PaymentAuthorization, Product, Wallet
 from backend.routers.authorizations import _load_mandate, _verify_cart
 from backend.db.session_utils import get_session, now_utc, write_audit_event
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import PaymentRequest
 from backend.observability.tracing import get_tracer
+from backend.orders.service import confirm_paid_order, insert_order_if_absent
 from backend.payment.token_lookup import load_token_context
+from backend.trust import sessions as trust_sessions
+from backend.trust.models import SCOPE_PAYMENT
 
 router = APIRouter()
 tracer = get_tracer(__name__)
@@ -65,15 +68,7 @@ class ExecutePaymentResponse(BaseModel):
     protocols: dict = {}
 
 
-def _insert_order_if_absent(session, fields: dict):
-    """
-    The first execute call for an order_id is authoritative. A later replay
-    (already blocked by the guardrail engine before this is ever reached)
-    must never overwrite a prior confirmed/declined outcome.
-    """
-    existing = session.query(Order).filter(Order.order_id == fields["order_id"]).first()
-    if not existing:
-        session.add(Order(**fields))
+_insert_order_if_absent = insert_order_if_absent
 
 
 _ap2 = AP2Adapter()
@@ -84,7 +79,7 @@ def _verify_protocols(session, req: "ExecutePaymentRequest") -> tuple[Optional[s
     cart_doc = _load_mandate(session, req.checkout_id, "cart")
     cart_ok, cart_reason = _verify_cart(cart_doc, req.checkout_hash)
     if not cart_ok:
-        return cart_reason, {}
+        return ("CHECKOUT_HASH_MISMATCH" if cart_reason == "cart_mandate_checkout_hash_mismatch" else cart_reason), {}
 
     pay_doc = _load_mandate(session, req.checkout_id, "payment")
     if pay_doc is None:
@@ -101,7 +96,7 @@ def _verify_protocols(session, req: "ExecutePaymentRequest") -> tuple[Optional[s
     if spt is None:
         return "acp_spt_missing", {}
     if spt.consumed_at is not None:
-        return "acp_spt_consumed", {}
+        return "TOKEN_ALREADY_CONSUMED", {}
     ok, reason = verify_spt_document(
         json.loads(spt.document), round(req.total * 100), req.currency, f"nbp_{req.merchant_id}",
     )
@@ -151,6 +146,11 @@ async def execute_payment_endpoint(
             currency=req.currency,
         )
 
+        trusted, decision = trust_sessions.require(current_user.user_id, req.merchant_id, SCOPE_PAYMENT,
+                                                   amount=req.total)
+        if trusted is None:
+            raise HTTPException(status_code=403, detail=f"TRUST_VALIDATION_FAILED: {decision.reason}")
+
         with get_session() as session:
             token_dict, consent_exists, sig_error = load_token_context(
                 session, req.checkout_id, req.token_id
@@ -171,6 +171,11 @@ async def execute_payment_endpoint(
 
             protocol_reason, protocol_details = _verify_protocols(session, req)
             if protocol_reason is not None:
+                # Single attempt per token, same as the 12-check path below: a rejected
+                # attempt burns the token so it can't be probed with varied tampered fields.
+                session.execute(update(DelegatedToken)
+                                .where(DelegatedToken.token_id == req.token_id, DelegatedToken.consumed_at.is_(None))
+                                .values(consumed_at=now_utc()))
                 write_audit_event(session, "PAYMENT_BLOCKED", user_id=current_user.user_id,
                                    agent_id=PAYIT.agent_id, order_id=req.checkout_id,
                                    metadata={"reason": protocol_reason})
@@ -275,38 +280,7 @@ async def execute_payment_endpoint(
                     )
                 wallet.balance -= result.amount
 
-            auth = session.query(PaymentAuthorization).filter(
-                PaymentAuthorization.order_id == req.checkout_id
-            ).order_by(PaymentAuthorization.approved_at.desc()).first()
-            if auth:
-                auth.status = "completed"
-
-            order_fields = trackit.confirm_order(checkout, result, current_user.user_id)
-            _insert_order_if_absent(session, order_fields)
-
-            write_audit_event(session, "PAYMENT_EXECUTED", user_id=current_user.user_id,
-                               agent_id=PAYIT.agent_id, order_id=req.checkout_id,
-                               metadata={"transaction_id": result.transaction_id, "amount": result.amount})
-            write_audit_event(session, "ORDER_CONFIRMED", user_id=current_user.user_id,
-                               agent_id=TRACKIT.agent_id, order_id=req.checkout_id,
-                               metadata={"transaction_id": result.transaction_id})
-
-            # Award 1 loyalty point per $1 spent (rounded down)
-            points_earned = int(result.amount)
-            lp = session.query(LoyaltyPoints).filter(LoyaltyPoints.user_id == current_user.user_id).first()
-            if not lp:
-                lp = LoyaltyPoints(user_id=current_user.user_id, balance=points_earned, lifetime_points=points_earned)
-                session.add(lp)
-            else:
-                lp.balance += points_earned
-                lp.lifetime_points += points_earned
-            session.add(LoyaltyTransaction(
-                transaction_id=uuid.uuid4().hex,
-                user_id=current_user.user_id,
-                order_id=req.checkout_id,
-                points_earned=points_earned,
-                reason="purchase",
-            ))
+            order_info = confirm_paid_order(session, checkout, result, current_user.user_id)
             session.query(AcpSharedToken).filter(AcpSharedToken.dpat_token_id == req.token_id).update(
                 {"consumed_at": now_utc()}
             )
@@ -317,8 +291,8 @@ async def execute_payment_endpoint(
                 merchant=req.merchant_name, transaction_id=result.transaction_id,
                 summary=trackit.summarize_order(checkout, result),
                 wallet_balance=wallet.balance if wallet else None,
-                points_earned=points_earned,
-                loyalty_balance=lp.balance,
+                points_earned=order_info["points_earned"],
+                loyalty_balance=order_info["loyalty_balance"],
                 guardrail_events=[e.model_dump(mode="json") for e in events],
                 protocols=protocol_details,
             )
@@ -342,6 +316,13 @@ def _delivery_fields(order: Order, product: Optional[Product], cart_fallback: Op
     """Product info + time-based delivery simulation, shared by both order endpoints.
     cart_fallback is a CartItem snapshot used when the Product row is missing (e.g. external product IDs)."""
     fb = cart_fallback
+    if product is None and fb is None:
+        # Orders from the six A2A merchants (Nike, Adidas, ...) reference their catalog variants.
+        from backend.merchants import catalog as merchant_catalog
+        variant = merchant_catalog.get_product(order.product_id)
+        if variant is not None:
+            fb = SimpleNamespace(title=variant.title, category=variant.category,
+                                 image_url=variant.image_url, delivery_days=variant.delivery_days)
     delivery = trackit.compute_delivery_status(
         order.created_at,
         product.delivery_days if product else (fb.delivery_days if fb else None),

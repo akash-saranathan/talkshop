@@ -101,6 +101,15 @@ def seed_merchants(session: Session):
         exists = session.query(Merchant).filter_by(merchant_id=m["merchant_id"]).first()
         if not exists:
             session.add(Merchant(**m))
+    # The six A2A merchant agents (Nike, Adidas, ...) sell from their own catalogs.
+    # Orders reference them by merchant_id, and the order list joins on this
+    # table, so they must exist here too or their orders never show up.
+    registry_file = Path(__file__).parent.parent / "data" / "merchant_registry.json"
+    if registry_file.exists():
+        for m in json.loads(registry_file.read_text(encoding="utf-8")):
+            if not session.query(Merchant).filter_by(merchant_id=m["id"]).first():
+                session.add(Merchant(merchant_id=m["id"], merchant_name=m["name"],
+                                     trust_status="trusted", tier="a2a"))
     session.commit()
 
 

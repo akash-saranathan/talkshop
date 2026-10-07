@@ -221,7 +221,7 @@ def client():
     return TestClient(app)
 
 
-def _create_and_approve(client, auth_headers, product_id="RW001", merchant_id="MERCHANT_A"):
+def _create_and_approve(client, auth_headers, product_id="nike_pegasus_42-9-coral", merchant_id="nike"):
     resp = client.post("/api/checkout/create", json={
         "product_id": product_id, "merchant_id": merchant_id, "quantity": 1,
     }, headers=auth_headers)

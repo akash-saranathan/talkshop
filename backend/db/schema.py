@@ -160,6 +160,100 @@ class AcpSharedToken(Base):
     consumed_at = Column(DateTime)
 
 
+# ── Demo 2 orchestration: agent trust, server-side checkout, consent, delegated token ──
+
+class TrustedAgentSessionRow(Base):
+    """A merchant's record that it verified a customer agent and its delegation."""
+    __tablename__ = "trusted_agent_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(50), unique=True, nullable=False)
+    chat_session_id = Column(String(64), nullable=False, index=True)
+    user_id = Column(String(50), nullable=False)
+    merchant_id = Column(String(50), nullable=False)
+    agent_id = Column(String(100), nullable=False)
+    customer_ref = Column(String(50), nullable=False)
+    merchant_relationship = Column(String(20), nullable=False)
+    talkshop_account = Column(String(20), nullable=False)
+    scopes = Column(Text, nullable=False)          # JSON list
+    max_amount = Column(Float)
+    credential = Column(Text, nullable=False)      # JSON AgentCredential, re-verified on every sensitive action
+    status = Column(String(20), default="active")
+    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime, nullable=False)
+
+
+class MerchantCheckout(Base):
+    """The merchant's authoritative copy of a checkout. Payment uses this, never client-sent totals."""
+    __tablename__ = "merchant_checkouts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    checkout_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False)
+    merchant_id = Column(String(50), nullable=False)
+    trusted_session_id = Column(String(50), nullable=False)
+    checkout_hash = Column(String(64), nullable=False)
+    document = Column(Text, nullable=False)        # JSON CheckoutObject, including delivery_date
+    status = Column(String(30), default="proposed")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now())
+
+
+class CustomerConsent(Base):
+    """GO AHEAD: the customer authorized this exact checkout, total and payment method."""
+    __tablename__ = "customer_consents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    consent_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False)
+    checkout_id = Column(String(50), nullable=False, index=True)
+    merchant_id = Column(String(50), nullable=False)
+    checkout_hash = Column(String(64), nullable=False)
+    total = Column(Float, nullable=False)
+    currency = Column(String(10), nullable=False)
+    payment_method_id = Column(String(50), nullable=False)
+    kind = Column(String(20), default="go_ahead")  # go_ahead | reconsent
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class SavedPaymentMethod(Base):
+    """A reference to a card held by the payment processor. Never a card number or CVC."""
+    __tablename__ = "saved_payment_methods"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    payment_method_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False, index=True)
+    brand = Column(String(20), nullable=False)
+    last4 = Column(String(4), nullable=False)
+    exp_month = Column(Integer, nullable=False)
+    exp_year = Column(Integer, nullable=False)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class DelegatedPaymentToken(Base):
+    """ACP-style scoped payment token: the only payment credential that crosses to the merchant."""
+    __tablename__ = "delegated_payment_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token_id = Column(String(50), unique=True, nullable=False)
+    checkout_id = Column(String(50), nullable=False, index=True)
+    user_id = Column(String(50), nullable=False)
+    merchant_id = Column(String(50), nullable=False)
+    consent_id = Column(String(50), nullable=False)
+    ap2_payment_mandate_id = Column(String(120), nullable=False)
+    payment_method_id = Column(String(50), nullable=False)
+    max_amount_cents = Column(Integer, nullable=False)
+    currency = Column(String(10), nullable=False)
+    document = Column(Text, nullable=False)        # signed token document
+    dpat_token_id = Column(String(50))             # internal enforcement token it was mapped to
+    status = Column(String(20), default="active")  # active | consumed | revoked
+    expires_at = Column(DateTime, nullable=False)
+    consumed_at = Column(DateTime)
+    revoked_at = Column(DateTime)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class ChatSession(Base):
     """One chat thread — created lazily on the first message, matching
     ChatGPT's 'New Chat' not existing until you actually send something."""

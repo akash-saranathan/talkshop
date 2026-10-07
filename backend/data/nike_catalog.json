@@ -1,228 +1,336 @@
-[
-  {
-    "id": "nike_pegasus_42",
-    "title": "Nike Air Zoom Pegasus 42",
-    "brand": "Nike",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 99.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "Black/White", "available": true,  "inventory": 10 },
-      { "size": "9",  "color": "Black/White", "available": true,  "inventory": 8  },
-      { "size": "10", "color": "Black/White", "available": true,  "inventory": 12 },
-      { "size": "11", "color": "Black/White", "available": false, "inventory": 0  },
-      { "size": "12", "color": "Black/White", "available": true,  "inventory": 3  },
-      { "size": "10", "color": "Grey/Blue",   "available": true,  "inventory": 4  },
-      { "size": "11", "color": "Grey/Blue",   "available": true,  "inventory": 6  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.6,
-    "review_count": 1240,
-    "image_url": "/assets/nike_pegasus_42.png",
-    "sku": "nike_pegasus_42",
-    "description": "Lightweight daily trainer with React foam cushioning and a smooth ride."
+{
+  "merchant": {
+    "merchant_id": "nike",
+    "merchant_name": "Nike",
+    "categories": [
+      "shoes",
+      "running",
+      "sneakers",
+      "sportswear",
+      "apparel",
+      "clothing"
+    ]
   },
-  {
-    "id": "nike_free_run_5",
-    "title": "Nike Free Run 5.0",
-    "brand": "Nike",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 89.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "White/Grey",  "available": true,  "inventory": 7  },
-      { "size": "9",  "color": "White/Grey",  "available": true,  "inventory": 9  },
-      { "size": "10", "color": "White/Grey",  "available": true,  "inventory": 5  },
-      { "size": "11", "color": "White/Grey",  "available": true,  "inventory": 4  },
-      { "size": "9",  "color": "Black",       "available": true,  "inventory": 6  },
-      { "size": "10", "color": "Black",       "available": false, "inventory": 0  }
+  "size_ranges": {
+    "apparel_men": [
+      "S",
+      "M",
+      "L",
+      "XL",
+      "XXL"
     ],
-    "shipping_days": 2,
-    "rating": 4.5,
-    "review_count": 890,
-    "image_url": "/assets/nike_free_run_5.png",
-    "sku": "nike_free_run_5",
-    "description": "Flexible everyday runner with a natural motion feel and lightweight mesh upper."
+    "shoe_unisex": [
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12"
+    ]
   },
-  {
-    "id": "nike_vomero_18",
-    "title": "Nike Vomero 18",
-    "brand": "Nike",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 129.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "Navy/White",  "available": true,  "inventory": 5  },
-      { "size": "9",  "color": "Navy/White",  "available": true,  "inventory": 8  },
-      { "size": "10", "color": "Navy/White",  "available": true,  "inventory": 6  },
-      { "size": "11", "color": "Navy/White",  "available": false, "inventory": 0  },
-      { "size": "10", "color": "White/Silver","available": true,  "inventory": 3  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.7,
-    "review_count": 645,
-    "image_url": "/assets/nike_vomero_18.png",
-    "sku": "nike_vomero_18",
-    "description": "Maximum cushioning for long-distance comfort with ZoomX foam stack."
-  },
-  {
-    "id": "nike_zoom_fly_6",
-    "title": "Nike Zoom Fly 6",
-    "brand": "Nike",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 139.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "9",  "color": "Pink/White",  "available": true,  "inventory": 4  },
-      { "size": "10", "color": "Pink/White",  "available": true,  "inventory": 7  },
-      { "size": "11", "color": "Pink/White",  "available": true,  "inventory": 3  },
-      { "size": "10", "color": "Black/Volt",  "available": true,  "inventory": 5  },
-      { "size": "12", "color": "Black/Volt",  "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.8,
-    "review_count": 412,
-    "image_url": "/assets/nike_zoom_fly_6.png",
-    "sku": "nike_zoom_fly_6",
-    "description": "Carbon-fibre plate racer for tempo runs and race day performance."
-  },
-  {
-    "id": "nike_air_max_270",
-    "title": "Nike Air Max 270",
-    "brand": "Nike",
-    "category": "sneakers",
-    "subcategory": "shoes",
-    "price": 109.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "Black/Red",   "available": true,  "inventory": 9  },
-      { "size": "9",  "color": "Black/Red",   "available": true,  "inventory": 11 },
-      { "size": "10", "color": "Black/Red",   "available": true,  "inventory": 8  },
-      { "size": "11", "color": "Black/Red",   "available": true,  "inventory": 5  },
-      { "size": "9",  "color": "White/Teal",  "available": true,  "inventory": 6  },
-      { "size": "10", "color": "White/Teal",  "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.5,
-    "review_count": 2310,
-    "image_url": "/assets/nike_air_max_270.png",
-    "sku": "nike_air_max_270",
-    "description": "Iconic 270-unit Air heel for all-day cushioning and streetwear style."
-  },
-  {
-    "id": "nike_react_infinity",
-    "title": "Nike React Infinity Run 4",
-    "brand": "Nike",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 119.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "Lavender/White","available": true,  "inventory": 6  },
-      { "size": "9",  "color": "Lavender/White","available": true,  "inventory": 8  },
-      { "size": "10", "color": "Lavender/White","available": false, "inventory": 0  },
-      { "size": "10", "color": "Black/White",   "available": true,  "inventory": 4  },
-      { "size": "11", "color": "Black/White",   "available": true,  "inventory": 3  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.6,
-    "review_count": 780,
-    "image_url": "/assets/nike_react_infinity.png",
-    "sku": "nike_react_infinity",
-    "description": "Designed to reduce injury risk with a wider base and React foam midsole."
-  },
-  {
-    "id": "nike_air_force_1",
-    "title": "Nike Air Force 1 '07",
-    "brand": "Nike",
-    "category": "sneakers",
-    "subcategory": "shoes",
-    "price": 94.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "White",        "available": true,  "inventory": 15 },
-      { "size": "9",  "color": "White",        "available": true,  "inventory": 14 },
-      { "size": "10", "color": "White",        "available": true,  "inventory": 12 },
-      { "size": "11", "color": "White",        "available": true,  "inventory": 10 },
-      { "size": "12", "color": "White",        "available": true,  "inventory": 7  },
-      { "size": "9",  "color": "Black",        "available": true,  "inventory": 9  },
-      { "size": "10", "color": "Black",        "available": true,  "inventory": 8  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.7,
-    "review_count": 5420,
-    "image_url": "/assets/nike_air_force_1.png",
-    "sku": "nike_air_force_1",
-    "description": "The classic low-top with Air cushioning — a streetwear staple since 1982."
-  },
-  {
-    "id": "nike_dri_fit_tshirt",
-    "title": "Nike Dri-FIT Training T-Shirt",
-    "brand": "Nike",
-    "category": "sportswear",
-    "subcategory": "tops",
-    "price": 34.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "S",  "color": "Black",        "available": true,  "inventory": 20 },
-      { "size": "M",  "color": "Black",        "available": true,  "inventory": 18 },
-      { "size": "L",  "color": "Black",        "available": true,  "inventory": 15 },
-      { "size": "XL", "color": "Black",        "available": true,  "inventory": 10 },
-      { "size": "M",  "color": "Navy",         "available": true,  "inventory": 12 },
-      { "size": "L",  "color": "Navy",         "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.4,
-    "review_count": 1890,
-    "image_url": "/assets/nike_dri_fit_tshirt.png",
-    "sku": "nike_dri_fit_tshirt",
-    "description": "Sweat-wicking Dri-FIT fabric keeps you dry and comfortable during any workout."
-  },
-  {
-    "id": "nike_pro_shorts",
-    "title": "Nike Pro Compression Shorts",
-    "brand": "Nike",
-    "category": "sportswear",
-    "subcategory": "bottoms",
-    "price": 39.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "S",  "color": "Black",        "available": true,  "inventory": 14 },
-      { "size": "M",  "color": "Black",        "available": true,  "inventory": 16 },
-      { "size": "L",  "color": "Black",        "available": true,  "inventory": 11 },
-      { "size": "XL", "color": "Black",        "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 2,
-    "rating": 4.5,
-    "review_count": 930,
-    "image_url": "/assets/nike_pro_shorts.png",
-    "sku": "nike_pro_shorts",
-    "description": "Tight-fit compression shorts for training support and muscle stability."
-  },
-  {
-    "id": "nike_metcon_9",
-    "title": "Nike Metcon 9",
-    "brand": "Nike",
-    "category": "running",
-    "subcategory": "shoes",
-    "price": 124.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "8",  "color": "Red/Black",    "available": true,  "inventory": 5  },
-      { "size": "9",  "color": "Red/Black",    "available": true,  "inventory": 7  },
-      { "size": "10", "color": "Red/Black",    "available": true,  "inventory": 6  },
-      { "size": "11", "color": "Red/Black",    "available": false, "inventory": 0  },
-      { "size": "10", "color": "Grey/Green",   "available": true,  "inventory": 4  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.6,
-    "review_count": 560,
-    "image_url": "/assets/nike_metcon_9.png",
-    "sku": "nike_metcon_9",
-    "description": "Stable cross-training shoe for weightlifting, HIIT, and gym workouts."
-  }
-]
+  "products": [
+    {
+      "product_id": "nike_pegasus_42",
+      "slug": "nike-air-zoom-pegasus-42",
+      "name": "Nike Air Zoom Pegasus 42",
+      "brand": "Nike",
+      "department": "shoes",
+      "category": "running",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 99.99,
+      "currency": "USD",
+      "rating": 4.6,
+      "review_count": 1240,
+      "delivery_days": 2,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "Coral",
+          "hex": "#f0705a",
+          "photo": {
+            "pixabay_id": 1324431,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "Teal",
+          "hex": "#2bb3b1",
+          "photo": {
+            "pixabay_id": 2799608,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Lightweight daily trainer with React foam cushioning and a smooth ride.",
+      "tags": [
+        "everyday running",
+        "cushioned",
+        "road"
+      ],
+      "out_of_stock": [
+        {
+          "size": "11",
+          "color": "Teal"
+        }
+      ]
+    },
+    {
+      "product_id": "nike_free_run_5",
+      "slug": "nike-free-run-50",
+      "name": "Nike Free Run 5.0",
+      "brand": "Nike",
+      "department": "shoes",
+      "category": "running",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 89.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 890,
+      "delivery_days": 2,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "Grey",
+          "hex": "#8e9196",
+          "photo": {
+            "pixabay_id": 2605582,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Flexible everyday runner with a natural motion feel and lightweight mesh upper.",
+      "tags": [
+        "flexible",
+        "lightweight",
+        "everyday running"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "nike_vomero_18",
+      "slug": "nike-vomero-18",
+      "name": "Nike Vomero 18",
+      "brand": "Nike",
+      "department": "shoes",
+      "category": "running",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 129.99,
+      "currency": "USD",
+      "rating": 4.7,
+      "review_count": 645,
+      "delivery_days": 2,
+      "is_new": true,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "Volt",
+          "hex": "#d7f23a",
+          "photo": {
+            "pixabay_id": 3714720,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Maximum cushioning for long-distance comfort with a ZoomX foam stack.",
+      "tags": [
+        "max cushioning",
+        "long distance",
+        "road"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "nike_zoom_fly_6",
+      "slug": "nike-zoom-fly-6",
+      "name": "Nike Zoom Fly 6",
+      "brand": "Nike",
+      "department": "shoes",
+      "category": "running",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 139.99,
+      "currency": "USD",
+      "rating": 4.8,
+      "review_count": 412,
+      "delivery_days": 3,
+      "is_new": true,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#1c1c1e",
+          "photo": {
+            "pixabay_id": 5578113,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Carbon-fibre plate racer for tempo runs and race day performance.",
+      "tags": [
+        "racing",
+        "carbon plate",
+        "tempo"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "nike_air_max_90",
+      "slug": "nike-air-max-90",
+      "name": "Nike Air Max 90",
+      "brand": "Nike",
+      "department": "shoes",
+      "category": "sneakers",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 109.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 2310,
+      "delivery_days": 2,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "Navy/Pink",
+          "hex": "#2a3a6e",
+          "photo": {
+            "pixabay_id": 5041718,
+            "mode": "largest"
+          }
+        }
+      ],
+      "description": "Iconic visible-Air heel for all-day cushioning and streetwear style.",
+      "tags": [
+        "lifestyle",
+        "streetwear",
+        "air cushioning"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "nike_air_force_1",
+      "slug": "nike-air-force-1-07",
+      "name": "Nike Air Force 1 '07",
+      "brand": "Nike",
+      "department": "shoes",
+      "category": "sneakers",
+      "subcategory": "shoes",
+      "gender": "unisex",
+      "price": 94.99,
+      "currency": "USD",
+      "rating": 4.7,
+      "review_count": 5420,
+      "delivery_days": 2,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#f5f5f2",
+          "photo": {
+            "pixabay_id": 5126389,
+            "mode": "largest"
+          }
+        }
+      ],
+      "description": "The classic low-top with Air cushioning, a streetwear staple since 1982.",
+      "tags": [
+        "classic",
+        "lifestyle",
+        "streetwear"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "nike_metcon_9",
+      "slug": "nike-metcon-9",
+      "name": "Nike Metcon 9",
+      "brand": "Nike",
+      "department": "shoes",
+      "category": "running",
+      "subcategory": "training shoes",
+      "gender": "unisex",
+      "price": 124.99,
+      "currency": "USD",
+      "rating": 4.6,
+      "review_count": 560,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "shoe_unisex",
+      "colors": [
+        {
+          "name": "Orange/Blue",
+          "hex": "#e0702f",
+          "photo": {
+            "pixabay_id": 3699954,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Stable cross-training shoe for weightlifting, HIIT and gym workouts.",
+      "tags": [
+        "training",
+        "gym",
+        "stable"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "nike_dri_fit_tshirt",
+      "slug": "nike-dri-fit-training-t-shirt",
+      "name": "Nike Dri-FIT Training T-Shirt",
+      "brand": "Nike",
+      "department": "clothing",
+      "category": "sportswear",
+      "subcategory": "tops",
+      "gender": "men",
+      "price": 34.99,
+      "currency": "USD",
+      "rating": 4.4,
+      "review_count": 1890,
+      "delivery_days": 2,
+      "is_new": false,
+      "option_label": "Size",
+      "sizes": "apparel_men",
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#1c1c1e",
+          "photo": {
+            "pixabay_id": 1886001,
+            "mode": "largest",
+            "kernel": 25
+          }
+        },
+        {
+          "name": "White",
+          "hex": "#f5f5f2",
+          "photo": {
+            "pixabay_id": 1278404,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Sweat-wicking Dri-FIT fabric keeps you dry and comfortable during any workout.",
+      "tags": [
+        "t-shirt",
+        "training",
+        "sweat-wicking"
+      ],
+      "out_of_stock": []
+    }
+  ]
+}

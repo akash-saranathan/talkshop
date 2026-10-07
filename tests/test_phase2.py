@@ -233,7 +233,7 @@ def test_llm_resolve_requires_api_key(monkeypatch):
 
 def test_mcp_check_inventory_found():
     result = asyncio.get_event_loop().run_until_complete(
-        _mcp_check_inventory("RW001")
+        _mcp_check_inventory("nike_pegasus_42-9-coral")
     )
     assert result["available"] is not None
     assert "delivery_days" in result
@@ -248,7 +248,7 @@ def test_mcp_check_inventory_not_found():
 
 def test_mcp_get_price():
     result = asyncio.get_event_loop().run_until_complete(
-        _mcp_get_price("RW001")
+        _mcp_get_price("nike_pegasus_42-9-coral")
     )
     assert "price" in result
     assert result["price"] > 0

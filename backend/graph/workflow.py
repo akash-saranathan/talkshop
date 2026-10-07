@@ -27,6 +27,7 @@ from backend.agents import vibecheck, sneakpeek
 from backend.graph import session_state
 from backend.models.intent import ShoppingIntent
 from backend.models.product import NormalizedProduct
+from backend.observability.redact import redact
 
 # ── A2A merchant agents (lazy-loaded) ────────────────────────────────────────
 
@@ -76,6 +77,9 @@ class CommerceState(TypedDict):
     chitchat: bool  # greeting/thanks/etc — skip search, reply with a friendly prompt
     awaiting_followup: bool  # category known but under-specified — ask before searching
     product_followup: bool  # question about already-shown products — skip search, answer contextually
+    is_talkshop_guest: bool  # True only for "Continue as Talkshop guest" accounts
+    demo: Optional[str]  # demo-only failure scenario, e.g. "bad_agent_credential"
+    trusted_merchants: dict  # merchant_id -> trusted agent session id, set by the agent_trust node
     sse_queue: Optional[asyncio.Queue]  # injected per request, not serialized
 
 
@@ -95,7 +99,7 @@ async def _emit_protocol(state: CommerceState, *, source: str, target: str, prot
             "ts": datetime.utcnow().isoformat(),
             "source": source, "target": target,
             "protocol": protocol, "direction": direction,
-            "label": label, "detail": detail,
+            "label": label, "detail": redact(detail),
         })
 
 
@@ -113,7 +117,7 @@ async def input_guardrail(state: CommerceState) -> CommerceState:
     checks = run_input_checks(message)
     blocked = next((c for c in checks if c["status"] == "blocked"), None)
     if blocked:
-        await _emit_protocol(state, source="Input checks", target="ShoppingAgent", protocol="internal",
+        await _emit_protocol(state, source="Input checks", target="CustomerAgent", protocol="internal",
                              direction="out", label="input_blocked",
                              detail={"framework": "custom", "check": blocked["check"], "checks": checks})
         await _emit(state, "blocked", blocked["reason"])
@@ -127,23 +131,23 @@ async def input_guardrail(state: CommerceState) -> CommerceState:
         "reason": nemo["message"] if credential_blocked else None,
     })
     if credential_blocked:
-        await _emit_protocol(state, source="Input checks", target="ShoppingAgent", protocol="internal",
+        await _emit_protocol(state, source="Input checks", target="CustomerAgent", protocol="internal",
                              direction="out", label="input_blocked",
                              detail={"framework": "custom", "check": "credential_keyword", "checks": checks})
         await _emit(state, "blocked", nemo["message"] or "Request blocked by safety guardrail")
         return {**state, "blocked": True, "error": nemo["message"]}
 
-    await _emit_protocol(state, source="Input checks", target="ShoppingAgent", protocol="internal",
+    await _emit_protocol(state, source="Input checks", target="CustomerAgent", protocol="internal",
                          direction="out", label="input_validation_pass",
                          detail={"framework": "custom", "checks": checks})
 
     if nemo["nemo"] == "pass":
-        await _emit_protocol(state, source="NeMo Guardrails", target="ShoppingAgent", protocol="internal",
+        await _emit_protocol(state, source="NeMo Guardrails", target="CustomerAgent", protocol="internal",
                              direction="out", label="nemo_pass",
                              detail={"framework": "NeMo Guardrails", "policy": nemo["policy"],
                                      "engine": nemo["engine"], "category": nemo["category"]})
     elif nemo["nemo"] == "blocked":
-        await _emit_protocol(state, source="NeMo Guardrails", target="ShoppingAgent", protocol="internal",
+        await _emit_protocol(state, source="NeMo Guardrails", target="CustomerAgent", protocol="internal",
                              direction="out", label="nemo_blocked",
                              detail={"framework": "NeMo Guardrails", "policy": nemo["policy"],
                                      "engine": nemo["engine"], "category": nemo["category"],
@@ -151,7 +155,7 @@ async def input_guardrail(state: CommerceState) -> CommerceState:
         await _emit(state, "blocked", nemo["message"] or "Request blocked by safety guardrail")
         return {**state, "blocked": True, "error": nemo["message"]}
     elif nemo["nemo"] == "error":
-        await _emit_protocol(state, source="NeMo Guardrails", target="ShoppingAgent", protocol="internal",
+        await _emit_protocol(state, source="NeMo Guardrails", target="CustomerAgent", protocol="internal",
                              direction="out", label=f"nemo_{nemo['nemo']}",
                              detail={"framework": "NeMo Guardrails", "error": nemo.get("error")})
 
@@ -211,16 +215,106 @@ async def extract_intent(state: CommerceState) -> CommerceState:
     # so a later short follow-up — "budget is 50", "only black" — keeps
     # merging into the same search instead of starting over from nothing.
     session_state.save_context(session_id, intent.model_dump(mode="json"))
-    await _emit_protocol(state, source="ShoppingAgent", target="Gemini", protocol="internal",
+    await _emit_protocol(state, source="CustomerAgent", target="Gemini", protocol="internal",
                          direction="out", label="intent_extraction",
                          detail={"query": state["user_message"][:120]})
     if schema_ok:
-        await _emit_protocol(state, source="Guardrails AI", target="ShoppingAgent", protocol="internal",
+        await _emit_protocol(state, source="Guardrails AI", target="CustomerAgent", protocol="internal",
                              direction="out", label="schema_valid",
                              detail={"framework": "Guardrails AI", "validator": "ShoppingIntent",
                                      "intent": {k: v for k, v in intent.model_dump().items() if v is not None}})
     await _emit(state, "step_done", f"VibeCheck — understood! Looking for {intent.category.replace('_', ' ')}", {"intent": intent.model_dump()})
     return {**state, "intent": intent}
+
+
+def _skip_search(state: CommerceState) -> bool:
+    return bool(state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup")
+                or state.get("product_followup"))
+
+
+async def agent_trust(state: CommerceState) -> CommerceState:
+    """
+    Routing, then A2A-style connection, then merchant-side trust validation.
+    The customer agent presents a credential signed by Talkshop; each merchant
+    verifies it deterministically and opens a trusted session. Catalog search,
+    checkout and payment only happen with merchants that did.
+    """
+    if _skip_search(state):
+        return state
+    from backend.trust import credentials, sessions
+    from backend.trust.models import SCOPE_CATALOG
+
+    intent: ShoppingIntent = state["intent"]
+    agents = _select_merchants(intent)
+    explicit = bool(intent.brand) and len(agents) == 1 and agents[0].merchant_id == (intent.brand or "").lower()
+    await _emit_protocol(state, source="CustomerAgent", target="MerchantRegistry", protocol="internal",
+                         direction="out", label="merchant_routing",
+                         detail={"merchants": [ag.merchant_id for ag in agents],
+                                 "reason": "brand named in request" if explicit else "matched by category",
+                                 "brand": intent.brand})
+
+    credential = credentials.issue_customer_agent_credential(
+        state.get("user_id") or "anonymous",
+        is_talkshop_guest=bool(state.get("is_talkshop_guest")),
+        simulate=state.get("demo"),
+    )
+    trusted: dict[str, str] = {}
+    for ag in agents:
+        name = f"{ag.merchant_name}Agent"
+        card = ag.agent_card()
+        await _emit(state, "step_start", f"Customer Agent is connecting to the {ag.merchant_name} agent...")
+        await _emit_protocol(state, source="CustomerAgent", target=name, protocol="A2A", direction="out",
+                             label="a2a_connect",
+                             detail={"mode": "A2A-style, in-process", "agent_card": card.name,
+                                     "skills": [sk.id for sk in card.skills],
+                                     "endpoint": card.url})
+        await _emit_protocol(state, source="CustomerAgent", target=name, protocol="TRUST", direction="out",
+                             label="agent_identity_received", detail=credentials.public_view(credential))
+
+        decision, trusted_session = sessions.establish(credential, ag.merchant_id, state["session_id"], SCOPE_CATALOG)
+        checks = [c.model_dump() for c in decision.checks]
+        if not decision.verified:
+            await _emit_protocol(state, source=name, target="CustomerAgent", protocol="TRUST", direction="in",
+                                 label="agent_identity_failed",
+                                 detail={"merchant": ag.merchant_id, "failed_check": decision.failed_check,
+                                         "reason": decision.reason, "checks": checks})
+            continue
+        await _emit_protocol(state, source=name, target="CustomerAgent", protocol="TRUST", direction="in",
+                             label="agent_identity_verified",
+                             detail={"merchant": ag.merchant_id,
+                                     "checks": [c for c in checks if c["check"] in (
+                                         "agent_identity_registered", "platform_expected",
+                                         "credential_signature_valid", "credential_not_expired")]})
+        await _emit_protocol(state, source=name, target="CustomerAgent", protocol="TRUST", direction="in",
+                             label="delegation_verified",
+                             detail={"merchant": ag.merchant_id, "customer_ref": trusted_session.customer_ref,
+                                     "talkshop_account": trusted_session.talkshop_account,
+                                     "checks": [c for c in checks if c["check"] == "delegation_bound_to_agent"]})
+        await _emit_protocol(state, source=name, target="CustomerAgent", protocol="TRUST", direction="in",
+                             label="scope_verified",
+                             detail={"merchant": ag.merchant_id, "action": SCOPE_CATALOG,
+                                     "granted_scopes": trusted_session.scopes,
+                                     "checks": [c for c in checks if c["check"] in (
+                                         "action_in_scope", "merchant_in_scope", "amount_within_scope")]})
+        await _emit_protocol(state, source=name, target="CustomerAgent", protocol="TRUST", direction="in",
+                             label="trusted_agent_session_created",
+                             detail={"merchant": ag.merchant_id, "trusted_session_id": trusted_session.session_id,
+                                     "merchant_relationship": trusted_session.merchant_relationship,
+                                     "talkshop_account": trusted_session.talkshop_account,
+                                     "scopes": trusted_session.scopes, "expires_at": trusted_session.expires_at})
+        trusted[ag.merchant_id] = trusted_session.session_id
+        guest_note = (f" (you're checking out as a guest with {ag.merchant_name})"
+                      if trusted_session.merchant_relationship == "merchant_guest" else "")
+        await _emit(state, "step_done",
+                    f"{ag.merchant_name} verified your shopping agent — trusted session established{guest_note}")
+
+    if not trusted:
+        names = ", ".join(ag.merchant_name for ag in agents)
+        message = (f"{names} could not verify your shopping agent, so no products were requested. "
+                   "Nothing was searched, reserved or charged.")
+        await _emit(state, "blocked", message)
+        return {**state, "blocked": True, "error": "TRUST_VALIDATION_FAILED", "trusted_merchants": {}}
+    return {**state, "trusted_merchants": trusted}
 
 
 async def _run_a2a_sidecar(state: CommerceState, intent: ShoppingIntent) -> None:
@@ -237,15 +331,13 @@ async def _run_a2a_sidecar(state: CommerceState, intent: ShoppingIntent) -> None
         color=intent.color,
         keywords=list(intent.preferences or []),
     )
-    agents = _select_merchants(intent)
-    merchant_names = [ag.merchant_name for ag in agents]
-    await _emit_protocol(state, source="ShoppingAgent", target="MerchantNetwork", protocol="internal",
-                         direction="out", label="merchant_routing",
-                         detail={"merchants": [ag.merchant_id for ag in agents]})
+    trusted = state.get("trusted_merchants") or {}
+    agents = [ag for ag in _select_merchants(intent) if ag.merchant_id in trusted]
     for ag in agents:
-        await _emit_protocol(state, source="ShoppingAgent", target=f"{ag.merchant_name}Agent",
+        await _emit_protocol(state, source="CustomerAgent", target=f"{ag.merchant_name}Agent",
                              protocol="A2A", direction="out", label="message/send",
                              detail={"method": "message/send", "skill": "product_search",
+                                     "trusted_session_id": trusted[ag.merchant_id],
                                      "intent": {"category": intent.category, "brand": intent.brand}})
         await _emit_protocol(state, source=f"{ag.merchant_name}Agent", target="UCPCatalog",
                              protocol="UCP", direction="out", label="catalog_search",
@@ -257,10 +349,10 @@ async def _run_a2a_sidecar(state: CommerceState, intent: ShoppingIntent) -> None
                              protocol="UCP", direction="in", label="catalog_results",
                              detail={"merchant": ag.merchant_id, "product_count": len(products),
                                      "duration_ms": duration_ms})
-        await _emit_protocol(state, source=f"{ag.merchant_name}Agent", target="ShoppingAgent",
+        await _emit_protocol(state, source=f"{ag.merchant_name}Agent", target="CustomerAgent",
                              protocol="A2A", direction="in", label="boundary_check",
                              detail={"framework": "custom", "merchant": ag.merchant_id, "checks": checks})
-        await _emit_protocol(state, source=f"{ag.merchant_name}Agent", target="ShoppingAgent",
+        await _emit_protocol(state, source=f"{ag.merchant_name}Agent", target="CustomerAgent",
                              protocol="A2A", direction="in", label="task_result",
                              detail={"merchant": ag.merchant_id, "product_count": len(products),
                                      "status": "completed", "duration_ms": duration_ms})
@@ -278,6 +370,10 @@ async def mcp_product_search(state: CommerceState) -> CommerceState:
         _run_a2a_sidecar(state, intent),
     )
     products, stats = products_result
+    # Enforcement, not just ordering: nothing from a merchant that didn't open a trusted session.
+    trusted = state.get("trusted_merchants") or {}
+    products = [p for p in products if p.merchant_id in trusted]
+    stats = {**stats, "returned": len(products), "trusted_merchants": sorted(trusted)}
 
     total = stats["total_found"]
     await _emit(state, "step_done", f"SneakPeek — found {total} products across {len(stats['merchants'])} stores", stats)
@@ -412,6 +508,7 @@ def build_graph():
 
     graph.add_node("input_guardrail", input_guardrail)
     graph.add_node("extract_intent", extract_intent)
+    graph.add_node("agent_trust", agent_trust)
     graph.add_node("mcp_product_search", mcp_product_search)
     graph.add_node("normalize_products", normalize_products)
     graph.add_node("deterministic_filter", deterministic_filter)
@@ -421,7 +518,8 @@ def build_graph():
 
     graph.add_edge(START, "input_guardrail")
     graph.add_edge("input_guardrail", "extract_intent")
-    graph.add_edge("extract_intent", "mcp_product_search")
+    graph.add_edge("extract_intent", "agent_trust")
+    graph.add_edge("agent_trust", "mcp_product_search")
     graph.add_edge("mcp_product_search", "normalize_products")
     graph.add_edge("normalize_products", "deterministic_filter")
     graph.add_edge("deterministic_filter", "rank_products")
@@ -443,6 +541,8 @@ async def run_discovery(
     session_id: str,
     sse_queue: asyncio.Queue,
     user_id: Optional[str] = None,
+    is_talkshop_guest: bool = False,
+    demo: Optional[str] = None,
 ) -> CommerceState:
     """Run the Phase 2 discovery graph and stream events via sse_queue."""
     initial_state: CommerceState = {
@@ -460,6 +560,9 @@ async def run_discovery(
         "chitchat": False,
         "awaiting_followup": False,
         "product_followup": False,
+        "is_talkshop_guest": is_talkshop_guest,
+        "demo": demo,
+        "trusted_merchants": {},
         "sse_queue": sse_queue,
     }
     try:

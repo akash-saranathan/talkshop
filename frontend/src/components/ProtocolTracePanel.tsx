@@ -57,10 +57,10 @@ function getStatus(id: string, flowState: FlowState, events: ProtocolEvent[]): N
   const hasA2ASend      = events.some(e => e.protocol === "A2A" && e.label === "message/send");
   const hasTaskResult   = events.some(e => e.protocol === "A2A" && e.label === "task_result");
   const hasCatalog      = events.some(e => e.protocol === "UCP" && (e.label === "catalog_search" || e.label === "catalog_results"));
-  const hasUCPCreated   = events.some(e => e.label === "session_created");
-  const hasAllMandates  = events.some(e => e.label === "ap2_payment_mandate");
-  const hasACPIssued    = events.some(e => e.label === "acp_spt_issued");
-  const hasACPVerified  = events.some(e => e.label === "payment_executed");
+  const hasUCPCreated   = events.some(e => e.label === "session_created" || e.label === "checkout_created");
+  const hasAllMandates  = events.some(e => e.label === "ap2_payment_mandate" || e.label === "ap2_payment_authorization");
+  const hasACPIssued    = events.some(e => e.label === "acp_spt_issued" || e.label === "acp_token_issued");
+  const hasACPVerified  = events.some(e => e.label === "payment_executed" || e.label === "acp_token_verified");
 
   if (isError && id === "order") return "error";
 
@@ -399,6 +399,9 @@ const PROTO_THEME: Record<string, { badge: string; badgeText: string; border: st
   guardrails: { badge: "bg-rose-500",   badgeText: "text-white", border: "border-l-rose-400",   iconBg: "bg-rose-100",   iconText: "text-rose-600"   },
   REST:       { badge: "bg-teal-600",   badgeText: "text-white", border: "border-l-teal-500",   iconBg: "bg-teal-100",   iconText: "text-teal-700"   },
   UI:         { badge: "bg-slate-500",  badgeText: "text-white", border: "border-l-slate-400",  iconBg: "bg-slate-100",  iconText: "text-slate-600"  },
+  TRUST:      { badge: "bg-emerald-600", badgeText: "text-white", border: "border-l-emerald-500", iconBg: "bg-emerald-100", iconText: "text-emerald-700" },
+  HUMAN:      { badge: "bg-sky-600",    badgeText: "text-white", border: "border-l-sky-500",    iconBg: "bg-sky-100",    iconText: "text-sky-700"    },
+  PAYMENT:    { badge: "bg-rose-600",   badgeText: "text-white", border: "border-l-rose-500",   iconBg: "bg-rose-100",   iconText: "text-rose-700"   },
 };
 
 function toCard(ev: ProtocolEvent): NarrativeCard {
@@ -552,7 +555,7 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     case "order_created":
       return { icon: <Package size={14} />, protocol: "REST", status: "ok",
         headline: "Order recorded",
-        what: "Order returned by POST /api/payments/execute.",
+        what: "The merchant's order service created the order.",
         highlight: d.order_id ? `Order ${String(d.order_id)}` : undefined };
     case "POST /shared_payment/issued_tokens": {
       const c = d.constraints as Record<string, unknown> | undefined;
@@ -572,6 +575,140 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         headline: `Payment ${String(d.status ?? "result")}`,
         what: "Returned by POST /api/payments/execute.",
         highlight: d.order_id ? `Order ${String(d.order_id)}` : undefined };
+    // ── Demo 2: agent trust ──
+    case "a2a_connect":
+      return { icon: <Zap size={14} />, protocol: "A2A", status: "ok",
+        headline: `Customer Agent → ${ev.target.replace(/Agent$/i, "")} Agent`,
+        what: "A2A-style connection: agent card discovered, capabilities exchanged. In-process in this POC.",
+        highlight: Array.isArray(d.skills) ? `Skills: ${(d.skills as string[]).join(", ")}` : undefined };
+    case "agent_identity_received":
+      return { icon: <User size={14} />, protocol: "TRUST", status: "progress",
+        headline: "Customer agent presents its credential",
+        what: "Identity, platform and the customer's delegation, signed by Talkshop.",
+        highlight: `${String(d.agent_id ?? "")} · ${String(d.talkshop_account ?? "")}` };
+    case "agent_identity_verified":
+      return { icon: <ShieldCheck size={14} />, protocol: "TRUST", status: "ok",
+        headline: "✓ Customer agent identity verified",
+        what: "Registered agent, expected platform, valid signature, not expired. Deterministic checks — no LLM." };
+    case "agent_identity_failed":
+      return { icon: <ShieldX size={14} />, protocol: "TRUST", status: "fail",
+        headline: "Trust validation failed",
+        what: `${String(d.reason ?? "The agent could not be verified")}. No catalog, checkout or payment.`,
+        highlight: d.failed_check ? `Failed: ${String(d.failed_check)}` : undefined };
+    case "delegation_verified":
+      return { icon: <ShieldCheck size={14} />, protocol: "TRUST", status: "ok",
+        headline: "✓ Customer delegation verified",
+        what: "The customer granted this agent permission to shop. The merchant sees a pseudonymous customer ref only.",
+        highlight: d.customer_ref ? String(d.customer_ref) : undefined };
+    case "scope_verified":
+      return { icon: <ShieldCheck size={14} />, protocol: "TRUST", status: "ok",
+        headline: "✓ Scope verified",
+        what: "Requested action and merchant are inside the delegated scope.",
+        highlight: Array.isArray(d.granted_scopes) ? (d.granted_scopes as string[]).join(" · ") : undefined };
+    case "trusted_agent_session_created":
+      return { icon: <Lock size={14} />, protocol: "TRUST", status: "ok",
+        headline: "Trusted session established",
+        what: d.merchant_relationship === "merchant_guest"
+          ? "Known to Talkshop, guest to the merchant. Checkout and payment are now allowed."
+          : "Checkout and payment are now allowed.",
+        highlight: d.trusted_session_id ? String(d.trusted_session_id) : undefined };
+    case "trusted_session_verified":
+      return { icon: <ShieldCheck size={14} />, protocol: "TRUST", status: "ok",
+        headline: `Trusted session re-checked for ${String(d.action ?? "")}`,
+        what: "The merchant re-verifies the agent's credential before each sensitive action." };
+    case "trusted_session_rejected":
+      return { icon: <ShieldX size={14} />, protocol: "TRUST", status: "fail",
+        headline: "Merchant refused the agent", what: String(d.reason ?? "No valid trusted session") };
+    // ── Demo 2: checkout and consent ──
+    case "checkout_created": {
+      const t = d.totals as Record<string, number> | undefined;
+      return { icon: <Package size={14} />, protocol: "UCP", status: "ok",
+        headline: `Checkout created · ${t ? `$${t.total.toFixed(2)}` : ""}`,
+        what: "UCP-style checkout from the merchant: authoritative price, tax, shipping and delivery.",
+        highlight: d.delivery_date ? `Delivery ${String(d.delivery_date)}` : undefined };
+    }
+    case "ap2_checkout_bound":
+      return { icon: <Lock size={14} />, protocol: "AP2", status: "ok",
+        headline: "AP2 checkout bound",
+        what: "Cart evidence binds product, quantity, merchant and total to the checkout hash. Not a spending authorization." };
+    case "order_proposal":
+      return { icon: <Pause size={14} />, protocol: "HUMAN", status: "ok",
+        headline: "Order proposal shown",
+        what: "Waiting for the customer's GO AHEAD. Nothing is authorized yet.",
+        highlight: d.payment_method ? String(d.payment_method) : undefined };
+    case "customer_consent_received":
+      return { icon: <User size={14} />, protocol: "HUMAN", status: "ok",
+        headline: "GO AHEAD received",
+        what: "The customer authorized this exact checkout, total and payment method.",
+        highlight: typeof d.total === "number" ? `$${(d.total as number).toFixed(2)} · ${String(d.payment_method ?? "")}` : undefined };
+    case "customer_consent_rejected":
+      return { icon: <ShieldX size={14} />, protocol: "HUMAN", status: "fail",
+        headline: "Approval did not match the checkout",
+        what: "Nothing was authorized.", highlight: Array.isArray(d.mismatched) ? `Mismatch: ${(d.mismatched as string[]).join(", ")}` : undefined };
+    case "ap2_payment_authorization":
+      return { icon: <Lock size={14} />, protocol: "AP2", status: "ok",
+        headline: "AP2 authorization evidence created",
+        what: "Created only after GO AHEAD. Proves the customer approved this checkout and amount." };
+    case "ap2_evidence_verified":
+      return { icon: <CheckCircle2 size={14} />, protocol: "AP2", status: "ok",
+        headline: "AP2 evidence verified by the merchant", what: "Cart and payment evidence match the checkout and the token." };
+    case "ap2_evidence_rejected":
+      return { icon: <ShieldX size={14} />, protocol: "AP2", status: "fail",
+        headline: "AP2 evidence rejected", what: "The evidence did not match this checkout." };
+    case "acp_token_issued":
+      return { icon: <CreditCard size={14} />, protocol: "ACP", status: "ok",
+        headline: "Scoped payment credential issued",
+        what: "ACP-style single-use token bound to merchant, checkout, amount, currency and expiry. The agent never sees the card.",
+        highlight: typeof d.max_amount_cents === "number" ? `Max $${((d.max_amount_cents as number) / 100).toFixed(2)} · ${String(d.currency ?? "")}` : undefined };
+    case "acp_token_verified":
+      return { icon: <CheckCircle2 size={14} />, protocol: "ACP", status: "ok",
+        headline: "✓ Merchant + amount verified", what: "Signature, merchant, checkout binding, amount, currency and expiry checked." };
+    case "acp_token_rejected":
+      return { icon: <ShieldX size={14} />, protocol: "ACP", status: "fail",
+        headline: "Payment token rejected", what: "The charge did not match the token's scope.",
+        highlight: typeof d.charge_cents === "number" ? `Attempted $${((d.charge_cents as number) / 100).toFixed(2)}` : undefined };
+    case "demo_tampered_charge":
+      return { icon: <AlertTriangle size={14} />, protocol: "internal", status: "warn",
+        headline: "Demo: charge attempt above the authorized amount",
+        what: `Authorized $${String(d.authorized_total)} · attempted $${String(d.attempted_charge)}` };
+    case "condition_changed":
+      return { icon: <AlertTriangle size={14} />, protocol: "A2A", status: "warn",
+        headline: "Merchant changed the delivery date",
+        what: `${String(d.previous)} → ${String(d.new)}. Payment paused before any money moved.` };
+    case "reconsent_required":
+      return { icon: <Pause size={14} />, protocol: "HUMAN", status: "warn",
+        headline: "Re-consent required", what: "The unused token stays unused until the customer answers." };
+    case "reconsent_received":
+      return { icon: <User size={14} />, protocol: "HUMAN", status: "ok",
+        headline: "Customer accepted the new terms", what: "Fresh consent, bound to the updated checkout hash." };
+    case "delegated_token_invalidated":
+      return { icon: <ShieldX size={14} />, protocol: "ACP", status: "ok",
+        headline: "Old payment token invalidated", what: "It was bound to the old terms." };
+    case "checkout_cancelled":
+      return { icon: <ShieldX size={14} />, protocol: "HUMAN", status: "warn",
+        headline: "Checkout cancelled", what: "No payment and no order." };
+    // ── Demo 2: payment and order ──
+    case "internal_dpat_issued":
+      return { icon: <Lock size={14} />, protocol: "PAYMENT", status: "ok",
+        headline: "Internal enforcement token (DPAT)",
+        what: "The verified delegated authorization is mapped to our internal single-use token. Not an industry protocol." };
+    case "payment_checks": {
+      const failed = Number(d.total ?? 0) - Number(d.passed ?? 0);
+      return { icon: <ShieldCheck size={14} />, protocol: "PAYMENT", status: failed ? "fail" : "ok",
+        headline: `${String(d.passed)}/${String(d.total)} deterministic payment checks`,
+        what: "Run on the internal DPAT before the processor is allowed to charge." };
+    }
+    case "psp_result":
+      return { icon: <CreditCard size={14} />, protocol: "PAYMENT", status: d.status === "success" ? "ok" : "fail",
+        headline: d.status === "success" ? "Payment authorized" : "Payment declined",
+        what: "Mock card processor.", highlight: d.payment_method ? String(d.payment_method) : undefined };
+    case "payment_rejected":
+      return { icon: <ShieldX size={14} />, protocol: "PAYMENT", status: "fail",
+        headline: "Payment stopped", what: "No charge and no order.", highlight: `Reason: ${String(d.reason ?? "")}` };
+    case "order_confirmed":
+      return { icon: <CheckCircle2 size={14} />, protocol: "A2A", status: "ok",
+        headline: `${ev.source.replace(/Agent$/i, "")} Agent → Customer Agent: ORDER_CONFIRMED`,
+        what: "The merchant returns the authoritative order.", highlight: d.order_id ? `Order ${String(d.order_id)}` : undefined };
     default:
       return { icon: <Activity size={14} />, protocol: ev.protocol || "internal", status: "ok",
         headline: ev.label.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
@@ -710,6 +847,189 @@ function TransactionSummary({ flowState, productTitle, productMerchant, checkout
   );
 }
 
+// ── Story view: the business flow in fixed rows (default view) ────────────────
+
+type RowStatus = "upcoming" | "ok" | "fail" | "paused";
+
+interface StoryRow {
+  key: string;
+  title: string;
+  status: RowStatus;
+  lines: string[];
+  events: ProtocolEvent[];
+}
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const money = (n: unknown) => (typeof n === "number" ? `$${n.toFixed(2)}` : "");
+
+function buildStory(all: ProtocolEvent[]): StoryRow[] {
+  // Only the current request: everything since the last time input checks started.
+  let start = 0;
+  all.forEach((e, i) => { if (e.label === "input_check") start = i; });
+  const ev = all.slice(start);
+  const find = (...labels: string[]) => ev.filter((e) => labels.includes(e.label));
+  const last = (...labels: string[]) => { const f = find(...labels); return f.length ? f[f.length - 1] : undefined; };
+
+  const routing = last("merchant_routing");
+  const merchants = ((routing?.detail.merchants as string[] | undefined) ?? []).map(cap);
+  const merchant = merchants[0] ?? "Merchant";
+
+  const rows: StoryRow[] = [];
+  const add = (key: string, title: string, status: RowStatus, lines: string[], events: ProtocolEvent[]) =>
+    rows.push({ key, title, status, lines, events });
+
+  // INPUT
+  const inputFail = last("input_blocked", "nemo_blocked");
+  const inputOk = last("input_validation_pass", "nemo_pass");
+  add("input", "Input", inputFail ? "fail" : inputOk ? "ok" : "upcoming",
+    inputFail ? ["Blocked by a security check"] : inputOk ? ["Security checks passed"] : [],
+    find("input_check", "input_validation_pass", "input_blocked", "nemo_pass", "nemo_blocked", "nemo_error"));
+
+  // INTENT
+  const schema = last("schema_valid");
+  const intent = (schema?.detail.intent ?? {}) as Record<string, unknown>;
+  const intentText = [intent.brand, String(intent.category ?? "").replace(/_/g, " "),
+    intent.max_price ? `under $${intent.max_price}` : null, intent.size ? `size ${intent.size}` : null]
+    .filter(Boolean).join(" · ");
+  const intentEv = find("intent_extraction", "schema_valid");
+  add("intent", "Intent", intentEv.length ? "ok" : "upcoming",
+    intentEv.length ? [intentText || "Shopping intent extracted", "What you want — not permission to spend"] : [], intentEv);
+
+  // ROUTING
+  add("routing", "Routing", routing ? "ok" : "upcoming",
+    routing ? [`${merchants.join(", ")} selected`, String(routing.detail.reason ?? "")].filter(Boolean) : [], find("merchant_routing"));
+
+  // A2A connect
+  const connect = find("a2a_connect");
+  add("a2a-out", "A2A", connect.length ? "ok" : "upcoming",
+    connect.length ? [`Customer Agent → ${merchant} Agent`, "A2A-style, in-process"] : [], connect);
+
+  // AGENT TRUST
+  const trustEvents = find("agent_identity_received", "agent_identity_verified", "agent_identity_failed",
+    "delegation_verified", "scope_verified", "trusted_agent_session_created");
+  const trustFail = last("agent_identity_failed");
+  const session = last("trusted_agent_session_created");
+  const trustLines = trustFail
+    ? [`✗ ${String(trustFail.detail.reason ?? "Trust validation failed")}`, "No catalog, checkout or payment"]
+    : session
+      ? ["✓ Identity verified", "✓ Delegation verified", "✓ Scope verified",
+         `Trusted session · ${session.detail.merchant_relationship === "merchant_guest" ? `guest with ${merchant}` : `${merchant} member`}`]
+      : [];
+  add("trust", "Agent trust", trustFail ? "fail" : session ? "ok" : "upcoming", trustLines, trustEvents);
+
+  // UCP catalog
+  const catalog = last("catalog_results");
+  add("ucp", "UCP", catalog ? "ok" : "upcoming",
+    catalog ? [`Catalog queried · ${catalog.detail.product_count} variants`] : [], find("catalog_search", "catalog_results", "boundary_check", "task_result"));
+
+  // HUMAN: product selected
+  const checkout = last("checkout_created");
+  add("select", "Human", checkout ? "ok" : "upcoming", checkout ? ["✓ Product selected"] : [], []);
+
+  // CHECKOUT
+  const totals = (checkout?.detail.totals ?? {}) as Record<string, number>;
+  add("checkout", "Checkout", checkout ? "ok" : "upcoming",
+    checkout ? [`Total ${money(totals.total)}`, checkout.detail.delivery_date ? `Delivery ${checkout.detail.delivery_display ?? checkout.detail.delivery_date}` : ""].filter(Boolean) : [],
+    find("trusted_session_verified", "trusted_session_rejected", "checkout_created", "order_proposal"));
+
+  // AP2
+  const bound = last("ap2_checkout_bound");
+  const evidence = last("ap2_payment_authorization");
+  const ap2Fail = last("ap2_evidence_rejected");
+  add("ap2", "AP2", ap2Fail ? "fail" : bound ? "ok" : "upcoming",
+    [bound ? "✓ Checkout bound" : "", evidence ? "✓ Consent recorded as authorization evidence" : "",
+     ap2Fail ? "✗ Evidence did not match" : ""].filter(Boolean),
+    find("ap2_checkout_bound", "ap2_payment_authorization", "ap2_evidence_verified", "ap2_evidence_rejected"));
+
+  // HUMAN: GO AHEAD (and re-consent)
+  const consent = last("customer_consent_received", "reconsent_received");
+  const consentFail = last("customer_consent_rejected");
+  const paused = last("reconsent_required");
+  const cancelled = last("checkout_cancelled");
+  const goStatus: RowStatus = consentFail || cancelled ? "fail"
+    : paused && !last("reconsent_received") ? "paused" : consent ? "ok" : "upcoming";
+  add("goahead", "Human", goStatus,
+    [consent ? "✓ GO AHEAD" : "", last("condition_changed") ? `Delivery changed → ${last("condition_changed")!.detail.new_display ?? last("condition_changed")!.detail.new}` : "",
+     last("reconsent_received") ? "✓ Re-consented to the new terms" : paused ? "Waiting for YES / NO" : "",
+     cancelled ? "Cancelled — nothing charged" : "", consentFail ? "✗ Approval did not match the checkout" : ""].filter(Boolean),
+    find("customer_consent_received", "customer_consent_rejected", "condition_changed", "reconsent_required",
+         "reconsent_received", "delegated_token_invalidated", "checkout_cancelled"));
+
+  // ACP
+  const issued = last("acp_token_issued");
+  const acpOk = last("acp_token_verified");
+  const acpFail = last("acp_token_rejected");
+  add("acp", "ACP", acpFail ? "fail" : issued ? "ok" : "upcoming",
+    [issued ? "✓ Scoped payment credential issued" : "", acpOk ? "✓ Merchant + amount verified" : "",
+     acpFail ? "✗ Charge outside the token's scope" : ""].filter(Boolean),
+    find("acp_token_issued", "acp_token_verified", "acp_token_rejected", "demo_tampered_charge"));
+
+  // PAYMENT
+  const checks = last("payment_checks");
+  const psp = last("psp_result");
+  const payFail = last("payment_rejected");
+  add("payment", "Payment", payFail ? "fail" : psp?.detail.status === "success" ? "ok" : "upcoming",
+    [checks ? `✓ ${checks.detail.passed}/${checks.detail.total} deterministic checks` : "",
+     psp?.detail.status === "success" ? "✓ Authorized" : "",
+     payFail ? `✗ Rejected: ${String(payFail.detail.reason)} · no charge, no order` : ""].filter(Boolean),
+    find("internal_dpat_issued", "payment_checks", "psp_result", "payment_rejected"));
+
+  // MERCHANT order
+  const order = last("order_created");
+  add("order", merchant, order ? "ok" : "upcoming", order ? [`✓ Order created · ${order.detail.order_id}`] : [], find("order_created"));
+
+  // A2A back
+  const confirmed = last("order_confirmed");
+  add("a2a-in", "A2A", confirmed ? "ok" : "upcoming",
+    confirmed ? [`${merchant} Agent → Customer Agent`, "ORDER_CONFIRMED"] : [], find("order_confirmed"));
+
+  return rows;
+}
+
+function StoryRowView({ row }: { row: StoryRow }) {
+  const [open, setOpen] = useState(false);
+  const tone = row.status === "ok" ? "border-l-emerald-500" : row.status === "fail" ? "border-l-rose-500"
+    : row.status === "paused" ? "border-l-amber-500" : "border-l-[var(--color-border)] opacity-50";
+  return (
+    <div className={`rounded-lg border border-[var(--color-border)] border-l-4 ${tone} bg-[var(--color-surface)] px-3 py-2`}>
+      <div className="flex items-start gap-2">
+        <span className="w-20 shrink-0 text-[9px] font-bold uppercase tracking-wider text-[var(--color-text-muted)] pt-0.5">{row.title}</span>
+        <div className="flex-1 min-w-0">
+          {row.lines.length ? row.lines.map((l, i) => (
+            <p key={i} className={`text-[10px] leading-snug ${i === 0 ? "font-semibold text-[var(--color-text)]" : "text-[var(--color-text-muted)]"}`}>{l}</p>
+          )) : <p className="text-[10px] text-[var(--color-text-muted)]">—</p>}
+        </div>
+        {row.events.length > 0 && (
+          <button onClick={() => setOpen((o) => !o)} className="text-[9px] text-[var(--color-primary)] hover:underline shrink-0">
+            {open ? "Hide" : "View details"}
+          </button>
+        )}
+      </div>
+      {open && row.events.map((e, i) => <EventDetail key={i} ev={e} />)}
+    </div>
+  );
+}
+
+function StoryView({ events }: { events: ProtocolEvent[] }) {
+  if (events.length === 0) {
+    return (
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-5 py-10">
+        <Activity size={16} className="text-[var(--color-text-muted)] opacity-30" />
+        <p className="text-[10px] text-center text-[var(--color-text-muted)] opacity-50">The purchase story appears here as each step runs</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-1.5">
+      {buildStory(events).map((row) => <StoryRowView key={row.key} row={row} />)}
+      <p className="text-[9px] text-[var(--color-text-muted)] pt-1 leading-relaxed">
+        Protocol-style POC: A2A-style agent messages (in-process), UCP-style catalog and checkout, AP2-style authorization
+        evidence, ACP-style scoped token. DPAT is internal enforcement, not an industry protocol. No card data is ever shown here.
+      </p>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 // ── Stage and event details ───────────────────────────────────────────────────
@@ -718,8 +1038,8 @@ const STAGE_TITLE: Record<string, string> = {
   a2a: "A2A — merchant agents",
   catalog: "UCP Catalog",
   checkout: "UCP Checkout",
-  authz: "AP2 — approval (browser step)",
-  acp: "ACP — delegated payment (DPAT)",
+  authz: "AP2 — authorization evidence",
+  acp: "ACP — scoped payment token",
   payment: "Payment",
   order: "Order",
 };
@@ -727,11 +1047,11 @@ const STAGE_TITLE: Record<string, string> = {
 function stageOf(ev: ProtocolEvent): string | null {
   if (ev.protocol === "A2A") return "a2a";
   if (ev.protocol === "UCP" && (ev.label === "catalog_search" || ev.label === "catalog_results")) return "catalog";
-  if (ev.label === "session_created" || ev.label === "ap2_cart_mandate") return "checkout";
-  if (ev.label === "ap2_payment_mandate" || ev.label === "dpat_issued") return "authz";
-  if (ev.label === "acp_spt_issued" || ev.label === "acp_spt_verified") return "acp";
-  if (ev.label === "payment_guardrails" || ev.label === "payment_executed") return "payment";
-  if (ev.label === "order_created") return "order";
+  if (["session_created", "ap2_cart_mandate", "checkout_created", "ap2_checkout_bound", "order_proposal"].includes(ev.label)) return "checkout";
+  if (["ap2_payment_mandate", "dpat_issued", "customer_consent_received", "ap2_payment_authorization", "ap2_evidence_verified"].includes(ev.label)) return "authz";
+  if (["acp_spt_issued", "acp_spt_verified", "acp_token_issued", "acp_token_verified", "acp_token_rejected"].includes(ev.label)) return "acp";
+  if (["payment_guardrails", "payment_executed", "internal_dpat_issued", "payment_checks", "psp_result", "payment_rejected"].includes(ev.label)) return "payment";
+  if (ev.label === "order_created" || ev.label === "order_confirmed") return "order";
   return null;
 }
 
@@ -813,9 +1133,7 @@ function StageDetail({ stage, events }: { stage: string; events: ProtocolEvent[]
       )}
       <div>
         <p className="text-[10px] font-semibold text-[var(--color-text)] mb-1">Guardrails at this stage</p>
-        {stage === "payment" ? (
-          <p className="text-[10px] text-[var(--color-text-muted)]">Payment guardrail results aren't returned to the browser yet.</p>
-        ) : guardChecks.length === 0 ? (
+        {guardChecks.length === 0 ? (
           <p className="text-[10px] text-[var(--color-text-muted)]">No guardrail checks ran at this stage.</p>
         ) : (
           <GuardrailChecks checks={guardChecks} />
@@ -845,7 +1163,7 @@ export default function ProtocolTracePanel({
   events, flowState = "idle",
   productTitle, productMerchant, checkoutTotal, orderLabel,
 }: Props) {
-  const [tab, setTab] = useState<"flow" | "live">("live");
+  const [tab, setTab] = useState<"story" | "flow" | "live">("story");
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
 
   return (
@@ -871,7 +1189,7 @@ export default function ProtocolTracePanel({
           )}
         </div>
         <div className="flex rounded-lg overflow-hidden border border-[var(--color-border)] text-[9px] font-bold">
-          {(["flow", "live"] as const).map((t) => (
+          {(["story", "flow", "live"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -879,14 +1197,16 @@ export default function ProtocolTracePanel({
                 tab === t ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
               }`}
             >
-              {t === "flow" ? <GitBranch size={8} /> : <Activity size={8} />}
+              {t === "flow" ? <GitBranch size={8} /> : t === "story" ? <ShieldCheck size={8} /> : <Activity size={8} />}
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
       </div>
 
-      {tab === "flow" ? (
+      {tab === "story" ? (
+        <StoryView events={events} />
+      ) : tab === "flow" ? (
         <FlowView
           events={events}
           flowState={flowState}

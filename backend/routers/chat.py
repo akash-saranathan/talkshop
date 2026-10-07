@@ -9,6 +9,7 @@ GET /api/chat/sessions/{session_id}/messages        — one thread's messages
 import asyncio
 import json
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -21,6 +22,9 @@ from backend.graph import session_state
 from backend.graph.workflow import run_discovery
 
 router = APIRouter()
+
+# Failure scenarios the demo can trigger on purpose. Anything else is ignored.
+DEMO_SCENARIOS = {"bad_agent_credential"}
 
 TITLE_MAX_LENGTH = 60
 
@@ -56,12 +60,14 @@ def _save_turn(session_id: str, user_id: str, user_message: str, final_state: di
         db.commit()
 
 
-async def _event_stream(user_message: str, session_id: str, user_id: str):
+async def _event_stream(user_message: str, session_id: str, user_id: str,
+                        is_talkshop_guest: bool = False, demo: Optional[str] = None):
     """Async generator that drives the LangGraph run and yields SSE lines."""
     queue: asyncio.Queue = asyncio.Queue()
 
     # Run the graph as a background task so we can stream events as they arrive
-    task = asyncio.create_task(run_discovery(user_message, session_id, queue, user_id=user_id))
+    task = asyncio.create_task(run_discovery(user_message, session_id, queue, user_id=user_id,
+                                             is_talkshop_guest=is_talkshop_guest, demo=demo))
 
     try:
         while True:
@@ -100,6 +106,7 @@ async def attach_image(req: AttachImageRequest, current_user: CurrentUser = Depe
 async def chat_stream(
     message: str = Query(..., description="User's natural language shopping request"),
     session_id: str = Query(default_factory=lambda: uuid.uuid4().hex),
+    demo: Optional[str] = Query(default=None, description="Demo-only failure scenario: bad_agent_credential"),
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """
@@ -112,7 +119,8 @@ async def chat_stream(
     normal Authorization header.
     """
     return StreamingResponse(
-        _event_stream(message, session_id, current_user.user_id),
+        _event_stream(message, session_id, current_user.user_id,
+                      current_user.is_talkshop_guest, demo if demo in DEMO_SCENARIOS else None),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

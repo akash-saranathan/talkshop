@@ -1,164 +1,253 @@
-[
-  {
-    "id": "casio_gshock_ga2100",
-    "title": "Casio G-Shock GA-2100",
-    "brand": "Casio",
-    "category": "watches",
-    "subcategory": "sport",
-    "price": 99.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "45mm", "color": "Black",           "available": true,  "inventory": 14 },
-      { "size": "45mm", "color": "White",           "available": true,  "inventory": 11 },
-      { "size": "45mm", "color": "Caramel",         "available": true,  "inventory": 8  },
-      { "size": "45mm", "color": "Olive",           "available": false, "inventory": 0  },
-      { "size": "45mm", "color": "Red",             "available": true,  "inventory": 6  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.7,
-    "review_count": 3200,
-    "image_url": "/assets/casio_ga2100.png",
-    "sku": "casio_gshock_ga2100",
-    "description": "Ultra-slim G-Shock with carbon core guard — shockproof, waterproof, iconic."
+{
+  "merchant": {
+    "merchant_id": "casio",
+    "merchant_name": "Casio",
+    "categories": [
+      "watches",
+      "accessories",
+      "digital"
+    ]
   },
-  {
-    "id": "casio_f91w",
-    "title": "Casio F-91W Classic",
-    "brand": "Casio",
-    "category": "watches",
-    "subcategory": "digital",
-    "price": 29.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "33mm", "color": "Black",           "available": true,  "inventory": 30 },
-      { "size": "33mm", "color": "Grey",            "available": true,  "inventory": 25 },
-      { "size": "33mm", "color": "Gold",            "available": true,  "inventory": 18 }
+  "size_ranges": {
+    "watch_40": [
+      "40mm"
     ],
-    "shipping_days": 2,
-    "rating": 4.8,
-    "review_count": 8700,
-    "image_url": "/assets/casio_f91w.png",
-    "sku": "casio_f91w",
-    "description": "The original digital watch — lightweight, durable, and timeless."
+    "watch_45": [
+      "45mm"
+    ],
+    "watch_46": [
+      "46mm"
+    ],
+    "watch_48": [
+      "48mm"
+    ]
   },
-  {
-    "id": "casio_edifice_efr",
-    "title": "Casio Edifice EFR-303",
-    "brand": "Casio",
-    "category": "watches",
-    "subcategory": "chronograph",
-    "price": 119.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "46mm", "color": "Silver/Blue",     "available": true,  "inventory": 9  },
-      { "size": "46mm", "color": "Black/Black",     "available": true,  "inventory": 7  },
-      { "size": "46mm", "color": "Silver/Black",    "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.5,
-    "review_count": 640,
-    "image_url": "/assets/casio_edifice_efr.png",
-    "sku": "casio_edifice_efr",
-    "description": "Stainless steel chronograph with tachymetre bezel — sporty and refined."
-  },
-  {
-    "id": "casio_pro_trek",
-    "title": "Casio Pro Trek PRW-3500",
-    "brand": "Casio",
-    "category": "watches",
-    "subcategory": "outdoor",
-    "price": 139.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "48mm", "color": "Black",           "available": true,  "inventory": 6  },
-      { "size": "48mm", "color": "Green",           "available": true,  "inventory": 5  },
-      { "size": "48mm", "color": "Navy",            "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.6,
-    "review_count": 420,
-    "image_url": "/assets/casio_pro_trek.png",
-    "sku": "casio_pro_trek",
-    "description": "Triple-sensor outdoor watch with altimeter, barometer, and compass."
-  },
-  {
-    "id": "casio_gshock_gbd200",
-    "title": "Casio G-Shock GBD-200",
-    "brand": "Casio",
-    "category": "watches",
-    "subcategory": "sport",
-    "price": 89.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "46mm", "color": "Black",           "available": true,  "inventory": 10 },
-      { "size": "46mm", "color": "White",           "available": true,  "inventory": 8  },
-      { "size": "46mm", "color": "Blue",            "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.5,
-    "review_count": 870,
-    "image_url": "/assets/casio_gbd200.png",
-    "sku": "casio_gshock_gbd200",
-    "description": "Step-tracking G-Shock with Bluetooth and built-in running features."
-  },
-  {
-    "id": "casio_baby_g",
-    "title": "Casio Baby-G BGA-310",
-    "brand": "Casio",
-    "category": "watches",
-    "subcategory": "ladies",
-    "price": 69.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "40mm", "color": "White/Pink",      "available": true,  "inventory": 13 },
-      { "size": "40mm", "color": "Black",           "available": true,  "inventory": 11 },
-      { "size": "40mm", "color": "Purple",          "available": true,  "inventory": 9  },
-      { "size": "40mm", "color": "Mint",            "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.5,
-    "review_count": 1100,
-    "image_url": "/assets/casio_baby_g.png",
-    "sku": "casio_baby_g",
-    "description": "Compact and shockproof Baby-G — sporty, colourful, and 100m water-resistant."
-  },
-  {
-    "id": "casio_databank",
-    "title": "Casio Databank CA-53W",
-    "brand": "Casio",
-    "category": "watches",
-    "subcategory": "digital",
-    "price": 34.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "34mm", "color": "Black",           "available": true,  "inventory": 20 },
-      { "size": "34mm", "color": "Grey",            "available": true,  "inventory": 15 }
-    ],
-    "shipping_days": 2,
-    "rating": 4.6,
-    "review_count": 2300,
-    "image_url": "/assets/casio_databank.png",
-    "sku": "casio_databank",
-    "description": "Classic databank calculator watch — retro nostalgia meets everyday utility."
-  },
-  {
-    "id": "casio_gshock_gw5610",
-    "title": "Casio G-Shock GW-M5610",
-    "brand": "Casio",
-    "category": "watches",
-    "subcategory": "sport",
-    "price": 99.99,
-    "currency": "USD",
-    "variants": [
-      { "size": "46mm", "color": "Black",           "available": true,  "inventory": 11 },
-      { "size": "46mm", "color": "Red",             "available": true,  "inventory": 7  },
-      { "size": "46mm", "color": "Blue",            "available": false, "inventory": 0  }
-    ],
-    "shipping_days": 3,
-    "rating": 4.7,
-    "review_count": 1850,
-    "image_url": "/assets/casio_gw5610.png",
-    "sku": "casio_gshock_gw5610",
-    "description": "Slim square G-Shock with solar charging and atomic timekeeping."
-  }
-]
+  "products": [
+    {
+      "product_id": "casio_gshock_ga2100",
+      "slug": "casio-g-shock-ga-2100",
+      "name": "Casio G-Shock GA-2100",
+      "brand": "Casio",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "sport",
+      "gender": "unisex",
+      "price": 99.99,
+      "currency": "USD",
+      "rating": 4.7,
+      "review_count": 3200,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_45",
+      "colors": [
+        {
+          "name": "Blue/Rose Gold",
+          "hex": "#2d3f66",
+          "photo": {
+            "pixabay_id": 761271,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "Green",
+          "hex": "#3e7d4f",
+          "photo": {
+            "pixabay_id": 6904008,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Analog-digital G-Shock, shockproof and water resistant to 200m.",
+      "tags": [
+        "g-shock",
+        "shockproof",
+        "analog-digital"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "casio_edifice_efr",
+      "slug": "casio-edifice-efr-539",
+      "name": "Casio Edifice EFR-539",
+      "brand": "Casio",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "chronograph",
+      "gender": "men",
+      "price": 119.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 640,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_46",
+      "colors": [
+        {
+          "name": "Silver",
+          "hex": "#c0c3c7",
+          "photo": {
+            "pixabay_id": 7655723,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Stainless steel chronograph with tachymeter bezel, sporty and refined.",
+      "tags": [
+        "chronograph",
+        "stainless steel",
+        "edifice"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "casio_pro_trek",
+      "slug": "casio-pro-trek-prw-3500",
+      "name": "Casio Pro Trek PRW-3500",
+      "brand": "Casio",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "outdoor",
+      "gender": "men",
+      "price": 139.99,
+      "currency": "USD",
+      "rating": 4.6,
+      "review_count": 420,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_48",
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#1c1c1e",
+          "photo": {
+            "pixabay_id": 1435348,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Outdoor watch with altimeter, barometer and compass.",
+      "tags": [
+        "outdoor",
+        "hiking",
+        "triple sensor"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "casio_gshock_gbd200",
+      "slug": "casio-g-shock-gbd-200",
+      "name": "Casio G-Shock GBD-200",
+      "brand": "Casio",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "sport",
+      "gender": "unisex",
+      "price": 89.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 870,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_46",
+      "colors": [
+        {
+          "name": "Red",
+          "hex": "#c0392b",
+          "photo": {
+            "pixabay_id": 7420334,
+            "mode": "studio"
+          }
+        },
+        {
+          "name": "White",
+          "hex": "#f5f5f2",
+          "photo": {
+            "pixabay_id": 2619634,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Step-tracking G-Shock with Bluetooth and built-in running features.",
+      "tags": [
+        "g-shock",
+        "running",
+        "bluetooth"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "casio_gshock_dw6900",
+      "slug": "casio-g-shock-dw-6900",
+      "name": "Casio G-Shock DW-6900",
+      "brand": "Casio",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "digital",
+      "gender": "unisex",
+      "price": 69.99,
+      "currency": "USD",
+      "rating": 4.5,
+      "review_count": 1100,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_40",
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#1c1c1e",
+          "photo": {
+            "pixabay_id": 1283309,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Classic digital G-Shock, tough, simple and water resistant to 200m.",
+      "tags": [
+        "g-shock",
+        "digital",
+        "classic"
+      ],
+      "out_of_stock": []
+    },
+    {
+      "product_id": "casio_gshock_ga100",
+      "slug": "casio-g-shock-ga-100",
+      "name": "Casio G-Shock GA-100",
+      "brand": "Casio",
+      "department": "accessories",
+      "category": "watches",
+      "subcategory": "digital",
+      "gender": "unisex",
+      "price": 99.99,
+      "currency": "USD",
+      "rating": 4.7,
+      "review_count": 1850,
+      "delivery_days": 3,
+      "is_new": false,
+      "option_label": "Case size",
+      "sizes": "watch_48",
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#1c1c1e",
+          "photo": {
+            "pixabay_id": 7703039,
+            "mode": "studio"
+          }
+        }
+      ],
+      "description": "Big-face analog-digital G-Shock with world time and a 200m water rating.",
+      "tags": [
+        "g-shock",
+        "analog-digital",
+        "black"
+      ],
+      "out_of_stock": []
+    }
+  ]
+}

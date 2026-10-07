@@ -10,6 +10,7 @@ from backend.db.init_db import init_db, run as seed_db
 from backend.routers import auth, merchants, products, chat, authorizations, payments, cart, compare, loyalty
 from backend.routers import a2a as a2a_router
 from backend.routers import generic_chat as generic_chat_router
+from backend.routers import purchase as purchase_router
 from backend.config.llm import resolve_llm
 from backend.observability.tracing import init_tracing
 
@@ -53,6 +54,7 @@ app.include_router(compare.router)
 app.include_router(loyalty.router)
 app.include_router(a2a_router.router)
 app.include_router(generic_chat_router.router)
+app.include_router(purchase_router.router)
 
 
 @app.get("/")

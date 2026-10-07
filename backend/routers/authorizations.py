@@ -11,7 +11,6 @@ Endpoints:
 """
 import json
 import uuid
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,14 +23,15 @@ from backend.ap2.adapter import AP2Adapter
 from backend.ap2.models import AP2CartMandate
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.agents.greenlight import request_dpat, summarize_authorization
-from backend.db.schema import AcpSharedToken, AuditEvent, DelegatedToken, PaymentAuthorization, ProtocolMandate
-from backend.graph import session_state
+from backend.db.schema import AcpSharedToken, AuditEvent, DelegatedToken, ProtocolMandate
 from backend.db.session_utils import get_session as _session, now_utc as _now, write_audit_event as _audit
 from backend.merchants import catalog as merchant_catalog
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import GuardrailEvent, PaymentRequest
+from backend.payment.authorization_adapter import persist_dpat
+from backend.trust import sessions as trust_sessions
+from backend.trust.models import SCOPE_CHECKOUT
 from backend.payment.guardrail_engine import run_guardrails
-from backend.payment.signing import sign_authorization
 from backend.payment.token_lookup import load_token_context
 
 router = APIRouter()
@@ -44,6 +44,7 @@ class CreateCheckoutRequest(BaseModel):
     merchant_id: str
     quantity: int = 1
     session_id: Optional[str] = None
+    trusted_session_id: Optional[str] = None
 
 
 class ApproveRequest(BaseModel):
@@ -125,15 +126,11 @@ def _verify_cart(doc: Optional[dict], checkout_hash: str) -> tuple[bool, str]:
 
 
 def _issue_checkout_mandates(checkout: CheckoutObject, product, session_id: Optional[str], user_id: str) -> dict:
-    normalized_intent = session_state.get_partial_intent(session_id) if session_id else None
-    intent_mandate = None
-    if normalized_intent:
-        intent_mandate = _ap2.create_intent_mandate(
-            query=normalized_intent.get("raw_query") or "",
-            user_id=user_id,
-            merchants=[product.merchant_id],
-            normalized_intent=normalized_intent,
-        )
+    """
+    AP2 cart evidence for this checkout. The shopping search intent is deliberately
+    NOT turned into an AP2 IntentMandate here: finding shoes is not permission to
+    spend money. Spending consent is recorded only when the customer says GO AHEAD.
+    """
     cart_mandate = _ap2.create_cart_mandate(
         product={
             "id": product.product_id,
@@ -145,17 +142,15 @@ def _issue_checkout_mandates(checkout: CheckoutObject, product, session_id: Opti
         quantity=checkout.quantity,
         totals={"subtotal": checkout.subtotal, "fulfillment": checkout.shipping, "tax": checkout.tax, "total": checkout.total},
         ucp_session_id=checkout.checkout_id,
-        intent_mandate_id=intent_mandate.id if intent_mandate else "",
+        intent_mandate_id="",
         checkout_hash=checkout.checkout_hash,
     )
     with _session() as session:
-        if intent_mandate:
-            _store_mandate(session, intent_mandate, "intent", checkout.checkout_id, user_id)
         _store_mandate(session, cart_mandate, "cart", checkout.checkout_id, user_id)
         session.commit()
     verified, reason = _verify_cart(json.loads(cart_mandate.model_dump_json(by_alias=True)), checkout.checkout_hash)
     return {
-        "intent_mandate_id": intent_mandate.id if intent_mandate else None,
+        "intent_mandate_id": None,
         "cart_mandate_id": cart_mandate.id,
         "cart_verified": verified,
         "cart_reason": reason or None,
@@ -174,6 +169,13 @@ async def create_checkout_endpoint(
     normalized = merchant_catalog.get_product(req.product_id)
     if not normalized:
         raise HTTPException(status_code=404, detail="Product not found")
+
+    # The merchant only creates a checkout for a customer agent it has verified.
+    trusted, decision = trust_sessions.require(current_user.user_id, normalized.merchant_id, SCOPE_CHECKOUT,
+                                               chat_session_id=req.session_id,
+                                               trusted_session_id=req.trusted_session_id)
+    if trusted is None:
+        raise HTTPException(status_code=403, detail=f"TRUST_VALIDATION_FAILED: {decision.reason}")
 
     checkout, error = await build_checkout(normalized, req.quantity, current_user.user_id)
     if error:
@@ -226,49 +228,8 @@ async def approve_authorization(
 
     # Persist authorization + token + consent audit event
     with _session() as session:
-        now = _now()
-        expires_at = datetime.fromisoformat(token_dict["expires_at"].replace("Z", "+00:00"))
-
-        # Re-sign over exactly the columns PaymentAuthorization persists (no datetime,
-        # no mutable lifecycle state like status/consumed_at) so token_lookup.load_token_context
-        # can reconstruct an identical payload later and verify it byte-for-byte — the
-        # in-memory signature GreenLight computed over the full DPATToken dump can't be
-        # exactly reconstructed from relational columns after a DB round-trip.
-        storage_signature = sign_authorization({
-            "token_id": token_id,
-            "agent_id": token_dict["agent_id"],
-            "merchant_id": req.merchant_id,
-            "order_id": req.checkout_id,
-            "currency": req.currency,
-            "max_amount": req.total,
-            "checkout_hash": req.checkout_hash,
-        })
-
-        auth = PaymentAuthorization(
-            authorization_id=authorization_id,
-            user_id=current_user.user_id,
-            agent_id=token_dict["agent_id"],
-            merchant_id=req.merchant_id,
-            order_id=req.checkout_id,
-            max_amount=req.total,
-            currency=req.currency,
-            checkout_hash=req.checkout_hash,
-            signature=storage_signature,
-            approved_at=now,
-            expires_at=expires_at,
-            status="active",
-        )
-        session.add(auth)
-
-        token_row = DelegatedToken(
-            token_id=token_id,
-            authorization_id=authorization_id,
-            single_use=True,
-            issued_at=now,
-            expires_at=expires_at,
-            status="active",
-        )
-        session.add(token_row)
+        persist_dpat(session, token_id=token_id, token_dict=token_dict, authorization_id=authorization_id,
+                     user_id=current_user.user_id, checkout=checkout)
 
         payment_mandate = _ap2.create_payment_mandate(
             cart_mandate=AP2CartMandate(**cart_doc),

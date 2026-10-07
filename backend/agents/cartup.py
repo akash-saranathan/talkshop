@@ -8,6 +8,7 @@ merchant tool responses, never from LLM reasoning.
 import hashlib
 import json
 import uuid
+from datetime import date, timedelta
 from typing import Optional
 
 from backend.models.checkout import CheckoutObject
@@ -43,6 +44,9 @@ async def build_checkout(
     tax = round(subtotal * TAX_RATE, 2)
     shipping = 0.0 if subtotal >= FREE_SHIPPING_THRESHOLD else FLAT_SHIPPING_COST
     total = round(subtotal + tax + shipping, 2)
+    # The merchant's delivery promise is part of what the customer agrees to.
+    delivery_days = inv.get("delivery_days") or product.delivery_days or 5
+    delivery_date = (date.today() + timedelta(days=delivery_days)).isoformat()
 
     # Compute checkout hash — binds DPAT token to this exact cart
     canonical = {
@@ -55,6 +59,7 @@ async def build_checkout(
         "shipping": shipping,
         "total": total,
         "currency": "USD",
+        "delivery_date": delivery_date,
     }
     checkout_hash = hashlib.sha256(
         json.dumps(canonical, sort_keys=True).encode()
@@ -74,6 +79,24 @@ async def build_checkout(
         tax=tax,
         total=total,
         currency="USD",
+        delivery_date=delivery_date,
         checkout_hash=checkout_hash,
     )
     return checkout, None
+
+
+def checkout_hash_for(checkout: CheckoutObject, unit_price: float) -> str:
+    """Recompute the hash after the merchant changes a term (e.g. a new delivery date)."""
+    canonical = {
+        "product_id": checkout.product_id,
+        "merchant_id": checkout.merchant_id,
+        "quantity": checkout.quantity,
+        "unit_price": unit_price,
+        "subtotal": checkout.subtotal,
+        "tax": checkout.tax,
+        "shipping": checkout.shipping,
+        "total": checkout.total,
+        "currency": checkout.currency,
+        "delivery_date": checkout.delivery_date,
+    }
+    return hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()

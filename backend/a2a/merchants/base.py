@@ -3,8 +3,11 @@ Base merchant agent — shared catalog loading and product search logic.
 All 6 merchant agents inherit from this.
 """
 from __future__ import annotations
+import copy
 import json
 import uuid
+import zlib
+from functools import lru_cache
 from pathlib import Path
 
 from backend.a2a.models import (
@@ -14,6 +17,69 @@ from backend.a2a.models import (
 )
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
+
+
+def colour_image_url(slug: str, colour: str) -> str:
+    """Public URL of a product colour photo (made by scripts/fetch_catalog_photos.py)."""
+    return f"/catalog/{slug}/" + "-".join(colour.lower().replace("/", " ").split()) + ".webp"
+
+
+def _stock(product_id: str, size: str, colour: str) -> int:
+    """Deterministic demo stock level (3-15) so inventory looks varied but never changes between runs."""
+    return 3 + zlib.crc32(f"{product_id}|{size}|{colour}".encode()) % 13
+
+
+def _expand(product: dict, size_ranges: dict) -> dict:
+    sizes = size_ranges[product["sizes"]]
+    sold_out = product.get("out_of_stock", [])
+
+    def in_stock(size: str, colour: str) -> bool:
+        return not any(o.get("size", size) == size and o.get("color", colour) == colour for o in sold_out)
+
+    variants = []
+    for c in product["colors"]:
+        for size in sizes:
+            ok = in_stock(size, c["name"])
+            variants.append({
+                "size": size,
+                "color": c["name"],
+                "available": ok,
+                "inventory": _stock(product["product_id"], size, c["name"]) if ok else 0,
+            })
+    return {
+        "id": product["product_id"],
+        "sku": product["product_id"],
+        "slug": product["slug"],
+        "title": product["name"],
+        "brand": product["brand"],
+        "department": product["department"],
+        "category": product["category"],
+        "subcategory": product["subcategory"],
+        "gender": product["gender"],
+        "price": product["price"],
+        "currency": product.get("currency", "USD"),
+        "rating": product["rating"],
+        "review_count": product["review_count"],
+        "shipping_days": product["delivery_days"],
+        "is_new": product.get("is_new", False),
+        "option_label": product.get("option_label", "Size"),
+        "description": product["description"],
+        "tags": product.get("tags", []),
+        "colors": [{"name": c["name"], "hex": c["hex"]} for c in product["colors"]],
+        "images": {c["name"]: colour_image_url(product["slug"], c["name"]) for c in product["colors"]},
+        "variants": variants,
+    }
+
+
+@lru_cache(maxsize=None)
+def _read_catalog(path: Path, mtime: float) -> tuple[dict, ...]:
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    return tuple(_expand(p, doc["size_ranges"]) for p in doc["products"])
+
+
+def _load_catalog_file(path: Path) -> list[dict]:
+    # Cached per file version; callers get fresh copies so they can't mutate the cache.
+    return copy.deepcopy(list(_read_catalog(path, path.stat().st_mtime)))
 
 
 class BaseMerchantAgent:
@@ -52,9 +118,9 @@ class BaseMerchantAgent:
     # ── Catalog loading ───────────────────────────────────────────────────
 
     def _load_catalog(self) -> list[dict]:
-        path = DATA_DIR / self.catalog_file
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        """Read the merchant catalog and expand it into one dict per product with a
+        full variants list (every size x colour), which search and checkout use."""
+        return _load_catalog_file(DATA_DIR / self.catalog_file)
 
     # ── Product search ────────────────────────────────────────────────────
 
@@ -66,7 +132,9 @@ class BaseMerchantAgent:
             # like "running_shoes" match catalog categories like "running" or "sneakers"
             if intent.category:
                 cat = intent.category.lower().replace("_", " ").replace("-", " ")
-                prod_cat = (product["category"] + " " + product.get("subcategory", "")).lower()
+                # department lets broad asks ("clothing", "shoes") reach every product in it, dresses included
+                prod_cat = " ".join([product["category"], product.get("subcategory", ""),
+                                     product.get("department", "")]).lower()
                 cat_words = {w for w in cat.split() if len(w) > 2}
                 prod_words = {w for w in prod_cat.split() if len(w) > 2}
                 # Pass if: direct substring OR any word overlap in either direction
@@ -80,9 +148,9 @@ class BaseMerchantAgent:
             if intent.max_price and product["price"] > intent.max_price:
                 continue
 
-            # keyword filter (title / description)
+            # keyword filter (title / description / tags)
             if intent.keywords:
-                text = (product["title"] + " " + product.get("description", "")).lower()
+                text = " ".join([product["title"], product.get("description", ""), *product.get("tags", [])]).lower()
                 if not any(kw.lower() in text for kw in intent.keywords):
                     continue
 
