@@ -135,6 +135,31 @@ class DelegatedToken(Base):
     status = Column(String(20), default="active")
 
 
+class ProtocolMandate(Base):
+    """AP2 mandates (intent, cart, payment) as issued, so approval and payment can verify them."""
+    __tablename__ = "protocol_mandates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    mandate_id = Column(String(120), unique=True, nullable=False)
+    mandate_type = Column(String(20), nullable=False)
+    checkout_id = Column(String(50), nullable=False, index=True)
+    user_id = Column(String(50), nullable=False)
+    document = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class AcpSharedToken(Base):
+    """ACP shared payment token, derived from and bound to one DPAT authorization."""
+    __tablename__ = "acp_shared_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    spt_id = Column(String(50), unique=True, nullable=False)
+    dpat_token_id = Column(String(50), ForeignKey("delegated_tokens.token_id"), nullable=False, unique=True)
+    checkout_id = Column(String(50), nullable=False, index=True)
+    document = Column(Text, nullable=False)
+    consumed_at = Column(DateTime)
+
+
 class ChatSession(Base):
     """One chat thread — created lazily on the first message, matching
     ChatGPT's 'New Chat' not existing until you actually send something."""

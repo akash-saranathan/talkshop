@@ -17,10 +17,15 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.acp.adapter import ACPAdapter
+from backend.acp.token import verify_spt_document
 from backend.agents.cartup import build_checkout
+from backend.ap2.adapter import AP2Adapter
+from backend.ap2.models import AP2CartMandate
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.agents.greenlight import request_dpat, summarize_authorization
-from backend.db.schema import AuditEvent, DelegatedToken, PaymentAuthorization
+from backend.db.schema import AcpSharedToken, AuditEvent, DelegatedToken, PaymentAuthorization, ProtocolMandate
+from backend.graph import session_state
 from backend.db.session_utils import get_session as _session, now_utc as _now, write_audit_event as _audit
 from backend.merchants import catalog as merchant_catalog
 from backend.models.checkout import CheckoutObject
@@ -38,6 +43,7 @@ class CreateCheckoutRequest(BaseModel):
     product_id: str
     merchant_id: str
     quantity: int = 1
+    session_id: Optional[str] = None
 
 
 class ApproveRequest(BaseModel):
@@ -52,6 +58,8 @@ class ApproveRequest(BaseModel):
     subtotal: float
     tax: float
     shipping: float
+    card_brand: Optional[str] = None
+    card_last4: Optional[str] = None
 
 
 class ApproveResponse(BaseModel):
@@ -59,6 +67,7 @@ class ApproveResponse(BaseModel):
     authorization_id: str
     expires_at: str
     summary: str
+    protocols: dict = {}
 
 
 class ValidateRequest(BaseModel):
@@ -80,6 +89,79 @@ class RevokeRequest(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+_ap2 = AP2Adapter()
+_acp = ACPAdapter()
+
+
+def _store_mandate(session, mandate, mandate_type: str, checkout_id: str, user_id: str) -> None:
+    session.add(ProtocolMandate(
+        mandate_id=mandate.id,
+        mandate_type=mandate_type,
+        checkout_id=checkout_id,
+        user_id=user_id,
+        document=json.dumps(mandate.model_dump(by_alias=True), default=str),
+    ))
+
+
+def _load_mandate(session, checkout_id: str, mandate_type: str) -> Optional[dict]:
+    row = (
+        session.query(ProtocolMandate)
+        .filter(ProtocolMandate.checkout_id == checkout_id, ProtocolMandate.mandate_type == mandate_type)
+        .order_by(ProtocolMandate.id.desc())
+        .first()
+    )
+    return json.loads(row.document) if row else None
+
+
+def _verify_cart(doc: Optional[dict], checkout_hash: str) -> tuple[bool, str]:
+    if doc is None:
+        return False, "cart_mandate_missing"
+    mandate = AP2CartMandate(**doc)
+    if not _ap2.verify_mandate(mandate):
+        return False, "cart_mandate_signature_mismatch"
+    if mandate.credentialSubject.get("checkout_hash") != checkout_hash:
+        return False, "cart_mandate_checkout_hash_mismatch"
+    return True, ""
+
+
+def _issue_checkout_mandates(checkout: CheckoutObject, product, session_id: Optional[str], user_id: str) -> dict:
+    normalized_intent = session_state.get_partial_intent(session_id) if session_id else None
+    intent_mandate = None
+    if normalized_intent:
+        intent_mandate = _ap2.create_intent_mandate(
+            query=normalized_intent.get("raw_query") or "",
+            user_id=user_id,
+            merchants=[product.merchant_id],
+            normalized_intent=normalized_intent,
+        )
+    cart_mandate = _ap2.create_cart_mandate(
+        product={
+            "id": product.product_id,
+            "merchant_id": product.merchant_id,
+            "merchant_name": product.merchant_name,
+            "title": product.title,
+            "price": product.price,
+        },
+        quantity=checkout.quantity,
+        totals={"subtotal": checkout.subtotal, "fulfillment": checkout.shipping, "tax": checkout.tax, "total": checkout.total},
+        ucp_session_id=checkout.checkout_id,
+        intent_mandate_id=intent_mandate.id if intent_mandate else "",
+        checkout_hash=checkout.checkout_hash,
+    )
+    with _session() as session:
+        if intent_mandate:
+            _store_mandate(session, intent_mandate, "intent", checkout.checkout_id, user_id)
+        _store_mandate(session, cart_mandate, "cart", checkout.checkout_id, user_id)
+        session.commit()
+    verified, reason = _verify_cart(json.loads(cart_mandate.model_dump_json(by_alias=True)), checkout.checkout_hash)
+    return {
+        "intent_mandate_id": intent_mandate.id if intent_mandate else None,
+        "cart_mandate_id": cart_mandate.id,
+        "cart_verified": verified,
+        "cart_reason": reason or None,
+    }
+
+
 @router.post("/api/checkout/create")
 async def create_checkout_endpoint(
     req: CreateCheckoutRequest,
@@ -97,7 +179,9 @@ async def create_checkout_endpoint(
     if error:
         raise HTTPException(status_code=400, detail=error)
 
-    return checkout.model_dump(mode="json")
+    checkout_out = checkout.model_dump(mode="json")
+    checkout_out["ap2"] = _issue_checkout_mandates(checkout, normalized, req.session_id, current_user.user_id)
+    return checkout_out
 
 
 @router.post("/api/authorizations/approve", response_model=ApproveResponse)
@@ -127,6 +211,12 @@ async def approve_authorization(
         currency=req.currency,
         checkout_hash=req.checkout_hash,
     )
+
+    with _session() as session:
+        cart_doc = _load_mandate(session, req.checkout_id, "cart")
+    cart_ok, cart_reason = _verify_cart(cart_doc, req.checkout_hash)
+    if not cart_ok:
+        raise HTTPException(status_code=400, detail=f"AP2 verification failed: {cart_reason}")
 
     token_id, token_dict, error = await request_dpat(
         checkout, current_user.user_id, authorization_id
@@ -180,6 +270,29 @@ async def approve_authorization(
         )
         session.add(token_row)
 
+        payment_mandate = _ap2.create_payment_mandate(
+            cart_mandate=AP2CartMandate(**cart_doc),
+            order_id=req.checkout_id,
+            payment_ref=token_id,
+            user_id=current_user.user_id,
+        )
+        _store_mandate(session, payment_mandate, "payment", req.checkout_id, current_user.user_id)
+
+        spt_doc = _acp.issue_document(
+            dpat_token_id=token_id,
+            merchant_id=req.merchant_id,
+            total_cents=round(req.total * 100),
+            brand=req.card_brand or "card",
+            last4=req.card_last4 or "0000",
+            currency=req.currency,
+        )
+        session.add(AcpSharedToken(
+            spt_id=spt_doc["token"]["id"],
+            dpat_token_id=token_id,
+            checkout_id=req.checkout_id,
+            document=json.dumps(spt_doc),
+        ))
+
         _audit(session, "USER_APPROVED_PURCHASE",
                user_id=current_user.user_id, order_id=req.checkout_id,
                authorization_id=authorization_id,
@@ -197,6 +310,15 @@ async def approve_authorization(
         authorization_id=authorization_id,
         expires_at=token_dict["expires_at"],
         summary=summary,
+        protocols={
+            "ap2_cart_verified": True,
+            "ap2_payment_mandate_id": payment_mandate.id,
+            "acp_spt_id": spt_doc["token"]["id"],
+            "acp_maximum_amount_cents": spt_doc["token"]["constraints"]["maximum_amount"],
+            "acp_currency": spt_doc["token"]["constraints"]["currency"],
+            "acp_expiration": spt_doc["token"]["constraints"]["expiration"],
+            "dpat_token_id": token_id,
+        },
     )
 
 

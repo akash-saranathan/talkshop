@@ -16,10 +16,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import update
 
+from backend.acp.token import verify_spt_document
 from backend.agents import payit, trackit
+from backend.ap2.adapter import AP2Adapter
+from backend.ap2.models import AP2PaymentMandate
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.config.agents import PAYIT, TRACKIT
-from backend.db.schema import AuditEvent, CartItem, DelegatedToken, LoyaltyPoints, LoyaltyTransaction, Merchant, Order, PaymentAuthorization, Product, Wallet
+from backend.db.schema import AcpSharedToken, AuditEvent, CartItem, DelegatedToken, LoyaltyPoints, LoyaltyTransaction, Merchant, Order, PaymentAuthorization, Product, Wallet
+from backend.routers.authorizations import _load_mandate, _verify_cart
 from backend.db.session_utils import get_session, now_utc, write_audit_event
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import PaymentRequest
@@ -57,6 +61,8 @@ class ExecutePaymentResponse(BaseModel):
     wallet_balance: Optional[float] = None
     points_earned: Optional[int] = None
     loyalty_balance: Optional[int] = None
+    guardrail_events: list[dict] = []
+    protocols: dict = {}
 
 
 def _insert_order_if_absent(session, fields: dict):
@@ -68,6 +74,46 @@ def _insert_order_if_absent(session, fields: dict):
     existing = session.query(Order).filter(Order.order_id == fields["order_id"]).first()
     if not existing:
         session.add(Order(**fields))
+
+
+_ap2 = AP2Adapter()
+
+
+def _verify_protocols(session, req: "ExecutePaymentRequest") -> tuple[Optional[str], dict]:
+    """AP2 cart + payment mandates and the ACP token must verify before PayIt runs."""
+    cart_doc = _load_mandate(session, req.checkout_id, "cart")
+    cart_ok, cart_reason = _verify_cart(cart_doc, req.checkout_hash)
+    if not cart_ok:
+        return cart_reason, {}
+
+    pay_doc = _load_mandate(session, req.checkout_id, "payment")
+    if pay_doc is None:
+        return "payment_mandate_missing", {}
+    pay_mandate = AP2PaymentMandate(**pay_doc)
+    if not _ap2.verify_mandate(pay_mandate):
+        return "payment_mandate_signature_mismatch", {}
+    if pay_mandate.credentialSubject.get("payment_ref") != req.token_id:
+        return "payment_mandate_token_mismatch", {}
+    if pay_mandate.credentialSubject.get("checkout_hash") != req.checkout_hash:
+        return "payment_mandate_checkout_hash_mismatch", {}
+
+    spt = session.query(AcpSharedToken).filter(AcpSharedToken.dpat_token_id == req.token_id).first()
+    if spt is None:
+        return "acp_spt_missing", {}
+    if spt.consumed_at is not None:
+        return "acp_spt_consumed", {}
+    ok, reason = verify_spt_document(
+        json.loads(spt.document), round(req.total * 100), req.currency, f"nbp_{req.merchant_id}",
+    )
+    if not ok:
+        return f"acp_{reason}", {}
+
+    return None, {
+        "ap2_cart_verified": True,
+        "ap2_payment_mandate_id": pay_mandate.id,
+        "acp_spt_id": spt.spt_id,
+        "acp_verified": True,
+    }
 
 
 @router.post("/api/payments/execute", response_model=ExecutePaymentResponse)
@@ -121,6 +167,20 @@ async def execute_payment_endpoint(
                     merchant=req.merchant_name,
                     summary=trackit.summarize_decline(req.checkout_id, sig_error),
                     blocked_reason=sig_error,
+                )
+
+            protocol_reason, protocol_details = _verify_protocols(session, req)
+            if protocol_reason is not None:
+                write_audit_event(session, "PAYMENT_BLOCKED", user_id=current_user.user_id,
+                                   agent_id=PAYIT.agent_id, order_id=req.checkout_id,
+                                   metadata={"reason": protocol_reason})
+                _insert_order_if_absent(session, trackit.record_incomplete_order(checkout, "blocked", current_user.user_id))
+                session.commit()
+                return ExecutePaymentResponse(
+                    status="blocked", order_id=req.checkout_id, amount=req.total,
+                    merchant=req.merchant_name,
+                    summary=trackit.summarize_decline(req.checkout_id, protocol_reason),
+                    blocked_reason=protocol_reason,
                 )
 
             # Atomically claim single-use consumption before charging — closes the
@@ -247,6 +307,9 @@ async def execute_payment_endpoint(
                 points_earned=points_earned,
                 reason="purchase",
             ))
+            session.query(AcpSharedToken).filter(AcpSharedToken.dpat_token_id == req.token_id).update(
+                {"consumed_at": now_utc()}
+            )
             session.commit()
 
             return ExecutePaymentResponse(
@@ -256,6 +319,8 @@ async def execute_payment_endpoint(
                 wallet_balance=wallet.balance if wallet else None,
                 points_earned=points_earned,
                 loyalty_balance=lp.balance,
+                guardrail_events=[e.model_dump(mode="json") for e in events],
+                protocols=protocol_details,
             )
 
 

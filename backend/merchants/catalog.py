@@ -2,8 +2,10 @@
 Product source for Talk Shop search: the six demo merchant catalogs.
 Each catalog variant becomes one NormalizedProduct so cards, cart and checkout keep their existing shape.
 """
+import json
 import re
 from functools import lru_cache
+from pathlib import Path
 
 from backend.a2a.merchants import adidas, casio, fossil, hm, nike, zara
 from backend.a2a.models import ShoppingIntent as A2AIntent
@@ -28,6 +30,23 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
+_PUBLIC_DIR = _BACKEND_DIR.parent / "frontend" / "public"
+
+
+@lru_cache(maxsize=1)
+def _image_sources() -> dict:
+    path = _BACKEND_DIR / "data" / "merchant_image_sources.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def _image_url(product_base_id: str) -> str | None:
+    entry = _image_sources().get(product_base_id)
+    if not entry or not (_PUBLIC_DIR / entry["file"].lstrip("/")).exists():
+        return None
+    return entry["file"]
+
+
 def _to_products(agent, product: dict, variants: list[dict]) -> list[NormalizedProduct]:
     base_id = product.get("sku") or product["id"]
     return [
@@ -47,6 +66,7 @@ def _to_products(agent, product: dict, variants: list[dict]) -> list[NormalizedP
             delivery_days=product.get("shipping_days", 5),
             rating=product.get("rating", 0.0),
             review_count=product.get("review_count", 0),
+            image_url=_image_url(base_id),
             source="merchant_catalog",
         )
         for v in variants

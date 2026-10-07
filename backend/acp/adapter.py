@@ -13,7 +13,7 @@ The agent never touches raw card data at any point in this chain.
 from __future__ import annotations
 
 from backend.acp.models import ACPSharedPaymentToken
-from backend.acp.token import issue_spt, verify_spt
+from backend.acp.token import _sign_token, issue_spt, verify_spt
 
 
 class ACPAdapter:
@@ -41,3 +41,22 @@ class ACPAdapter:
         """Verify SPT before passing it to UCP complete. Returns (ok, reason)."""
         seller_profile = f"nbp_{merchant_id}"
         return verify_spt(token_id, charge_cents, currency, seller_profile)
+
+    def issue_document(
+        self,
+        dpat_token_id: str,
+        merchant_id: str,
+        total_cents: int,
+        brand: str,
+        last4: str,
+        currency: str = "USD",
+    ) -> dict:
+        """SPT bound to one DPAT authorization, as a signed document the caller persists."""
+        token = self.issue(dpat_token_id, merchant_id, total_cents, brand, last4, currency)
+        seller_profile = f"nbp_{merchant_id}"
+        return {
+            "token": token.model_dump(),
+            "seller_profile": seller_profile,
+            "dpat_token_id": dpat_token_id,
+            "signature": _sign_token(token.id, token.constraints, seller_profile),
+        }

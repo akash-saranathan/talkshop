@@ -100,7 +100,6 @@ export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
   const locationItems = (location.state?.items as CartItemData[] | undefined) ?? null;
-  const locationPaymentMethod = (location.state?.paymentMethod as "wallet" | "card" | undefined) ?? "card";
   const locationSelectedCard = (location.state?.selectedCard as string | undefined);
 
   const [initialItems, setInitialItems] = useState<CartItemData[]>(locationItems ?? []);
@@ -111,15 +110,9 @@ export default function Checkout() {
   const [started, setStarted] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"wallet" | "card">(locationPaymentMethod);
+  const paymentMethod = "card" as const;
   const [selectedCard, setSelectedCard] = useState(locationSelectedCard ?? MOCK_CARDS[0].id);
-  const [wallet, setWallet] = useState<{ balance: number; currency: string } | null>(null);
   const [redirectIn, setRedirectIn] = useState<number | null>(null);
-
-  // Fetch wallet balance for the payment method picker
-  useEffect(() => {
-    authFetch("/api/wallet").then((r) => r.ok ? r.json() : null).then((w) => { if (w) setWallet(w); }).catch(() => {});
-  }, []);
 
   // Fall back to loading cart from API when no items passed via navigate state
   // (e.g. when auto-checkout countdown fires directly to /checkout).
@@ -250,7 +243,6 @@ export default function Checkout() {
   const succeeded = queue.filter((e) => e.status === "success").length;
   const finished = started && !processing;
   const checkoutTotal = queue.reduce((s, e) => s + (e.checkoutData?.total ?? e.item.price * e.item.quantity), 0);
-  const walletInsufficient = paymentMethod === "wallet" && wallet !== null && wallet.balance < checkoutTotal;
 
   // Auto-redirect to dashboard 10s after all items are done processing, if at least one succeeded.
   useEffect(() => {
@@ -267,9 +259,7 @@ export default function Checkout() {
   }, [finished, succeeded, navigate]);
 
   // Derive a readable payment label to show (read-only)
-  const payingWith = paymentMethod === "wallet"
-    ? `Wallet${wallet ? ` · $${wallet.balance.toFixed(2)} balance` : ""}`
-    : (() => { const c = MOCK_CARDS.find((c) => c.id === selectedCard); return c ? `${c.network} ••••${c.last4}` : "Card"; })();
+  const payingWith = (() => { const c = MOCK_CARDS.find((c) => c.id === selectedCard); return c ? `${c.network} ••••${c.last4}` : "Card"; })();
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
@@ -339,14 +329,8 @@ export default function Checkout() {
           <div className="flex flex-col gap-2">
             {!started ? (
               <>
-                {walletInsufficient && (
-                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-                    Wallet balance (${wallet!.balance.toFixed(2)}) is less than the order total — go back to Cart and switch to Card.
-                  </p>
-                )}
                 <button
                   onClick={handleApproveAll}
-                  disabled={walletInsufficient}
                   className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:bg-[var(--color-primary-light)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   Approve Purchase{queue.length > 1 ? ` (${queue.length} items)` : ""}

@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Loader, Minus, Plus, Trash2, ShoppingCart, Wallet, CreditCard } from "lucide-react";
+import { ArrowLeft, Loader, Minus, Plus, Trash2, ShoppingCart, CreditCard } from "lucide-react";
 import { getCart, updateCartItemQuantity, removeFromCart, type CartItemData } from "../api/cart";
-import { authFetch } from "../api/client";
-import { useAuth } from "../auth/AuthContext";
 import { getProductVisual } from "../utils/productVisual";
-
-interface WalletBalance { balance: number; currency: string; }
 
 const MOCK_CARDS = [
   { last4: "4242", brand: "Visa",       gradient: "from-blue-500 to-blue-700" },
@@ -39,21 +35,14 @@ export default function Cart() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
-  const [wallet, setWallet] = useState<WalletBalance | null>(null);
-  // Guests pay by card only — the wallet option isn't offered to them.
-  const { isGuest } = useAuth();
-  const [paymentMethod, setPaymentMethod] = useState<"wallet" | "card">(isGuest ? "card" : "wallet");
+  const paymentMethod = "card" as const;
   const [selectedCard, setSelectedCard] = useState("4242");
   const [sessionCartIds] = useState<Set<string>>(readSessionCartIds);
 
   useEffect(() => {
-    Promise.all([
-      getCart(),
-      isGuest ? Promise.resolve(null) : authFetch("/api/wallet").then((r) => r.ok ? r.json() : null).catch(() => null),
-    ])
-      .then(([data, w]) => {
+    getCart()
+      .then((data) => {
         setItems(data);
-        if (w) setWallet(w);
         // Auto-select session items; if no session data, select everything
         const toCheck = sessionCartIds.size > 0
           ? data.filter((i) => sessionCartIds.has(i.cart_item_id))
@@ -62,7 +51,7 @@ export default function Cart() {
       })
       .catch(() => setError("Couldn't load your cart. Please try again in a moment."))
       .finally(() => setLoading(false));
-  }, [sessionCartIds, isGuest]);
+  }, [sessionCartIds]);
 
   const toggleSelected = (cartItemId: string) => {
     setSelected((prev) => {
@@ -97,10 +86,8 @@ export default function Cart() {
 
   const selectedItems = items.filter((i) => selected.has(i.cart_item_id));
   const subtotal = selectedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const walletInsufficient = paymentMethod === "wallet" && wallet !== null && wallet.balance < subtotal;
-
   const handleCheckout = () => {
-    if (selectedItems.length === 0 || walletInsufficient) return;
+    if (selectedItems.length === 0) return;
     navigate("/checkout", { state: { items: selectedItems, paymentMethod, selectedCard } });
   };
 
@@ -309,21 +296,9 @@ export default function Cart() {
                 <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
                   Payment Method
                 </p>
-                <div className={`grid gap-2 mb-3 ${isGuest ? "grid-cols-1" : "grid-cols-2"}`}>
-                  {!isGuest && <button
-                    type="button"
-                    onClick={() => setPaymentMethod("wallet")}
-                    className={`flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-colors ${
-                      paymentMethod === "wallet"
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
-                        : "border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
-                    }`}
-                  >
-                    <Wallet size={15} /> Wallet
-                  </button>}
+                <div className="grid gap-2 mb-3 grid-cols-1">
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod("card")}
                     className={`flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-colors ${
                       paymentMethod === "card"
                         ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
@@ -333,19 +308,6 @@ export default function Cart() {
                     <CreditCard size={15} /> Card
                   </button>
                 </div>
-
-                {paymentMethod === "wallet" && wallet && (
-                  <div className={`rounded-xl p-3 flex items-center justify-between text-sm border ${
-                    wallet.balance >= subtotal
-                      ? "bg-[var(--color-success)]/5 border-[var(--color-success)]/20"
-                      : "bg-amber-50 border-amber-200"
-                  }`}>
-                    <span className="text-[var(--color-text-muted)]">Balance</span>
-                    <span className={`font-semibold ${wallet.balance >= subtotal ? "text-[var(--color-success)]" : "text-amber-600"}`}>
-                      ${wallet.balance.toFixed(2)}
-                    </span>
-                  </div>
-                )}
 
                 {paymentMethod === "card" && (
                   <div className="flex flex-col gap-2">
@@ -376,15 +338,10 @@ export default function Cart() {
                 )}
               </div>
 
-              {walletInsufficient && (
-                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-                  Wallet balance (${wallet!.balance.toFixed(2)}) is less than your subtotal — switch to Card or remove items.
-                </p>
-              )}
               <button
                 type="button"
                 onClick={handleCheckout}
-                disabled={selectedItems.length === 0 || walletInsufficient}
+                disabled={selectedItems.length === 0}
                 className="w-full px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-light)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 Proceed to Checkout

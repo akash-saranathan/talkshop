@@ -259,7 +259,7 @@ Frontend highlights: framer-motion for all inline animations, session persistenc
 
 # Version 2 — Generic Agentic Commerce (v3-generic-agent branch)
 
-> Note: the steps below describe the generic protocol path (`/api/generic/stream`). In the main Talk Shop chat, the AP2 and ACP steps do not run; the chat uses the GreenLight DPAT token for approval and payment. The flow the main chat actually runs, with real payloads, is documented at the end of this file under "Live Trace — Current Flow (Real Runtime)".
+> Note: the steps below describe the earlier generic protocol path (`/api/generic/stream`), which still exists separately. The main Talk Shop chat now runs AP2 and ACP as well; the flow it actually runs, with real payloads, is documented at the end of this file under "Live Trace — Current Flow (Real Runtime)".
 
 ## What Changed
 
@@ -613,8 +613,9 @@ This section describes what the app actually does today. Every JSON block was ca
 | A2A (merchant agents) | The six merchant agents are called in-process. The same agents are also exposed over HTTP as JSON-RPC 2.0 `message/send` at `/a2a/{merchant}`. | The chat flow uses the in-process calls, **not** the HTTP endpoint |
 | UCP Catalog | Calls to each merchant's catalog through the agent | Real data from `backend/data/*_catalog.json` |
 | UCP Checkout | `POST /api/checkout/create` | Real REST response |
-| AP2 approval | Browser approval step, then `POST /api/authorizations/approve` | The chat flow does **not** use the AP2 adapter. An AP2 adapter (`backend/ap2/`) exists and is used only by the separate generic path `/api/generic/stream`. |
-| ACP / DPAT | GreenLight DPAT token from `POST /api/authorizations/approve`, used by `POST /api/payments/execute` | The chat flow uses this DPAT token. An ACP adapter (`backend/acp/`) exists but is used only by the generic path. |
+| AP2 cart and payment mandates | Cart mandate created with `POST /api/checkout/create`; payment mandate created with `POST /api/authorizations/approve` | Real. The cart mandate is verified at approval and again at payment. Mandates are stored in the `protocol_mandates` table. |
+| ACP token (SPT) | Issued at `POST /api/authorizations/approve`, bound to the DPAT, stored in `acp_shared_tokens` | Real. Verified before payment and marked used with the DPAT. |
+| DPAT (GreenLight) | Single-use authorization from `POST /api/authorizations/approve`, used by `POST /api/payments/execute` | Real. Remains the authoritative payment token. |
 | Payment | `POST /api/payments/execute` | Real REST response |
 | Order | Returned in the execute response | Real order ID |
 
@@ -843,13 +844,21 @@ A shopping request produces `nemo_pass` with `category: commerce_allowed`. If cl
 
 The checkout event in the trace shows these totals from this response.
 
-## Stage 8 — AP2 approval (browser step) and GreenLight DPAT
+## Stage 8 — AP2 approval and GreenLight DPAT
 
-**What it does:** the user confirms the amount in the UI. The app then calls `POST /api/authorizations/approve` with the checkout details. The server issues a single-use DPAT token.
+**What it does:** the user confirms the amount in the UI. The app calls `POST /api/authorizations/approve` with the checkout details. The server first verifies the AP2 cart mandate against the checkout hash. It then issues a single-use DPAT token, creates the AP2 payment mandate that references that DPAT, and derives an ACP shared token from it.
 
-**Why:** the user's consent is recorded before any money moves, and the token is tied to this checkout.
+**Why:** the user's consent is recorded before any money moves. Every record (DPAT, AP2 payment mandate, ACP token) is tied to this one checkout and this one token.
 
-**Honest note:** in the chat flow, the approval is a browser step followed by a GreenLight DPAT token. The AP2 adapter, which creates intent, cart and payment mandates as signed verifiable credentials, is not part of the chat flow. It runs only in the generic path.
+**Order of events in the trace:** AP2 cart mandate verified (at checkout), then DPAT issued, then AP2 payment mandate issued, then ACP token issued. Each event comes from the real response of the call that produced it.
+
+**Authoritative token:** the DPAT stays authoritative. PayIt's 12 checks are unchanged. The ACP token is a shared-token view of the same authorization, with the same amount, currency and expiry.
+
+## Stage 8b — ACP verification and payment guardrails
+
+**What it does:** before PayIt runs, the server verifies the AP2 cart mandate, the AP2 payment mandate (its `payment_ref` must be the DPAT id and its checkout hash must match), and the ACP token (signature, amount, currency, expiry, seller). Only then do PayIt's 12 guardrail checks run, followed by the mock processor.
+
+**Trace order:** ACP token verified, then payment guardrails (12/12), then payment executed, then order recorded. A blocked check stops the payment before the charge, and the DPAT is not used up by that blocked attempt.
 
 **Real request body:** the checkout's `checkout_id`, `checkout_hash`, `merchant_id`, `total`, `currency`, `product_id`, `product_title`, `merchant_name`, `subtotal`, `tax` and `shipping` fields, copied from the checkout response.
 
@@ -888,7 +897,7 @@ The checkout event in the trace shows these totals from this response.
 }
 ```
 
-**Not yet in the browser:** the 12 payment check results are computed on the server but are not returned to the chat, so the trace doesn't show them yet.
+**In the browser:** the 12 payment check results come back in the same response, and the trace shows them as "Payment guardrails (12/12)" before the payment is recorded.
 
 ## Stage 10 — Order
 
@@ -903,9 +912,9 @@ Durations are measured only where a real call was timed: the merchant catalog ca
 ## What is still not real
 
 - Separate request and response payloads are not captured for each event. Each event shows what it recorded when it fired.
-- The chat flow does not use the AP2 or ACP adapters. Its approval and payment use the GreenLight DPAT token.
+- The AP2 and ACP records are stored in the database, and are verified in the main chat before payment.
 - The chat flow calls the merchant agents in-process. It does not use the HTTP A2A endpoint.
-- Payment guardrail results are not yet returned to the browser.
+- Payment guardrail results are returned to the browser with each execution, and shown in the trace.
 - Intent extraction samples are not captured in this document.
 
 ## Protocol Fidelity
@@ -918,8 +927,8 @@ This section explains how each protocol is represented in the POC. The goal is a
 |---|---|---|
 | A2A | Yes. The six merchant agents are called in-process with A2A-style messages and task results. | Yes. Merchant agents are called in-process with A2A events (`backend/agents/generic_shopping_agent.py`). |
 | UCP | Yes, for catalog search. Checkout is our REST endpoint with UCP-style totals and fulfillment. | Yes, through the UCP adapter |
-| AP2 | No | Yes. Intent, cart and payment mandates. |
-| ACP | No. Payment uses the GreenLight DPAT token. | Yes. Delegated payment tokens. |
+| AP2 | Yes. Cart mandate at checkout, payment mandate at approval, both verified before payment. | Yes. Intent, cart and payment mandates. |
+| ACP | Yes. Shared payment token derived from the DPAT, verified before payment. | Yes. Delegated payment tokens. |
 | Guardrails (NeMo, Guardrails AI, input checks, merchant checks, payment checks) | Yes | Shared guardrail modules |
 
 ### Ratings against the official specifications
@@ -928,15 +937,15 @@ This section explains how each protocol is represented in the POC. The goal is a
 |---|---|---|---|
 | A2A | **Partially mimics** | Message, task and artifact structure. JSON-RPC 2.0 request and response shape. Agent card with skills and capabilities. | Method name is `message/send` (earlier A2A naming). Agent card lacks `id`, `provider`, `interfaces` and `securitySchemes`. Chat calls agents in-process; the HTTP endpoint is available separately. |
 | UCP | **Partially mimics** (catalog); **simplified** (checkout) | Products, variants, prices, totals and fulfillment concepts. | No pagination. Ratings are flat. No checkout session status lifecycle. |
-| AP2 | **Partially mimics** (generic path) | Intent, cart and payment mandates. Checkout-hash binding between mandates. | HMAC demo signature instead of SD-JWT. No `vct` claim. No merchant-signed checkout JWT. Credential Provider and Payment Processor roles are not separate components. |
-| ACP | **Partially mimics** (generic path) | Maximum amount in minor units, currency, expiry, single-use token concept. | Field names differ: `constraints` and `expiration` instead of `allowance` and `expires_at`. No `reason`, `checkout_session_id` or `merchant_id`. No `/checkout_sessions` or `/agentic_commerce/delegate_payment` routes. |
+| AP2 | **Partially mimics** (main chat and generic path) | Intent, cart and payment mandates. Checkout-hash binding between mandates. | HMAC demo signature instead of SD-JWT. No `vct` claim. No merchant-signed checkout JWT. Credential Provider and Payment Processor roles are not separate components. |
+| ACP | **Partially mimics** (main chat and generic path) | Maximum amount in minor units, currency, expiry, single-use token concept. | Field names differ: `constraints` and `expiration` instead of `allowance` and `expires_at`. No `reason`, `checkout_session_id` or `merchant_id`. No `/checkout_sessions` or `/agentic_commerce/delegate_payment` routes. |
 
 ### Truthful wording for the presentation
 
 - **A2A:** "Our merchant agents use A2A-style messages and task results. The chat calls them in-process, and the same agents are available over HTTP."
 - **UCP:** "Our catalog and checkout use UCP-style concepts: products, variants, totals and fulfillment. This is not the UCP wire protocol."
-- **AP2:** "We model intent, cart and payment mandates as verifiable-credential-style objects, bound by checkout hash, with a demo signature. This runs in the generic path."
-- **ACP:** "Our delegated payment token uses ACP's amount, currency and expiry concepts. This runs in the generic path. The main chat uses our DPAT token."
+- **AP2:** "Our purchase carries AP2-style cart and payment mandates as verifiable-credential-style objects, bound to the checkout hash, with a demo signature. They're verified before payment."
+- **ACP:** "Our payment uses an ACP-style shared payment token, derived from and bound to the DPAT authorization. It has the same amount, currency and expiry, and it's verified before the 12 payment checks run."
 
 ### Guardrails
 

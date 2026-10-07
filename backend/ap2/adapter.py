@@ -56,6 +56,7 @@ class AP2Adapter:
         query: str,
         user_id: str,
         merchants: list[str],
+        normalized_intent: dict | None = None,
     ) -> AP2IntentMandate:
         """
         IntentMandate — issued at session start by the user.
@@ -74,6 +75,8 @@ class AP2Adapter:
             "requires_refundability": False,
             "intent_expiry": _expiry_iso(30),
         }
+        if normalized_intent is not None:
+            subject["normalized_intent"] = normalized_intent
 
         return AP2IntentMandate(
             **{
@@ -98,6 +101,7 @@ class AP2Adapter:
         totals: dict[str, float],
         ucp_session_id: str,
         intent_mandate_id: str,
+        checkout_hash: str | None = None,
     ) -> AP2CartMandate:
         """
         CartMandate — issued by the agent after product selection.
@@ -107,7 +111,7 @@ class AP2Adapter:
         mandate_id = f"urn:ap2:mandate:cart:{uuid.uuid4().hex}"
         now = _now_iso()
 
-        checkout_hash = hashlib.sha256(
+        checkout_hash = checkout_hash or hashlib.sha256(
             json.dumps({
                 "product_id": product["id"],
                 "merchant_id": product["merchant_id"],

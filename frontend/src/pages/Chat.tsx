@@ -1030,6 +1030,7 @@ export default function Chat() {
           product_id: product.product_id,
           merchant_id: product.merchant_id,
           quantity: 1,
+          session_id: sessionIdRef.current,
         }),
       });
       if (!res.ok) throw new Error("Checkout creation failed");
@@ -1103,7 +1104,7 @@ export default function Chat() {
       await addToCart(product);
       const res = await authFetch("/api/checkout/create", {
         method: "POST",
-        body: JSON.stringify({ product_id: product.product_id, merchant_id: product.merchant_id, quantity: 1 }),
+        body: JSON.stringify({ product_id: product.product_id, merchant_id: product.merchant_id, quantity: 1, session_id: sessionIdRef.current }),
       });
       if (!res.ok) throw new Error("Checkout creation failed");
       const checkoutData: InlineCheckoutDataShape = await res.json();
@@ -1260,6 +1261,16 @@ export default function Chat() {
       },
     });
 
+    const ap2Cart = (checkoutData as unknown as {
+      ap2?: { intent_mandate_id: string | null; cart_mandate_id: string; cart_verified: boolean; cart_reason: string | null };
+    }).ap2;
+    if (ap2Cart) {
+      emitProto({
+        source: "ShoppingAgent", target: "AP2 verifier", protocol: "AP2", direction: "in",
+        label: "ap2_cart_mandate", detail: { endpoint: "POST /api/checkout/create", ...ap2Cart },
+      });
+    }
+
     const updateSteps = (steps: Array<{ label: string; status: "pending" | "running" | "done" | "error" }>) => {
       setTurns((prev) =>
         prev.map((t) => {
@@ -1293,6 +1304,8 @@ export default function Chat() {
           subtotal: checkoutData.subtotal,
           tax: checkoutData.tax,
           shipping: checkoutData.shipping,
+          card_brand: card.network,
+          card_last4: card.last4,
         }),
       });
       if (!approveRes.ok) throw new Error("Authorization failed");
@@ -1307,9 +1320,30 @@ export default function Chat() {
           duration_ms: Math.round(performance.now() - approveStart),
         },
       });
+      const approvedProtocols = (approveData.protocols ?? {}) as {
+        ap2_payment_mandate_id?: string; acp_spt_id?: string; acp_maximum_amount_cents?: number;
+        acp_currency?: string; acp_expiration?: number; dpat_token_id?: string;
+      };
       emitProto({
-        source: "ShoppingAgent", target: "PayIt", protocol: "UI", direction: "out",
-        label: "auth_ui_complete", detail: { note: "Browser step: approval confirmed in the UI. No AP2 message was exchanged." },
+        source: "ShoppingAgent", target: "AP2 verifier", protocol: "AP2", direction: "out",
+        label: "ap2_payment_mandate", detail: {
+          endpoint: "POST /api/authorizations/approve",
+          payment_mandate_id: approvedProtocols.ap2_payment_mandate_id ?? null,
+          payment_ref: approveData.token_id,
+          duration_ms: Math.round(performance.now() - approveStart),
+        },
+      });
+      emitProto({
+        source: "ACP", target: "ShoppingAgent", protocol: "ACP", direction: "in",
+        label: "acp_spt_issued", detail: {
+          endpoint: "POST /api/authorizations/approve",
+          spt_id: approvedProtocols.acp_spt_id ?? null,
+          bound_to_dpat: approvedProtocols.dpat_token_id ?? null,
+          maximum_amount_cents: approvedProtocols.acp_maximum_amount_cents ?? null,
+          currency: approvedProtocols.acp_currency ?? null,
+          expiration: approvedProtocols.acp_expiration ?? null,
+          duration_ms: Math.round(performance.now() - approveStart),
+        },
       });
 
       updateSteps([
@@ -1341,6 +1375,34 @@ export default function Chat() {
       });
       if (!execRes.ok) throw new Error("Payment failed");
       const execData = await execRes.json();
+      const executedProtocols = (execData.protocols ?? {}) as { acp_spt_id?: string; acp_verified?: boolean };
+      if (executedProtocols.acp_verified) {
+        emitProto({
+          source: "ShoppingAgent", target: "PayIt", protocol: "ACP", direction: "out",
+          label: "acp_spt_verified", detail: {
+            endpoint: "POST /api/payments/execute",
+            spt_id: executedProtocols.acp_spt_id ?? null,
+            verified: true,
+            duration_ms: Math.round(performance.now() - execStart),
+          },
+        });
+      }
+      const guardrailEvents = (execData.guardrail_events ?? []) as Array<{
+        check_name: string; passed: boolean; reason_code: string | null;
+      }>;
+      if (guardrailEvents.length > 0) {
+        emitProto({
+          source: "PayIt", target: "Payment guardrails", protocol: "guardrails", direction: "in",
+          label: "payment_guardrails", detail: {
+            endpoint: "POST /api/payments/execute",
+            checks: guardrailEvents.map((e) => ({
+              check: e.check_name,
+              status: e.passed ? "pass" : "blocked",
+              reason: e.passed ? null : e.reason_code,
+            })),
+          },
+        });
+      }
       emitProto({
         source: "PayIt", target: "ShoppingAgent", protocol: "REST", direction: "in",
         label: "payment_executed", detail: {

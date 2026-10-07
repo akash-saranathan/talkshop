@@ -58,8 +58,8 @@ function getStatus(id: string, flowState: FlowState, events: ProtocolEvent[]): N
   const hasTaskResult   = events.some(e => e.protocol === "A2A" && e.label === "task_result");
   const hasCatalog      = events.some(e => e.protocol === "UCP" && (e.label === "catalog_search" || e.label === "catalog_results"));
   const hasUCPCreated   = events.some(e => e.label === "session_created");
-  const hasAllMandates  = events.some(e => e.label === "auth_ui_complete");
-  const hasACPIssued    = events.some(e => e.label === "dpat_issued");
+  const hasAllMandates  = events.some(e => e.label === "ap2_payment_mandate");
+  const hasACPIssued    = events.some(e => e.label === "acp_spt_issued");
   const hasACPVerified  = events.some(e => e.label === "payment_executed");
 
   if (isError && id === "order") return "error";
@@ -511,10 +511,33 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         headline: `AP2 ${type.charAt(0).toUpperCase() + type.slice(1)} Mandate verified ✓`,
         what: "AP2 verifier confirmed this mandate is authentic and unmodified." };
     }
-    case "auth_ui_complete":
-      return { icon: <Lock size={14} />, protocol: "UI", status: "ok",
-        headline: "Approval confirmed in the UI",
-        what: "Browser step. No AP2 message was exchanged." };
+    case "ap2_cart_mandate":
+      return { icon: <Lock size={14} />, protocol: "AP2", status: "ok",
+        headline: "AP2 cart mandate verified",
+        what: "Signed by the checkout response. Bound to the checkout hash.",
+        highlight: d.cart_mandate_id ? `${String(d.cart_mandate_id).slice(0, 26)}…` : undefined };
+    case "ap2_payment_mandate":
+      return { icon: <Lock size={14} />, protocol: "AP2", status: "ok",
+        headline: "AP2 payment mandate issued",
+        what: "Points at the DPAT authorization that approval created.",
+        highlight: d.payment_ref ? `DPAT ${String(d.payment_ref)}` : undefined };
+    case "acp_spt_issued":
+      return { icon: <CreditCard size={14} />, protocol: "ACP", status: "ok",
+        headline: "ACP shared payment token issued",
+        what: "Derived from the DPAT authorization, with the same amount, currency and expiry.",
+        highlight: d.maximum_amount_cents ? `Max $${(Number(d.maximum_amount_cents) / 100).toFixed(2)} · ${String(d.currency ?? "")}` : undefined };
+    case "acp_spt_verified":
+      return { icon: <CheckCircle2 size={14} />, protocol: "ACP", status: "ok",
+        headline: "ACP token verified before payment",
+        what: "Signature, amount, currency, expiry and seller checked." };
+    case "payment_guardrails": {
+      const checks = Array.isArray(d.checks) ? d.checks as Array<{ status: string }> : [];
+      const failed = checks.filter((c) => c.status !== "pass").length;
+      return { icon: <ShieldCheck size={14} />, protocol: "guardrails", status: failed ? "fail" : "ok",
+        headline: failed ? "Payment guardrails blocked" : "Payment guardrails passed",
+        what: "PayIt's 12 payment checks, run before the charge.",
+        highlight: `${checks.length - failed}/${checks.length} checks passed` };
+    }
     case "POST /checkout-sessions":
       return { icon: <Activity size={14} />, protocol: "UCP", status: "progress",
         headline: "UCP creating checkout session",
@@ -704,10 +727,10 @@ const STAGE_TITLE: Record<string, string> = {
 function stageOf(ev: ProtocolEvent): string | null {
   if (ev.protocol === "A2A") return "a2a";
   if (ev.protocol === "UCP" && (ev.label === "catalog_search" || ev.label === "catalog_results")) return "catalog";
-  if (ev.label === "session_created") return "checkout";
-  if (ev.label === "auth_ui_complete") return "authz";
-  if (ev.label === "dpat_issued") return "acp";
-  if (ev.label === "payment_executed") return "payment";
+  if (ev.label === "session_created" || ev.label === "ap2_cart_mandate") return "checkout";
+  if (ev.label === "ap2_payment_mandate" || ev.label === "dpat_issued") return "authz";
+  if (ev.label === "acp_spt_issued" || ev.label === "acp_spt_verified") return "acp";
+  if (ev.label === "payment_guardrails" || ev.label === "payment_executed") return "payment";
   if (ev.label === "order_created") return "order";
   return null;
 }

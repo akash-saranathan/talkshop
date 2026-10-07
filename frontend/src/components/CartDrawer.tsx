@@ -25,25 +25,14 @@ export default function CartDrawer({ open, onClose, sessionCartIds }: Props) {
   const [items, setItems] = useState<CartItemData[]>([]);
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
-  const [wallet, setWallet] = useState<{ balance: number } | null>(null);
-  const { isGuest } = useAuth();
-
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    // Cart and wallet load independently — a slow/missing wallet row never
-    // blocks the cart items from appearing.
     getCart()
       .then((cartItems) => setItems(cartItems))
       .catch(() => {})
       .finally(() => setLoading(false));
-    // Guests pay by card only — no wallet to show.
-    if (isGuest) return;
-    authFetch("/api/wallet")
-      .then((r) => r.ok ? r.json() : null)
-      .then((w) => { if (w) setWallet(w); })
-      .catch(() => {});
-  }, [open, isGuest]);
+  }, [open]);
 
   const handleRemove = async (id: string) => {
     setRemoving((prev) => new Set(prev).add(id));
@@ -151,14 +140,6 @@ export default function CartDrawer({ open, onClose, sessionCartIds }: Props) {
                   <span className="text-[var(--color-text)]">Subtotal</span>
                   <span className="text-[var(--color-primary)]">${subtotal.toFixed(2)}</span>
                 </div>
-                {wallet && (
-                  <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
-                    <span>Wallet balance</span>
-                    <span className={wallet.balance >= subtotal ? "text-[var(--color-success)]" : "text-amber-600"}>
-                      ${wallet.balance.toFixed(2)}
-                    </span>
-                  </div>
-                )}
               </div>
             )}
           </motion.div>

@@ -105,3 +105,26 @@ def verify_spt(
         return False, "seller_profile_mismatch"
 
     return True, ""
+
+
+def verify_spt_document(
+    doc: dict,
+    charge_amount_cents: int,
+    currency: str,
+    seller_profile: str,
+) -> tuple[bool, str]:
+    """Verify a persisted SPT document (token, seller profile, signature) for this charge."""
+    token = ACPSharedPaymentToken(**doc["token"])
+    if _sign_token(token.id, token.constraints, doc["seller_profile"]) != doc["signature"]:
+        return False, "signature_mismatch"
+    if token.status != "active":
+        return False, f"token_status_{token.status}"
+    if int(time.time()) > token.constraints.expiration:
+        return False, "token_expired"
+    if token.constraints.currency.upper() != currency.upper():
+        return False, "currency_mismatch"
+    if charge_amount_cents > token.constraints.maximum_amount:
+        return False, "amount_exceeds_constraint"
+    if doc["seller_profile"] != seller_profile:
+        return False, "seller_profile_mismatch"
+    return True, ""
