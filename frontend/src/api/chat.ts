@@ -107,6 +107,8 @@ export function streamChat(message: string, sessionId: string, callbacks: ChatCa
   const handle = (raw: string) => {
     try {
       const event: AgentEvent = JSON.parse(raw);
+      // A server error without a type must still end the spinner.
+      if (!event.type && event.message) { callbacks.onError(event.message); return; }
       switch (event.type) {
         case "step_start":
         case "step_done":

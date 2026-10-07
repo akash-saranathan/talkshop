@@ -71,14 +71,16 @@ async def _event_stream(user_message: str, session_id: str, user_id: str,
 
     try:
         while True:
-            event = await asyncio.wait_for(queue.get(), timeout=60.0)
+            event = await asyncio.wait_for(queue.get(), timeout=100.0)  # > one Gemini call incl. its retry
             if event is None:
                 # Sentinel — graph finished
                 yield "event: done\ndata: {}\n\n"
                 break
             yield f"event: {event['type']}\ndata: {json.dumps(event)}\n\n"
     except asyncio.TimeoutError:
-        yield 'event: error\ndata: {"message": "Request timed out"}\n\n'
+        # "type" is what the browser switches on; without it this timeout was silently ignored
+        # and the chat kept spinning forever.
+        yield 'event: error\ndata: {"type": "error", "message": "This is taking too long, so I stopped. Please try again."}\n\n'
     finally:
         if not task.done():
             task.cancel()

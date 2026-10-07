@@ -384,6 +384,7 @@ The brief asks for evidence from a real run, not a claim of completion.
 | 2026-10-07 | A failed payment no longer creates a "blocked" order row in the new flow. | The brief says no order on any failure. The legacy endpoints keep their old behaviour. |
 | 2026-10-07 | The generic protocol path (`/api/generic/stream`) is left unchanged for now. | It is a separate protocol showcase. |
 | 2026-10-07 | Removed the 10-second auto-pay on the order summary. | It charged without any click, which contradicts "GO AHEAD is the only consent". The cart → proposal countdown stays; it never pays. |
+| 2026-10-07 | Restored the 10-second countdown on the order proposal, at the product owner's request, as a visible **Auto GO AHEAD**. | The countdown shows on the exact proposal with Pause and Cancel, pauses while the card is being changed, restarts after a card change, and runs the same GO AHEAD checks. The consent is recorded as `consent_mode: auto_countdown`, so the trace never presents it as a click. |
 | 2026-10-07 | The legacy endpoints (`/api/checkout/create`, `/approve`, `/execute`) stay for compatibility but now require a trusted agent session. | No way to reach payment around the trust stage. |
 | 2026-10-07 | Fixed: the six A2A merchants were missing from the merchants table, so their orders never appeared in the order list. Order details now fall back to the merchant catalog for title and photo. | Order tracker had to keep working. |
 

@@ -18,6 +18,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, ChevronDown, ChevronUp, Package, Truck, MapPin, Loader, Lock, X, ShieldCheck, CalendarClock, AlertTriangle, UserCheck } from "lucide-react";
+import AutoStepBar from "./AutoStepBar";
 import type { ProductData } from "../api/chat";
 import { getProductVisual, type ProductVisual } from "../utils/productVisual";
 
@@ -111,6 +112,11 @@ interface Props extends InlineCheckoutData {
   onGoAhead: () => void;
   onCancel: () => void;
   onReconsent: (decision: "yes" | "no") => void;
+  /** Visible auto GO AHEAD countdown on the proposal (paused / resumed by the customer). */
+  auto?: AutoState;
+  onPauseToggle?: () => void;
+  /** Pause the countdown while the customer is changing something (card picker, add card). */
+  onPauseAuto?: () => void;
 }
 
 // ── Card entry (Talkshop guest, or "use a different card") ──────────────────
@@ -234,7 +240,7 @@ function Row({ label, value, strong, accent }: { label: string; value: string; s
 
 function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
   const { product, checkoutData: co, paymentMethods, paymentMethodId, isTalkshopGuest,
-    onPaymentMethodChange, onAddCard, onGoAhead, onCancel } = props;
+    onPaymentMethodChange, onAddCard, onGoAhead, onCancel, auto, onPauseToggle, onPauseAuto } = props;
   const [showCardModal, setShowCardModal] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const selected = paymentMethods.find((m) => m.payment_method_id === paymentMethodId) ?? null;
@@ -287,11 +293,11 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
               <span className="flex-1">{selected.display}</span>
               <span className="text-xs text-[var(--color-text-muted)]">{String(selected.exp_month).padStart(2, "0")}/{String(selected.exp_year).slice(-2)}</span>
               {(paymentMethods.length > 1 || !isTalkshopGuest) && (
-                <button onClick={() => setShowPicker((v) => !v)} className="text-xs font-medium text-[var(--color-primary)] hover:underline">Change</button>
+                <button onClick={() => { onPauseAuto?.(); setShowPicker((v) => !v); }} className="text-xs font-medium text-[var(--color-primary)] hover:underline">Change</button>
               )}
             </div>
           ) : (
-            <button onClick={() => setShowCardModal(true)}
+            <button onClick={() => { onPauseAuto?.(); setShowCardModal(true); }}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-[var(--color-primary)]/40 text-sm text-[var(--color-primary)] font-medium hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5">
               <Lock size={14} /> Add a card securely
             </button>
@@ -304,12 +310,15 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
                   💳 {m.display}
                 </button>
               ))}
-              <button onClick={() => { setShowPicker(false); setShowCardModal(true); }}
+              <button onClick={() => { onPauseAuto?.(); setShowPicker(false); setShowCardModal(true); }}
                 className="w-full text-left px-3 py-1.5 rounded-lg text-xs text-[var(--color-primary)] hover:underline">+ Use a different card</button>
             </div>
           )}
         </div>
 
+        {auto && selected && onPauseToggle && (
+          <AutoStepBar label="Auto GO AHEAD" secondsLeft={auto.secondsLeft} paused={auto.paused} onPauseToggle={onPauseToggle} />
+        )}
         <div className="px-4 py-3 space-y-2">
           <button onClick={onGoAhead} disabled={!selected}
             className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-bold tracking-wide hover:bg-[var(--color-primary-dark)] disabled:opacity-50 disabled:cursor-not-allowed">
@@ -317,7 +326,9 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
           </button>
           <p className="text-[11px] text-[var(--color-text-muted)] text-center leading-snug">
             GO AHEAD authorizes exactly ${co.total.toFixed(2)} to {co.merchant_name} for this order{selected ? `, paid with ${selected.display}` : ""}.
-            Nothing is charged before you click.
+            {auto && !auto.paused
+              ? " It happens automatically when the countdown ends — pause or cancel to stop it."
+              : " Nothing is charged before you click."}
           </p>
           <button onClick={onCancel} className="w-full text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">Cancel</button>
         </div>

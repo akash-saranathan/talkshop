@@ -176,10 +176,11 @@ async def create_proposal(
 
 async def go_ahead(
     *, user_id: str, checkout_id: str, checkout_hash: str, total: float, currency: str,
-    payment_method_id: str, demo: Optional[str] = None,
+    payment_method_id: str, demo: Optional[str] = None, consent_mode: str = "click",
 ) -> dict:
     trace = Trace()
     demo = demo if demo in DEMO_SCENARIOS else None
+    consent_mode = consent_mode if consent_mode in ("click", "auto_countdown") else "click"
     with get_session() as db:
         row, checkout = _load_checkout(db, user_id, checkout_id)
     if row is None:
@@ -209,16 +210,19 @@ async def go_ahead(
         db.commit()
     if not claimed:
         return _reject(trace, "CHECKOUT_ALREADY_AUTHORIZING", "This checkout is already being paid.")
-    consent = _record_consent(user_id, checkout, pm, kind="go_ahead")
+    consent = _record_consent(user_id, checkout, pm, kind="go_ahead", mode=consent_mode)
     trace.add("Customer", "CustomerAgent", "HUMAN", "customer_consent_received", {
         "consent_id": consent, "checkout_id": checkout.checkout_id, "checkout_hash": checkout.checkout_hash,
         "total": checkout.total, "currency": checkout.currency, "merchant": checkout.merchant_id,
-        "payment_method": pm["display"], "meaning": "I authorize this exact checkout.",
+        "payment_method": pm["display"], "consent_mode": consent_mode,
+        "meaning": ("GO AHEAD clicked: I authorize this exact checkout." if consent_mode == "click" else
+                    "Auto GO AHEAD: the visible 10-second countdown on this exact proposal ran out "
+                    "without the customer pausing or cancelling."),
     }, direction="in")
     return await _authorize_and_execute(trace, user_id, row.trusted_session_id, checkout, pm, consent, demo)
 
 
-def _record_consent(user_id: str, checkout: CheckoutObject, pm: dict, kind: str) -> str:
+def _record_consent(user_id: str, checkout: CheckoutObject, pm: dict, kind: str, mode: str = "click") -> str:
     consent_id = f"cns_{uuid.uuid4().hex[:12]}"
     with get_session() as db:
         db.add(CustomerConsent(consent_id=consent_id, user_id=user_id, checkout_id=checkout.checkout_id,
@@ -227,7 +231,7 @@ def _record_consent(user_id: str, checkout: CheckoutObject, pm: dict, kind: str)
                                payment_method_id=pm["payment_method_id"], kind=kind))
         write_audit_event(db, "USER_APPROVED_PURCHASE", user_id=user_id, order_id=checkout.checkout_id,
                           metadata={"consent_id": consent_id, "checkout_hash": checkout.checkout_hash,
-                                    "total": checkout.total, "kind": kind})
+                                    "total": checkout.total, "kind": kind, "mode": mode})
         db.commit()
     return consent_id
 

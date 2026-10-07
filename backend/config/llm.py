@@ -23,6 +23,11 @@ def get_llm(temperature: float = 0.1):
         model=MODEL_NAME,
         temperature=temperature,
         google_api_key=api_key,
+        # Bounded, not tight: Gemini sometimes takes ~30 s on a single call, which a 20 s
+        # deadline cut off (504 DEADLINE_EXCEEDED). Without any limit, one stuck call used to
+        # retry 6 times with growing back-off and leave the chat spinning for minutes.
+        timeout=45,
+        max_retries=1,
     )
 
 

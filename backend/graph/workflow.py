@@ -200,8 +200,13 @@ async def extract_intent(state: CommerceState) -> CommerceState:
 
     intent, error, schema_ok = await vibecheck.extract_intent_checked(state["user_message"], prior_intent=prior, image_base64=image)
     if error or not intent:
-        await _emit(state, "error", f"Could not understand request: {error}")
-        return {**state, "error": error or "intent_extraction_failed", "blocked": True}
+        # Never show raw provider errors in the chat (or save them to its history).
+        if (error or "").startswith("llm_error"):
+            message = "The AI service is responding slowly right now, so I couldn't read your request. Please try again."
+        else:
+            message = "Sorry, I couldn't understand that request. Could you rephrase it?"
+        await _emit(state, "error", message)
+        return {**state, "error": message, "blocked": True}
     if intent.category in ("chitchat", "general"):
         await _emit(state, "step_done", "VibeCheck — just a greeting, no products needed")
         return {**state, "intent": intent, "chitchat": True}

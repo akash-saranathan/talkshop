@@ -1067,7 +1067,10 @@ export default function Chat() {
         checkout: { phase: "summary" as const, product, checkoutData, paymentMethodId: checkoutData.payment_method?.payment_method_id },
       };
     }));
-    if (checkoutData) persistCheckout(product, checkoutData, checkoutData.payment_method?.payment_method_id);
+    if (checkoutData) {
+      persistCheckout(product, checkoutData, checkoutData.payment_method?.payment_method_id);
+      if (checkoutData.payment_method) setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product });
+    }
     setLoading(false);
   }, [requestProposal]);
   // Keep the ref current on every render so callers never see a stale closure.
@@ -1100,7 +1103,10 @@ export default function Chat() {
         checkout: { phase: "summary" as const, product, checkoutData, paymentMethodId: checkoutData.payment_method?.payment_method_id },
       };
     }));
-    if (checkoutData) persistCheckout(product, checkoutData, checkoutData.payment_method?.payment_method_id);
+    if (checkoutData) {
+      persistCheckout(product, checkoutData, checkoutData.payment_method?.payment_method_id);
+      if (checkoutData.payment_method) setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product });
+    }
     setLoading(false);
   }, [requestProposal]);
   attachCheckoutToActiveTurnRef.current = attachCheckoutToActiveTurn;
@@ -1279,9 +1285,10 @@ export default function Chat() {
     }
   }, [finishPurchase]);
 
-  const doGoAhead = useCallback((turnId: string) => {
+  const doGoAhead = useCallback((turnId: string, consentMode: "click" | "auto_countdown" = "click") => {
+    setAutoTimer((a) => (a?.turnId === turnId && a.stage === "checkout" ? null : a));
     const co = turnsRef.current.find((t) => t.id === turnId)?.checkout;
-    if (!co?.checkoutData || !co.paymentMethodId) return;
+    if (!co?.checkoutData || !co.paymentMethodId || co.phase !== "summary") return;
     const demo = demoScenarioRef.current;
     void runPurchaseCall(turnId, "/api/purchase/go-ahead", {
       checkout_id: co.checkoutData.checkout_id,
@@ -1290,6 +1297,7 @@ export default function Chat() {
       currency: co.checkoutData.currency,
       payment_method_id: co.paymentMethodId,
       demo: demo === "delivery_change" || demo === "tampered_amount" ? demo : undefined,
+      consent_mode: consentMode,
     });
   }, [runPurchaseCall]);
 
@@ -1300,6 +1308,7 @@ export default function Chat() {
   }, [runPurchaseCall]);
 
   const cancelCheckout = useCallback((turnId: string) => {
+    setAutoTimer((a) => (a?.turnId === turnId && a.stage === "checkout" ? null : a));
     try { sessionStorage.removeItem(`talkshop_checkout_${sessionIdRef.current}`); } catch { /* noop */ }
     setTurns((prev) => prev.map((t) => t.id === turnId ? {
       ...t, checkout: { ...t.checkout!, phase: "cancelled" as const, note: "Checkout cancelled. Nothing was charged." },
@@ -1308,6 +1317,15 @@ export default function Chat() {
 
   const selectPaymentMethod = useCallback((turnId: string, paymentMethodId: string) => {
     setTurns((prev) => prev.map((t) => t.id === turnId ? { ...t, checkout: { ...t.checkout!, paymentMethodId } } : t));
+    // A changed card restarts the countdown, so the customer always gets the full 10 seconds on what they see.
+    const co = turnsRef.current.find((t) => t.id === turnId)?.checkout;
+    if (co?.phase === "summary") {
+      setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product: co.product });
+    }
+  }, []);
+
+  const pauseCheckoutTimer = useCallback((turnId: string) => {
+    setAutoTimer((a) => (a?.turnId === turnId && a.stage === "checkout" ? { ...a, paused: true } : a));
   }, []);
 
   // The typed card goes straight to the mock processor's tokenize endpoint; only its reference comes back.
@@ -1350,13 +1368,15 @@ export default function Chat() {
       return () => clearTimeout(id);
     }
     setAutoTimer(null);
-    // The countdown only ever moves cart → order proposal. Payment needs an explicit GO AHEAD.
     if (autoTimer.stage === "cart") {
       setPendingCheckoutProduct(null);
       lastRecommendedProductRef.current = null;
       doCheckoutSummaryRef.current?.("proceed to checkout", autoTimer.product, true);
+      return;
     }
-  }, [autoTimer]);
+    // Proposal countdown ran out without a pause or cancel: same GO AHEAD, recorded as "auto_countdown".
+    doGoAhead(autoTimer.turnId, "auto_countdown");
+  }, [autoTimer, doGoAhead]);
 
   const BAR_COUNT = 32;
 
@@ -1779,7 +1799,10 @@ export default function Chat() {
                         isTalkshopGuest={isGuest}
                         onPaymentMethodChange={(id) => selectPaymentMethod(turn.id, id)}
                         onAddCard={(card) => addCard(turn.id, card)}
-                        onGoAhead={() => doGoAhead(turn.id)}
+                        onGoAhead={() => doGoAhead(turn.id, "click")}
+                        auto={autoTimer?.turnId === turn.id && autoTimer.stage === "checkout" ? autoTimer : undefined}
+                        onPauseToggle={togglePauseAuto}
+                        onPauseAuto={() => pauseCheckoutTimer(turn.id)}
                         onCancel={() => cancelCheckout(turn.id)}
                         onReconsent={(decision) => doReconsent(turn.id, decision)}
                       />

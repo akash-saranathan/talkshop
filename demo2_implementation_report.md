@@ -100,7 +100,7 @@ Customer Agent → order confirmation in chat
 - **Agent trust before commerce.** Nike verifies the customer agent with eight deterministic checks and opens a trusted session. Catalog, checkout and payment all require it, and payment re-verifies the credential for its own scope and amount.
 - **Guest vs known is explicit.** Two independent fields: `talkshop_account` (authenticated / talkshop_guest) and `merchant_relationship` (merchant_guest / merchant_member). The primary demo is authenticated + merchant_guest. The merchant sees only a pseudonymous `customer_ref`.
 - **Search is not consent.** The search intent is no longer turned into an AP2 mandate. Nothing payment-related exists until GO AHEAD (test T8).
-- **No auto-pay.** The old chat paid automatically 10 seconds after the summary appeared. Now GO AHEAD is the only trigger.
+- **Visible auto GO AHEAD.** The old chat paid silently 10 seconds after the summary appeared. Now the order proposal shows an "Auto GO AHEAD in 10s" countdown with Pause and Cancel. It pauses while the card is being changed and restarts after a change. When it runs out it performs the same GO AHEAD, recorded as `consent_mode: auto_countdown` instead of a click.
 - **Server-authoritative checkout.** The merchant stores its checkout. Consent and payment are checked against it, not against totals sent by the browser.
 - **One payment story.** AP2 = authorization evidence. ACP = the scoped token that crosses to the merchant. DPAT = internal enforcement behind it, with the 12 checks unchanged. Previously the ACP token was derived from the DPAT.
 - **No order on failure.** Any failed check stops the flow with a reason code; no charge, no order row.
@@ -114,7 +114,7 @@ Customer Agent → order confirmation in chat
 | Merchant trust | none | 8-check trust validation, trusted session required for catalog, checkout, payment |
 | Customer context | "guest" meant three different things | authenticated to Talkshop, guest to Nike; Talkshop-guest is a labelled secondary path |
 | Search intent | became an AP2 IntentMandate at checkout | stays a shopping intent; no spending meaning |
-| Payment trigger | 10-second countdown after the summary | explicit GO AHEAD only |
+| Payment trigger | hidden 10-second countdown after the summary | GO AHEAD click, or a visible 10-second Auto GO AHEAD countdown the customer can pause or cancel; the trace records which |
 | Who sequences payment | the browser: create → approve → execute | the server, one call per human decision |
 | Totals used for payment | sent by the browser | the merchant's stored checkout |
 | Authorization order | DPAT → AP2 payment mandate → ACP derived from DPAT | consent → AP2 evidence → ACP token → merchant verification → internal DPAT |

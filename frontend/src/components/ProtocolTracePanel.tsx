@@ -638,7 +638,7 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         highlight: d.payment_method ? String(d.payment_method) : undefined };
     case "customer_consent_received":
       return { icon: <User size={14} />, protocol: "HUMAN", status: "ok",
-        headline: "GO AHEAD received",
+        headline: d.consent_mode === "auto_countdown" ? "Auto GO AHEAD after the 10 s countdown" : "GO AHEAD received",
         what: "The customer authorized this exact checkout, total and payment method.",
         highlight: typeof d.total === "number" ? `$${(d.total as number).toFixed(2)} · ${String(d.payment_method ?? "")}` : undefined };
     case "customer_consent_rejected":
@@ -949,7 +949,7 @@ function buildStory(all: ProtocolEvent[]): StoryRow[] {
   const goStatus: RowStatus = consentFail || cancelled ? "fail"
     : paused && !last("reconsent_received") ? "paused" : consent ? "ok" : "upcoming";
   add("goahead", "Human", goStatus,
-    [consent ? "✓ GO AHEAD" : "", last("condition_changed") ? `Delivery changed → ${last("condition_changed")!.detail.new_display ?? last("condition_changed")!.detail.new}` : "",
+    [consent ? (consent.detail.consent_mode === "auto_countdown" ? "✓ Auto GO AHEAD (10 s countdown)" : "✓ GO AHEAD") : "", last("condition_changed") ? `Delivery changed → ${last("condition_changed")!.detail.new_display ?? last("condition_changed")!.detail.new}` : "",
      last("reconsent_received") ? "✓ Re-consented to the new terms" : paused ? "Waiting for YES / NO" : "",
      cancelled ? "Cancelled — nothing charged" : "", consentFail ? "✗ Approval did not match the checkout" : ""].filter(Boolean),
     find("customer_consent_received", "customer_consent_rejected", "condition_changed", "reconsent_required",

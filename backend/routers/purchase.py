@@ -53,6 +53,9 @@ class GoAheadRequest(BaseModel):
     currency: str = "USD"
     payment_method_id: str
     demo: Optional[str] = None
+    # "click" = the customer pressed GO AHEAD; "auto_countdown" = the visible 10-second
+    # countdown on the proposal ran out without the customer pausing or cancelling.
+    consent_mode: Literal["click", "auto_countdown"] = "click"
 
 
 class ReconsentRequest(BaseModel):
@@ -115,7 +118,8 @@ async def purchase_checkout(req: CheckoutRequest, current_user: CurrentUser = De
 async def purchase_go_ahead(req: GoAheadRequest, current_user: CurrentUser = Depends(get_current_user)):
     return await service.go_ahead(
         user_id=current_user.user_id, checkout_id=req.checkout_id, checkout_hash=req.checkout_hash,
-        total=req.total, currency=req.currency, payment_method_id=req.payment_method_id, demo=req.demo)
+        total=req.total, currency=req.currency, payment_method_id=req.payment_method_id, demo=req.demo,
+        consent_mode=req.consent_mode)
 
 
 @router.post("/api/purchase/reconsent")
