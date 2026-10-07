@@ -1,7 +1,7 @@
 /** The cards Talkshop draws inside the panel (plan §6.1). Each renders a
  *  server event as-is — prices, stock, totals and order ids are never
  *  computed here. Only the latest card of a kind is interactive. */
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArrowUpRight, Check, CheckCircle2, CreditCard, Loader2, Lock, MapPin, ShieldCheck, ShoppingBag, Truck, UserRound, XCircle } from "lucide-react";
 import type { OptionChoice, TalkAction, TalkEvent } from "../../api/talkshop";
@@ -133,6 +133,64 @@ export function QuickReplies({ choices, active, onPick }:
         <Button key={c.value} size="sm" variant={active && (c.primary ?? i === 0) ? "talk" : "secondary"} disabled={!active}
           onClick={() => onPick(c)}>{c.label}</Button>
       ))}
+    </div>
+  );
+}
+
+/* ── Auto-checkout countdown ───────────────────────────────────────────── */
+
+export const AUTO_CHECKOUT_SECONDS = 10;
+
+/** After an item is added: move to checkout automatically in 10 seconds unless
+ *  the shopper taps Keep shopping. Checkout only opens the review card; paying
+ *  still needs GO AHEAD. Pauses if the shopper starts typing to Talkshop. */
+export function CheckoutCountdown({ onPick }: { onPick: (c: { value: string; label: string }) => void }) {
+  const [left, setLeft] = useState(AUTO_CHECKOUT_SECONDS);
+  const [paused, setPaused] = useState(false);
+  const fired = useRef(false);
+  const [draining, setDraining] = useState(false);       // the bar empties smoothly over the whole countdown
+  useEffect(() => { const f = requestAnimationFrame(() => setDraining(true)); return () => cancelAnimationFrame(f); }, []);
+  const pick = (c: { value: string; label: string }) => {
+    if (fired.current) return;
+    fired.current = true;
+    onPick(c);
+  };
+
+  useEffect(() => {
+    if (paused) return;
+    if (left <= 0) { pick({ value: "checkout", label: "Continue to checkout" }); return; }
+    const timer = setTimeout(() => setLeft((n) => n - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [left, paused]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {       // typing to Talkshop means the shopper is busy — don't move on without them
+    const onFocus = (e: FocusEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.matches?.("textarea, input") && el.closest("[aria-label='Talkshop assistant']")) setPaused(true);
+    };
+    document.addEventListener("focusin", onFocus);
+    return () => document.removeEventListener("focusin", onFocus);
+  }, []);
+
+  return (
+    <div className="rounded-2xl border border-talk/40 bg-talk-soft/40 p-3.5 flex flex-col gap-2.5">
+      <p className="sr-only" role="status">
+        {paused ? "Automatic checkout paused." : `Moving to checkout in ${AUTO_CHECKOUT_SECONDS} seconds. Tap Keep shopping to stay.`}
+      </p>
+      <p aria-hidden="true" className="text-sm font-medium tabular-nums">{paused ? "Auto-checkout paused" : `Moving to checkout in ${left}s`}</p>
+      {!paused && (
+        <div aria-hidden="true" className="h-1 rounded-full bg-line overflow-hidden">
+          <div className="h-full bg-talk transition-[width] ease-linear motion-reduce:transition-none"
+            style={{ width: draining ? "0%" : "100%", transitionDuration: `${AUTO_CHECKOUT_SECONDS}s` }} />
+        </div>
+      )}
+      <p className="text-xs text-muted leading-snug">
+        {paused ? "Check out whenever you're ready." : "Want to keep shopping? Tap Keep shopping."} Nothing is charged until you tap GO AHEAD.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="talk" onClick={() => pick({ value: "checkout", label: "Checkout now" })}>Checkout now</Button>
+        <Button size="sm" variant="secondary" onClick={() => pick({ value: "keep_shopping", label: "Keep shopping" })}>Keep shopping</Button>
+      </div>
     </div>
   );
 }

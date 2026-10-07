@@ -12,7 +12,7 @@ import type { TraceStep } from "../../talkshop/useTalkshop";
 import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 import Composer from "./Composer";
 import {
-  CartUpdatedCard, OptionChips, OrderConfirmedCard, PaymentStatusCard, QuickReplies,
+  CartUpdatedCard, CheckoutCountdown, OptionChips, OrderConfirmedCard, PaymentStatusCard, QuickReplies,
   RecommendationCards, ReviewOrderCard, SecureDetailsCard, SelectedProduct, SignInCard,
 } from "./cards";
 import { cx } from "../ui";
@@ -189,10 +189,14 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
               active={it.index === lastAsk && !busy && stage === (ev.option === "size" ? "ASK_SIZE" : "ASK_COLOR")} />;
           case "cart_updated":
             return <CartUpdatedCard key={i} cart={ev.cart} lineId={ev.added_line_id} />;
-          case "offer_checkout":
-            return <QuickReplies key={i} choices={ev.choices}
-              active={it.index === lastOffer && lastOffer > lastReview && !busy && (stage === "OFFER_CHECKOUT" || stage === "IN_CART")}
-              onPick={(c) => act({ type: c.value === "checkout" ? "checkout" : "keep_shopping", label: c.label })} />;
+          case "offer_checkout": {
+            const live = it.index === lastOffer && lastOffer > lastReview && !busy && (stage === "OFFER_CHECKOUT" || stage === "IN_CART");
+            const pick = (c: { value: string; label: string }) =>
+              act({ type: c.value === "checkout" ? "checkout" : "keep_shopping", label: c.label });
+            // Just added → count down to checkout; a restored conversation just shows the buttons.
+            if (live && stage === "OFFER_CHECKOUT" && it.index >= ts.restoredCount) return <CheckoutCountdown key={i} onPick={pick} />;
+            return <QuickReplies key={i} choices={ev.choices} active={live} onPick={pick} />;
+          }
           case "order_confirmed":
             return <OrderConfirmedCard key={i} order={ev.order} />;
           case "checkout_details_needed":

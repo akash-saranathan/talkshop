@@ -765,6 +765,10 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
   - The server endpoints are `DELETE /api/me/addresses/{id}` and `DELETE /api/me/payment-methods/{id}`. They only delete the customer's own items; visitors get 403.
   - The next saved item becomes the default, and open checkouts switch to it, or ask again when none are left.
   - Past orders keep their own copy of the address and card.
+- **Follow-up: auto-checkout countdown.** After Talkshop adds an item, a card counts down 10 seconds ("Moving to checkout in 10s"), then opens Review on its own.
+  - **Buttons:** Checkout now / Keep shopping.
+  - **Pauses** when the shopper clicks into the chat box. **Doesn't run** while the panel is minimised, or for a conversation restored after a reload.
+  - **Payment is unchanged:** moving to checkout never pays; GO AHEAD is still the only consent. A visitor's countdown ends at the sign-in card.
 - **For a production build:** the card fields would sit in a payment provider's hosted iframe (e.g. Stripe Elements), so the store's own page couldn't read them. Here they are a local, ShopSphere-only React component that posts straight to the tokenization endpoint.
 
 ---

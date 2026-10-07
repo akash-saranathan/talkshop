@@ -35,6 +35,9 @@ export function useTalkshop(getPage: () => Page) {
   const [status, setStatus] = useState<string | null>(null);
   const [trace, setTrace] = useState<TraceStep[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Events rebuilt from the server after a reload. Time-based prompts (the
+  // auto-checkout countdown) only run for events that arrive live.
+  const [restoredCount, setRestoredCount] = useState(0);
   const [ready, setReady] = useState(false);
   const busyRef = useRef(false);
 
@@ -71,6 +74,7 @@ export function useTalkshop(getPage: () => Page) {
         setStage(s.stage);
         const restored = s.transcript.filter((e) => e.type !== "stage");
         setEvents(restored);
+        setRestoredCount(restored.length);
         setReady(true);
         if (!restored.length) send({ action: { type: "greet" } });
       })
@@ -83,11 +87,11 @@ export function useTalkshop(getPage: () => Page) {
     await resetSession(sid.current).catch(() => {});
     sid.current = `ts-${crypto.randomUUID()}`;
     try { sessionStorage.setItem(SESSION_KEY, sid.current); } catch { /* private mode */ }
-    setEvents([]); setTrace([]); setStage("GREETING");
+    setEvents([]); setTrace([]); setStage("GREETING"); setRestoredCount(0);
     send({ action: { type: "greet" } });
   }, [send]);
 
-  return { events, stage, busy, status, trace, error, ready, send, restart };
+  return { events, stage, busy, status, trace, error, ready, restoredCount, send, restart };
 }
 
 export type Talkshop = ReturnType<typeof useTalkshop>;
