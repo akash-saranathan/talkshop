@@ -210,8 +210,11 @@ function SecurePaymentModal({
     const err = await onAddCard(card);
     setBusy(false);
     // On error keep what was typed so the customer can correct one field. On
-    // success the modal closes immediately; only the reference was ever sent.
+    // success, clear the form before closing — the next item's checkout
+    // reuses this same modal instance and shouldn't show the last card typed.
     if (err) { setError(err); return; }
+    setCard({ number: "", expiry: "", cvc: "", name: "" });
+    setError(null);
     onClose();
   };
 
@@ -221,6 +224,8 @@ function SecurePaymentModal({
     const err = await onConnectPayPal();
     setBusy(false);
     if (err) { setError(err); return; }
+    setPayPalStep("intro");
+    setPayPalFunding("balance");
     onClose();
   };
 

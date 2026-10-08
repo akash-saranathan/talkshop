@@ -290,6 +290,16 @@ function getOrdinalCheckoutTarget(text: string): number | null {
   return m ? _parseOrdinalWord(m[1]) : null;
 }
 
+function cartItemToProduct(item: CartItemData): ProductData {
+  return {
+    product_id: item.product_id, merchant_id: item.merchant_id, merchant_name: item.merchant_name,
+    title: item.title, brand: item.brand, category: item.category, price: item.price, currency: item.currency,
+    size: item.size, color: item.color, available: true, inventory: 1, delivery_days: item.delivery_days,
+    rating: item.rating, review_count: 0, shipping_cost: 0, rank_score: 0, source: "cart",
+    image_url: item.image_url, weight_grams: null, cushioning: null,
+  };
+}
+
 // Pasted screenshots can be huge — downscale before it ever leaves the
 // browser, both for a snappy paste and a small request body.
 async function resizeImageForUpload(file: Blob, maxDim = 768, quality = 0.7): Promise<string> {
@@ -829,32 +839,11 @@ export default function Chat() {
     // the product ref.
     if (isExplicitCheckoutPhrase(msg) && !lastRecommendedProductRef.current) {
       if (sessionCartItems.length > 0) {
-        const cartItem = sessionCartItems[0];
-        const cartProduct: ProductData = {
-          product_id: cartItem.product_id,
-          merchant_id: cartItem.merchant_id,
-          merchant_name: cartItem.merchant_name,
-          title: cartItem.title,
-          brand: cartItem.brand,
-          category: cartItem.category,
-          price: cartItem.price,
-          currency: cartItem.currency,
-          size: cartItem.size,
-          color: cartItem.color,
-          available: true,
-          inventory: 1,
-          delivery_days: cartItem.delivery_days,
-          rating: cartItem.rating,
-          review_count: 0,
-          shipping_cost: 0,
-          rank_score: 0,
-          source: "cart",
-          image_url: cartItem.image_url,
-          weight_grams: null,
-          cushioning: null,
-        };
         setInput("");
-        doCheckoutSummaryRef.current?.(msg, cartProduct);
+        // Every item in the cart gets its own checkout — not just the first —
+        // same queue used by the silent auto-advance below.
+        checkoutQueueRef.current = sessionCartItems.map(cartItemToProduct);
+        advanceCheckoutQueue();
         return;
       }
       const lastTurnWithProducts = [...turns].reverse().find((t) => t.products.length > 0);
@@ -1134,6 +1123,19 @@ export default function Chat() {
   // Keep the ref current on every render so callers never see a stale closure.
   doCheckoutSummaryRef.current = doCheckoutSummary;
 
+  // Sequential multi-item checkout queue. Adding a second cart item used to
+  // silently replace the first as "the" product the auto-advance timer would
+  // check out — the first was left in the cart forever, never purchased. Now
+  // every item queued here gets its own full checkout -> GO AHEAD -> payment
+  // turn, one after another, advanced by advanceCheckoutQueue (called when
+  // the timer fires below, and again from finishPurchase once each item's
+  // flow reaches a terminal state).
+  const checkoutQueueRef = useRef<ProductData[]>([]);
+  const advanceCheckoutQueue = useCallback(() => {
+    const next = checkoutQueueRef.current.shift();
+    if (next) doCheckoutSummaryRef.current?.("proceed to checkout", next, true);
+  }, []);
+
   // LLM-driven checkout: attaches checkout UI to the currently streaming turn
   // instead of creating a new turn, so one user message = one visual block.
   const attachCheckoutToActiveTurn = useCallback(async (turnId: string, product: ProductData) => {
@@ -1313,6 +1315,7 @@ export default function Chat() {
       setSessionCartItems([]);
       setCartPanelOpen(false);
       setProductCardResetKey((k) => k + 1);
+      advanceCheckoutQueue();
       return;
     }
     if (data.status === "reconsent_required") {
@@ -1326,6 +1329,7 @@ export default function Chat() {
       setTurns((prev) => prev.map((t) => t.id === turnId ? {
         ...t, checkout: { ...t.checkout!, phase: "cancelled" as const, note: data.message },
       } : t));
+      advanceCheckoutQueue();
       return;
     }
     setTurns((prev) => prev.map((t) => t.id === turnId ? {
@@ -1333,7 +1337,8 @@ export default function Chat() {
       checkout: { ...t.checkout!, phase: "failed" as const,
         error: data.message ?? "The payment was not completed.", errorReason: data.reason },
     } : t));
-  }, [appendServerEvents]);
+    advanceCheckoutQueue();
+  }, [appendServerEvents, advanceCheckoutQueue]);
 
   const runPurchaseCall = useCallback(async (turnId: string, url: string, body: object) => {
     const t = turnsRef.current.find((x) => x.id === turnId);
@@ -1478,7 +1483,12 @@ export default function Chat() {
     if (autoTimer.stage === "cart") {
       setPendingCheckoutProduct(null);
       lastRecommendedProductRef.current = null;
-      doCheckoutSummaryRef.current?.("proceed to checkout", autoTimer.product, true);
+      // Queue every item in the session cart, not just the one that (re)started
+      // this timer — adding a second item used to silently replace the first
+      // in this slot, so it was never checked out at all.
+      const queued = sessionCartItems.map(cartItemToProduct);
+      checkoutQueueRef.current = queued.length ? queued : [autoTimer.product];
+      advanceCheckoutQueue();
       return;
     }
     // Proposal countdown ran out without a pause or cancel: same GO AHEAD, recorded as "auto_countdown".
