@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* This app toggles dark mode via a data-theme attribute (ThemeToggle), not the
+   OS preference, so Tailwind's default `dark:` (prefers-color-scheme) variant
+   never activates it. This makes `dark:` target that attribute instead. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* ── Light mode — white + Chase blue ──────────────────────────────── */
 :root {
   --color-primary:      #117ACA;   /* Chase blue */
@@ -49,4 +54,37 @@ select {
 body {
   background-color: var(--color-bg);
   color: var(--color-text);
+}
+
+/* ── Financial-commerce elevation system ──────────────────────────────
+   A restrained, consistent shadow scale (not flat borders alone, not
+   heavy drop shadows) used across product cards, checkout, order cards,
+   message bubbles and panels — the "lifted" surface look of a polished
+   commerce/banking UI. Dark mode uses a softer, lower-contrast version
+   since shadows barely read on a black background. */
+:root {
+  --color-accent:       #7C3AED;   /* violet — pairs with Chase blue for an "AI commerce" identity, used sparingly */
+  --color-accent-bg:    #F3EEFC;
+  --shadow-card:       0 1px 3px rgba(15, 25, 35, 0.07), 0 6px 16px -6px rgba(15, 25, 35, 0.14);
+  --shadow-card-hover: 0 2px 6px rgba(15, 25, 35, 0.10), 0 16px 32px -10px rgba(17, 122, 202, 0.30);
+  --shadow-raised:     0 2px 4px rgba(15, 25, 35, 0.12), 0 4px 12px -2px rgba(17, 122, 202, 0.28);
+}
+:root[data-theme="dark"] {
+  --color-accent:       #A78BFA;
+  --color-accent-bg:    #241B3D;
+  --shadow-card:       0 1px 3px rgba(0, 0, 0, 0.4), 0 6px 20px -6px rgba(17, 122, 202, 0.22);
+  --shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.5), 0 16px 36px -10px rgba(17, 122, 202, 0.42);
+  --shadow-raised:     0 2px 4px rgba(0, 0, 0, 0.5), 0 4px 14px -2px rgba(17, 122, 202, 0.4);
+}
+
+/* Tailwind v4: custom utilities must use @utility (not @layer utilities) so
+   that variants like hover:/focus-within: generate correctly. */
+@utility shadow-card {
+  box-shadow: var(--shadow-card);
+}
+@utility shadow-card-hover {
+  box-shadow: var(--shadow-card-hover);
+}
+@utility shadow-raised {
+  box-shadow: var(--shadow-raised);
 }

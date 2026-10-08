@@ -1,6 +1,6 @@
 export default function SkeletonProductCard() {
   return (
-    <div className="bg-[var(--color-surface)] rounded-xl p-4 flex flex-col gap-3 border border-[var(--color-border)] animate-pulse">
+    <div className="bg-[var(--color-surface)] rounded-xl p-4 flex flex-col gap-3 border border-[var(--color-border)] shadow-card animate-pulse">
       <div className="h-28 rounded-lg bg-[var(--color-border)]" />
       <div className="flex items-center justify-between">
         <div className="h-4 w-20 rounded-full bg-[var(--color-border)]" />

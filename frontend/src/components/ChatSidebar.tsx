@@ -77,7 +77,7 @@ export default function ChatSidebar({
       {/* Brand header — mirrors the ChatGPT top-left pattern */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] text-white grid place-items-center shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-accent)] text-white grid place-items-center shrink-0 shadow-sm">
             <Store size={14} />
           </div>
           <span className="font-bold text-base text-[var(--color-primary)] tracking-tight">Talkshop</span>
@@ -95,7 +95,7 @@ export default function ChatSidebar({
       <button
         type="button"
         onClick={onNewChat}
-        className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-bg)] font-medium transition-colors mb-1"
+        className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] shadow-card hover:shadow-card-hover hover:border-[var(--color-primary)]/40 text-[var(--color-text)] font-medium transition-all mb-1"
       >
         <Plus size={15} /> New Chat
       </button>
@@ -112,9 +112,9 @@ export default function ChatSidebar({
         sessions.map((s) => (
           <div
             key={s.session_id}
-            className={`group flex items-center gap-1 rounded-lg transition-colors ${
+            className={`group flex items-center gap-1 rounded-lg transition-all ${
               s.session_id === activeSessionId
-                ? "bg-[var(--color-primary)]"
+                ? "bg-gradient-to-r from-[var(--color-primary-light)] to-[var(--color-primary)] shadow-sm"
                 : "hover:bg-[var(--color-bg)]"
             }`}
           >

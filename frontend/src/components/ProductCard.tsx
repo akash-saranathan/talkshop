@@ -29,9 +29,9 @@ function getDeliveryLabel(days: number): string {
 }
 
 const MERCHANT_COLORS: Record<string, string> = {
-  MERCHANT_A: "bg-blue-100 text-blue-700",
-  MERCHANT_B: "bg-violet-100 text-violet-700",
-  MERCHANT_C: "bg-emerald-100 text-emerald-700",
+  MERCHANT_A: "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300",
+  MERCHANT_B: "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300",
+  MERCHANT_C: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300",
 };
 
 const MERCHANT_TRUST: Record<string, { tier: "Premium" | "Verified"; ships: string; returns: string }> = {
@@ -93,10 +93,10 @@ export default function ProductCard({ product, index, selected = false, onToggle
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.08 }}
-      className={`bg-[var(--color-surface)] rounded-xl p-4 flex flex-col gap-3 hover:shadow-md transition-all ${
+      className={`bg-[var(--color-surface)] rounded-xl p-4 flex flex-col gap-3 shadow-card hover:shadow-card-hover hover:border-[var(--color-primary)]/40 transition-all duration-200 ${
         selected
           ? "border-2 border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/20"
-          : "border border-[var(--color-border)]"
+          : "border border-[var(--color-primary)]/15"
       }`}
     >
       {/* Product visual */}

@@ -1163,7 +1163,7 @@ export default function ProtocolTracePanel({
   events, flowState = "idle",
   productTitle, productMerchant, checkoutTotal, orderLabel,
 }: Props) {
-  const [tab, setTab] = useState<"story" | "flow" | "live">("story");
+  const [tab, setTab] = useState<"story" | "flow" | "live">("live");
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
 
   return (
@@ -1188,13 +1188,13 @@ export default function ProtocolTracePanel({
             </span>
           )}
         </div>
-        <div className="flex rounded-lg overflow-hidden border border-[var(--color-border)] text-[9px] font-bold">
-          {(["story", "flow", "live"] as const).map((t) => (
+        <div className="flex rounded-lg overflow-hidden border border-[var(--color-border)] shadow-card text-[9px] font-bold">
+          {(["live", "story", "flow"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`flex items-center gap-1 px-2.5 py-1 transition-colors ${
-                tab === t ? "bg-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                tab === t ? "bg-gradient-to-b from-[var(--color-primary-light)] to-[var(--color-primary)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
               }`}
             >
               {t === "flow" ? <GitBranch size={8} /> : t === "story" ? <ShieldCheck size={8} /> : <Activity size={8} />}
