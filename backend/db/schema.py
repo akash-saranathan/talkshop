@@ -217,12 +217,15 @@ class CustomerConsent(Base):
 
 
 class SavedPaymentMethod(Base):
-    """A reference to a card held by the payment processor. Never a card number or CVC."""
+    """A reference to a card held by the payment processor. Never a card number or CVC.
+    Scoped to (user, merchant): a card is held by one merchant, not shared across all."""
     __tablename__ = "saved_payment_methods"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     payment_method_id = Column(String(50), unique=True, nullable=False)
     user_id = Column(String(50), nullable=False, index=True)
+    merchant_id = Column(String(50), index=True)
+    provider = Column(String(20), default="card")  # "card" | "paypal"
     brand = Column(String(20), nullable=False)
     last4 = Column(String(4), nullable=False)
     exp_month = Column(Integer, nullable=False)
@@ -306,10 +309,13 @@ class CartItem(Base):
 
 
 class LoyaltyPoints(Base):
+    """Loyalty balance scoped to (user, merchant) — points earned at Nike are
+    separate from Zara's and can't be spent at another merchant."""
     __tablename__ = "loyalty_points"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False, index=True)
+    merchant_id = Column(String(50), index=True)
     balance = Column(Integer, nullable=False, default=0)
     lifetime_points = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -321,6 +327,7 @@ class LoyaltyTransaction(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_id = Column(String(50), unique=True, nullable=False)
     user_id = Column(String(50), nullable=False)
+    merchant_id = Column(String(50), index=True)
     order_id = Column(String(50))
     points_earned = Column(Integer, nullable=False, default=0)
     reason = Column(String(100), nullable=False, default="purchase")

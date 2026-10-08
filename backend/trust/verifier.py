@@ -18,9 +18,13 @@ REGISTERED_AGENTS = {
     credentials.CUSTOMER_AGENT_ID: {"platform_id": credentials.PLATFORM_ID, "key_ids": [credentials.KEY_ID]},
 }
 
-# Customers each merchant already has an account for, by the pseudonymous customer_ref
-# the platform shares. Empty for the demo: every Talkshop customer is a guest to Nike.
-MERCHANT_MEMBERS: dict[str, set[str]] = {}
+# Customers each merchant already has an account for, by the pseudonymous
+# customer_ref the platform shares. Seeded from the demo profile: John Carter
+# is a member at Nike/Zara/Fossil, a guest at Adidas/H&M/Casio.
+from backend.config.demo_profile import DEMO_USER_ID, member_merchants
+
+_DEMO_REF = credentials.customer_ref(DEMO_USER_ID)
+MERCHANT_MEMBERS: dict[str, set[str]] = {m: {_DEMO_REF} for m in member_merchants()}
 
 
 def merchant_relationship(merchant_id: str, customer_ref: str) -> MerchantRelationship:

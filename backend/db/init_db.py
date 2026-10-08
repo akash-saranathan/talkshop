@@ -38,13 +38,37 @@ def _ensure_column(engine, table: str, column: str, ddl: str) -> None:
             conn.commit()
 
 
+def _recreate_if_missing_column(engine, table: str, column: str) -> None:
+    """
+    For tables whose SHAPE changed (new column plus a changed unique constraint,
+    which SQLite can't ALTER): if an old-shaped table is missing `column`, drop
+    it so create_all() rebuilds it fresh. Only used for tables that hold seeded
+    demo data (loyalty balances, saved cards), which are re-seeded afterwards —
+    so nothing durable is lost.
+    """
+    inspector = inspect(engine)
+    if table not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns(table)}
+    if column not in columns:
+        with engine.connect() as conn:
+            conn.execute(text(f"DROP TABLE {table}"))
+            conn.commit()
+
+
 def init_db(db_path: Path = DB_PATH):
     engine = get_engine(db_path)
+    # Rebuild loyalty/saved-card tables that predate merchant-scoping (changed
+    # unique constraint, not just a new column) BEFORE create_all re-creates them.
+    _recreate_if_missing_column(engine, "loyalty_points", "merchant_id")
+    _recreate_if_missing_column(engine, "saved_payment_methods", "merchant_id")
     Base.metadata.create_all(engine)
     _ensure_column(engine, "users", "password_hash", "password_hash VARCHAR(255) NOT NULL DEFAULT ''")
     _ensure_column(engine, "users", "is_guest", "is_guest BOOLEAN NOT NULL DEFAULT 0")
     _ensure_column(engine, "orders", "tracking_number", "tracking_number VARCHAR(50)")
     _ensure_column(engine, "products", "image_url", "image_url VARCHAR(500)")
+    _ensure_column(engine, "loyalty_transactions", "merchant_id", "merchant_id VARCHAR(50)")
+    _ensure_column(engine, "saved_payment_methods", "provider", "provider VARCHAR(20) DEFAULT 'card'")
     return engine
 
 

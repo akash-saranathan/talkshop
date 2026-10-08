@@ -39,15 +39,35 @@ def confirm_paid_order(session: Session, checkout: CheckoutObject, result: Payme
     write_audit_event(session, "ORDER_CONFIRMED", user_id=user_id, agent_id=TRACKIT.agent_id,
                       order_id=checkout.checkout_id, metadata={"transaction_id": result.transaction_id})
 
-    points_earned = int(result.amount)  # 1 point per $1, rounded down
-    lp = session.query(LoyaltyPoints).filter(LoyaltyPoints.user_id == user_id).first()
+    # Loyalty is merchant-scoped and members-only: a guest purchase earns nothing
+    # (buying as a guest doesn't silently create a loyalty membership).
+    merchant_id = checkout.merchant_id
+    from backend.trust.credentials import customer_ref
+    from backend.trust.verifier import merchant_relationship
+    is_member = merchant_relationship(merchant_id, customer_ref(user_id)) == "merchant_member"
+    if not is_member:
+        return {"points_earned": 0, "loyalty_balance": 0, "points_redeemed": 0,
+                "tracking_number": fields.get("tracking_number")}
+
+    # Earn on the cash actually paid (1 pt per $1); redeem (deduct) the points
+    # applied to this order. Both hit this merchant's balance only. Committed
+    # here, inside the same success transaction — a declined/cancelled payment
+    # never reaches this function, so points are never lost on a failure.
+    points_earned = int(result.amount)
+    points_redeemed = int(getattr(checkout, "loyalty_points_redeemed", 0) or 0)
+    lp = session.query(LoyaltyPoints).filter(
+        LoyaltyPoints.user_id == user_id, LoyaltyPoints.merchant_id == merchant_id
+    ).first()
     if not lp:
-        lp = LoyaltyPoints(user_id=user_id, balance=points_earned, lifetime_points=points_earned)
+        lp = LoyaltyPoints(user_id=user_id, merchant_id=merchant_id, balance=0, lifetime_points=0)
         session.add(lp)
-    else:
-        lp.balance += points_earned
-        lp.lifetime_points += points_earned
-    session.add(LoyaltyTransaction(transaction_id=uuid.uuid4().hex, user_id=user_id,
-                                   order_id=checkout.checkout_id, points_earned=points_earned, reason="purchase"))
-    return {"points_earned": points_earned, "loyalty_balance": lp.balance,
+    lp.balance += points_earned - points_redeemed
+    lp.lifetime_points += points_earned
+    if points_earned:
+        session.add(LoyaltyTransaction(transaction_id=uuid.uuid4().hex, user_id=user_id, merchant_id=merchant_id,
+                                       order_id=checkout.checkout_id, points_earned=points_earned, reason="purchase"))
+    if points_redeemed:
+        session.add(LoyaltyTransaction(transaction_id=uuid.uuid4().hex, user_id=user_id, merchant_id=merchant_id,
+                                       order_id=checkout.checkout_id, points_earned=-points_redeemed, reason="redemption"))
+    return {"points_earned": points_earned, "loyalty_balance": lp.balance, "points_redeemed": points_redeemed,
             "tracking_number": fields.get("tracking_number")}
