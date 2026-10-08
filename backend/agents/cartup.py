@@ -49,22 +49,6 @@ async def build_checkout(
     delivery_date = (date.today() + timedelta(days=delivery_days)).isoformat()
 
     # Compute checkout hash — binds DPAT token to this exact cart
-    canonical = {
-        "product_id": product.product_id,
-        "merchant_id": product.merchant_id,
-        "quantity": quantity,
-        "unit_price": unit_price,
-        "subtotal": subtotal,
-        "tax": tax,
-        "shipping": shipping,
-        "total": total,
-        "currency": "USD",
-        "delivery_date": delivery_date,
-    }
-    checkout_hash = hashlib.sha256(
-        json.dumps(canonical, sort_keys=True).encode()
-    ).hexdigest()
-
     checkout = CheckoutObject(
         checkout_id=f"CHK_{uuid.uuid4().hex[:8].upper()}",
         merchant_id=product.merchant_id,
@@ -78,15 +62,18 @@ async def build_checkout(
         shipping=shipping,
         tax=tax,
         total=total,
+        amount_due=total,
         currency="USD",
         delivery_date=delivery_date,
-        checkout_hash=checkout_hash,
+        checkout_hash="",  # set below
     )
+    checkout.checkout_hash = checkout_hash_for(checkout, unit_price)
     return checkout, None
 
 
 def checkout_hash_for(checkout: CheckoutObject, unit_price: float) -> str:
-    """Recompute the hash after the merchant changes a term (e.g. a new delivery date)."""
+    """Hash the checkout. Binds the cart AND the loyalty redemption / amount due,
+    so tampering with either invalidates it. Recomputed after any merchant change."""
     canonical = {
         "product_id": checkout.product_id,
         "merchant_id": checkout.merchant_id,
@@ -96,6 +83,9 @@ def checkout_hash_for(checkout: CheckoutObject, unit_price: float) -> str:
         "tax": checkout.tax,
         "shipping": checkout.shipping,
         "total": checkout.total,
+        "loyalty_points_redeemed": checkout.loyalty_points_redeemed,
+        "loyalty_value": checkout.loyalty_value,
+        "amount_due": checkout.payable,
         "currency": checkout.currency,
         "delivery_date": checkout.delivery_date,
     }

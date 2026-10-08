@@ -21,7 +21,18 @@ class CheckoutObject(BaseModel):
     shipping: float = Field(default=0.0, ge=0)
     tax: float = Field(default=0.0, ge=0)
     total: float = Field(..., ge=0)
+    # Loyalty redemption (merchant reward, settled by the merchant's own ledger,
+    # not the card rails). amount_due is what the card/PayPal is charged: the
+    # order total minus the value covered by points.
+    loyalty_points_redeemed: int = Field(default=0, ge=0)
+    loyalty_value: float = Field(default=0.0, ge=0)
+    amount_due: Optional[float] = Field(default=None, ge=0)
     currency: str = Field(default="USD")
     delivery_date: Optional[str] = None
     checkout_hash: str = Field(..., description="SHA-256 of canonicalized checkout JSON")
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @property
+    def payable(self) -> float:
+        """Amount charged to the card/PayPal (total when no points are redeemed)."""
+        return self.total if self.amount_due is None else self.amount_due

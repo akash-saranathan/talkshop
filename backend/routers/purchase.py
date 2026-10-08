@@ -3,7 +3,8 @@ Demo 2 purchase endpoints. The browser makes one call per human decision; the
 server runs everything in between (see backend/purchase/service.py).
 
   GET  /api/payment-methods        saved payment method references (brand + last4 only)
-  POST /api/psp/tokenize           mock processor tokenization for a Talkshop guest's card
+  POST /api/psp/payment-methods    register a browser-tokenized card (reference only, no PAN/CVC)
+  POST /api/psp/paypal-connect     register a (mocked) PayPal authorization reference
   POST /api/trust/session          customer agent connects to a merchant and opens a trusted session
   POST /api/purchase/checkout      product selection -> merchant checkout -> order proposal
   POST /api/purchase/go-ahead      GO AHEAD -> authorization -> payment -> order
@@ -25,11 +26,18 @@ from backend.trust.models import SCOPE_CATALOG
 router = APIRouter()
 
 
-class TokenizeRequest(BaseModel):
-    number: str = Field(repr=False)
+class RegisterCardRequest(BaseModel):
+    """A card the browser already tokenized: only the non-sensitive reference.
+    No PAN or CVC field exists here — raw card data never reaches the backend."""
+    brand: str
+    last4: str = Field(min_length=4, max_length=4)
     exp_month: int
     exp_year: int
-    cvc: str = Field(repr=False)
+    merchant_id: Optional[str] = None
+
+
+class PayPalConnectRequest(BaseModel):
+    merchant_id: Optional[str] = None
 
 
 class TrustSessionRequest(BaseModel):
@@ -71,23 +79,57 @@ class MerchantChargeRequest(BaseModel):
 
 
 @router.get("/api/payment-methods")
-async def list_payment_methods(current_user: CurrentUser = Depends(get_current_user)):
+async def list_payment_methods(merchant_id: Optional[str] = None,
+                               current_user: CurrentUser = Depends(get_current_user)):
+    """Saved cards. Scoped to merchant_id when given; otherwise all the
+    customer's cards across merchants (profile-wide view)."""
     return {
         "talkshop_account": "talkshop_guest" if current_user.is_talkshop_guest else "authenticated",
-        "payment_methods": methods.list_methods(current_user.user_id, current_user.is_talkshop_guest),
+        "payment_methods": methods.list_methods(current_user.user_id, merchant_id),
     }
 
 
-@router.post("/api/psp/tokenize")
-async def tokenize(req: TokenizeRequest, current_user: CurrentUser = Depends(get_current_user)):
+@router.post("/api/psp/payment-methods")
+async def register_payment_method(req: RegisterCardRequest, current_user: CurrentUser = Depends(get_current_user)):
     """
-    Plays the card processor's hosted card field. The number and CVC are validated
-    in memory and dropped; only a reference with brand and last4 is kept or returned.
+    Register a card the browser already validated and tokenized. Receives only
+    the reference (brand, last4, expiry) — never a card number or CVC, which stay
+    inside the browser's secure payment entry.
     """
-    pm, error = methods.tokenize_card(current_user.user_id, req.number, req.exp_month, req.exp_year, req.cvc)
+    pm, error = methods.register_card(current_user.user_id, req.brand, req.last4, req.exp_month, req.exp_year,
+                                      merchant_id=req.merchant_id)
     if error:
         return JSONResponse(status_code=400, content={"error": error})
-    return {"payment_method": pm}
+    trace = service.Trace()
+    trace.add("Secure payment entry", "CustomerAgent", "internal", "payment_method_attached", {
+        "brand": pm["brand"], "last4": pm["last4"],
+        "note": "Card tokenized in the browser. Only this reference crosses here — the card number and CVC never reach the agent, the merchant, the trace, or any log.",
+    }, direction="in")
+    return {"payment_method": pm, "events": trace.events}
+
+
+@router.delete("/api/payment-methods/{payment_method_id}")
+async def delete_payment_method(payment_method_id: str, current_user: CurrentUser = Depends(get_current_user)):
+    """Forget a saved method — used to drop a non-member's one-off card/PayPal
+    after checkout so that merchant stays a guest relationship."""
+    methods.delete_method(current_user.user_id, payment_method_id)
+    return {"ok": True}
+
+
+@router.post("/api/psp/paypal-connect")
+async def paypal_connect(req: PayPalConnectRequest, current_user: CurrentUser = Depends(get_current_user)):
+    """
+    Mocked PayPal handoff result: the browser's simulated PayPal authorization
+    returns here with no credentials, only the intent to register an authorized
+    PayPal reference for this merchant. Not a real PayPal integration.
+    """
+    pm = methods.register_paypal(current_user.user_id, merchant_id=req.merchant_id)
+    trace = service.Trace()
+    trace.add("PayPal", "CustomerAgent", "internal", "paypal_authorization_received", {
+        "reference": pm["payment_method_id"],
+        "note": "PayPal authorization reference received after the handoff. No PayPal credentials are ever seen by the agent — only this reference.",
+    }, direction="in")
+    return {"payment_method": pm, "events": trace.events}
 
 
 @router.post("/api/trust/session")

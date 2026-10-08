@@ -31,14 +31,16 @@ from sqlalchemy import update
 from backend.acp import delegated
 from backend.agents import payit
 from backend.agents.cartup import build_checkout, checkout_hash_for
+from backend.config.demo_profile import REWARD_PREFERENCE
+from backend.payment.loyalty_policy import decide_redemption
 from backend.ap2.adapter import AP2Adapter
 from backend.ap2.models import AP2CartMandate, AP2PaymentMandate
 from backend.config.agents import PAYIT
-from backend.db.schema import (CustomerConsent, DelegatedPaymentToken, DelegatedToken, MerchantCheckout)
+from backend.db.schema import (CustomerConsent, DelegatedPaymentToken, DelegatedToken, LoyaltyPoints, MerchantCheckout)
 from backend.db.session_utils import get_session, now_utc, write_audit_event
 from backend.merchants import catalog as merchant_catalog
 from backend.models.checkout import CheckoutObject
-from backend.models.payment import PaymentRequest
+from backend.models.payment import PaymentRequest, PaymentResult
 from backend.observability.redact import redact
 from backend.orders.service import confirm_paid_order
 from backend.payment import methods
@@ -71,6 +73,15 @@ class Trace:
 
 def _agent(merchant_id: str) -> str:
     return f"{merchant_catalog_name(merchant_id)}Agent"
+
+
+def _merchant_loyalty(user_id: str, merchant_id: str) -> int:
+    """This customer's loyalty balance at this merchant (0 if none/guest)."""
+    with get_session() as db:
+        lp = db.query(LoyaltyPoints).filter(
+            LoyaltyPoints.user_id == user_id, LoyaltyPoints.merchant_id == merchant_id
+        ).first()
+        return lp.balance if lp else 0
 
 
 def merchant_catalog_name(merchant_id: str) -> str:
@@ -124,14 +135,45 @@ async def create_proposal(
                   {"action": SCOPE_CHECKOUT, "failed_check": decision.failed_check, "reason": decision.reason},
                   direction="in")
         return _reject(trace, "TRUST_VALIDATION_FAILED",
-                       f"{merchant_catalog_name(product.merchant_id)} did not accept the shopping agent for checkout.")
+                       f"{merchant_catalog_name(product.merchant_id)} could not verify this shopping agent's credentials, so the checkout was not authorized. Nothing was charged.")
     trace.add(agent, "CustomerAgent", "TRUST", "trusted_session_verified",
               {"action": SCOPE_CHECKOUT, "trusted_session_id": trusted.session_id,
                "merchant_relationship": trusted.merchant_relationship}, direction="in")
 
+    # Merchant-scoped loyalty: a member merchant returns this customer's balance.
+    # Loyalty is a merchant benefit, not a payment protocol.
+    loyalty_balance = _merchant_loyalty(user_id, product.merchant_id)
+    is_member = trusted.merchant_relationship == "merchant_member"
+    if is_member:
+        trace.add(agent, "CustomerAgent", "A2A", "loyalty_balance", {
+            "merchant": product.merchant_id, "balance": loyalty_balance,
+            "note": "Merchant returned this customer's loyalty balance. A merchant reward, not a payment protocol.",
+        }, direction="in")
+
     checkout, error = await build_checkout(product, quantity, user_id)
     if error:
         return _reject(trace, error, "The merchant could not create a checkout for this item.")
+
+    # Zero-click loyalty redemption: the agent applies the customer's standing
+    # reward preference automatically. Points are settled by the merchant's own
+    # ledger; only amount_due is charged to the card. Re-hash so the redemption
+    # is bound into the checkout (tamper-proof) before it is stored or mandated.
+    redemption = None
+    if is_member and loyalty_balance > 0:
+        decision = decide_redemption(loyalty_balance, checkout.total, REWARD_PREFERENCE)
+        if decision.points_redeemed > 0:
+            checkout.loyalty_points_redeemed = decision.points_redeemed
+            checkout.loyalty_value = decision.value_redeemed
+            checkout.amount_due = decision.amount_due
+            unit_price = round(checkout.subtotal / checkout.quantity, 2)
+            checkout.checkout_hash = checkout_hash_for(checkout, unit_price)
+            redemption = decision
+            trace.add(agent, "CustomerAgent", "A2A", "loyalty_redemption_applied", {
+                "merchant": product.merchant_id, "points_redeemed": decision.points_redeemed,
+                "value_redeemed": decision.value_redeemed, "order_total": checkout.total,
+                "amount_due": decision.amount_due, "preference": REWARD_PREFERENCE,
+                "note": "Merchant redeemed the customer's points against this order. Settled by the merchant's loyalty ledger, not the card rails.",
+            }, direction="in")
 
     with get_session() as db:
         db.add(MerchantCheckout(checkout_id=checkout.checkout_id, user_id=user_id,
@@ -142,7 +184,9 @@ async def create_proposal(
     trace.add("CustomerAgent", agent, "UCP", "checkout_created", {
         "mode": "UCP-style checkout", "checkout_id": checkout.checkout_id, "merchant": checkout.merchant_id,
         "totals": {"subtotal": checkout.subtotal, "shipping": checkout.shipping, "tax": checkout.tax,
-                   "total": checkout.total, "currency": checkout.currency},
+                   "total": checkout.total, "loyalty_points_redeemed": checkout.loyalty_points_redeemed,
+                   "loyalty_value": checkout.loyalty_value, "amount_due": checkout.payable,
+                   "currency": checkout.currency},
         "delivery_date": checkout.delivery_date, "delivery_display": _pretty_date(checkout.delivery_date),
         "checkout_hash": checkout.checkout_hash,
     })
@@ -153,8 +197,10 @@ async def create_proposal(
         "verified": ap2["cart_verified"], "note": "Binds product, quantity, merchant and total. Not a spending authorization.",
     })
 
+    # Saved card is merchant-scoped: a member merchant has one; a merchant the
+    # customer is a guest to returns None, which the UI turns into secure entry.
     pm = (methods.get_method(user_id, payment_method_id) if payment_method_id
-          else methods.default_method(user_id, is_talkshop_guest))
+          else methods.default_method(user_id, product.merchant_id))
     proposal = {
         **checkout.model_dump(mode="json"),
         "delivery_display": _pretty_date(checkout.delivery_date),
@@ -163,6 +209,11 @@ async def create_proposal(
         "merchant_relationship": trusted.merchant_relationship,
         "talkshop_account": "talkshop_guest" if is_talkshop_guest else "authenticated",
         "payment_method": pm,
+        "loyalty": {
+            "balance": loyalty_balance, "is_member": is_member, "merchant_name": checkout.merchant_name,
+            "points_redeemed": checkout.loyalty_points_redeemed, "value_redeemed": checkout.loyalty_value,
+            "amount_due": checkout.payable, "fully_covered": bool(redemption and redemption.fully_covered),
+        } if is_member else None,
         "ap2": ap2,
     }
     trace.add("CustomerAgent", "Customer", "internal", "order_proposal", {
@@ -236,6 +287,24 @@ def _record_consent(user_id: str, checkout: CheckoutObject, pm: dict, kind: str,
     return consent_id
 
 
+def _order_payload(checkout: CheckoutObject, result: PaymentResult, order: dict, pm_display: Optional[str]) -> dict:
+    """The confirmed-order dict returned to the UI. `result.amount` is the cash
+    charged (0 when fully covered by points); loyalty fields show the split."""
+    return {
+        "order_id": checkout.checkout_id, "merchant_id": checkout.merchant_id,
+        "merchant_name": checkout.merchant_name, "product_id": checkout.product_id,
+        "product_title": checkout.product_title, "size": checkout.size, "color": checkout.color,
+        "quantity": checkout.quantity, "subtotal": checkout.subtotal, "tax": checkout.tax,
+        "shipping": checkout.shipping, "total": checkout.total, "amount_paid": result.amount,
+        "loyalty_points_redeemed": checkout.loyalty_points_redeemed, "loyalty_value": checkout.loyalty_value,
+        "currency": checkout.currency,
+        "delivery_date": checkout.delivery_date, "delivery_display": _pretty_date(checkout.delivery_date),
+        "transaction_id": result.transaction_id, "tracking_number": order["tracking_number"],
+        "payment_method": pm_display,
+        "points_earned": order["points_earned"], "loyalty_balance": order["loyalty_balance"],
+    }
+
+
 async def _authorize_and_execute(trace: Trace, user_id: str, trusted_session_id: str, checkout: CheckoutObject,
                                  pm: dict, consent_id: str, demo: Optional[str]) -> dict:
     # AP2: payment authorization evidence, created only now, after consent.
@@ -256,9 +325,38 @@ async def _authorize_and_execute(trace: Trace, user_id: str, trusted_session_id:
         "note": "Evidence that the customer approved this exact checkout and amount.",
     })
 
-    # ACP: the scoped, single-use payment credential that crosses to the merchant.
+    payable = checkout.payable
+    merchant = _agent(checkout.merchant_id)
+
+    # Points-only: the merchant's loyalty ledger settles the whole order, so there
+    # is no cash slice to authorize on the card rails — no ACP token, no PSP.
+    if payable <= 0.005:
+        trace.add(merchant, "CustomerAgent", "internal", "loyalty_settlement", {
+            "points_redeemed": checkout.loyalty_points_redeemed, "value_redeemed": checkout.loyalty_value,
+            "amount_due": 0.0,
+            "note": "Order settled entirely with loyalty points — the merchant's reward ledger covers it. No card charge, no ACP token, no PSP.",
+        }, direction="in")
+        result = PaymentResult(status="success", transaction_id=f"LOYALTY_{uuid.uuid4().hex[:10].upper()}",
+                               authorization_code="LOYALTY", amount=0.0, currency=checkout.currency)
+        with get_session() as db:
+            order = confirm_paid_order(db, checkout, result, user_id)
+            db.query(MerchantCheckout).filter(MerchantCheckout.checkout_id == checkout.checkout_id).update(
+                {"status": "paid"}, synchronize_session=False)
+            db.commit()
+        trace.add(f"{merchant_catalog_name(checkout.merchant_id)} Order Service", merchant, "internal", "order_created", {
+            "order_id": checkout.checkout_id, "tracking_number": order["tracking_number"],
+            "delivery_date": checkout.delivery_date, "amount": 0.0,
+        })
+        trace.add(merchant, "CustomerAgent", "A2A", "order_confirmed", {
+            "message": "ORDER_CONFIRMED", "order_id": checkout.checkout_id, "amount": 0.0,
+            "delivery_date": checkout.delivery_date,
+        }, direction="in")
+        return _result("approved", trace, order=_order_payload(checkout, result, order, "Loyalty points"))
+
+    # ACP: the scoped, single-use payment credential that crosses to the merchant,
+    # scoped to the cash slice (amount_due), not the full order total.
     token = delegated.issue(merchant_id=checkout.merchant_id, checkout_id=checkout.checkout_id,
-                            checkout_hash=checkout.checkout_hash, total=checkout.total, currency=checkout.currency,
+                            checkout_hash=checkout.checkout_hash, total=payable, currency=checkout.currency,
                             payment_method=pm, consent_id=consent_id, ap2_payment_mandate_id=mandate.id)
     with get_session() as db:
         db.add(DelegatedPaymentToken(
@@ -271,10 +369,10 @@ async def _authorize_and_execute(trace: Trace, user_id: str, trusted_session_id:
     trace.add("CustomerAgent", _agent(checkout.merchant_id), "ACP", "acp_token_issued", {
         "mode": "ACP-style scoped token", **delegated.public_view(token)})
 
-    amount = checkout.total + 20 if demo == "tampered_amount" else checkout.total
+    amount = payable + 20 if demo == "tampered_amount" else payable
     if demo == "tampered_amount":
         trace.add("CustomerAgent", _agent(checkout.merchant_id), "internal", "demo_tampered_charge",
-                  {"authorized_total": checkout.total, "attempted_charge": amount})
+                  {"authorized_total": payable, "attempted_charge": amount})
     result = await merchant_charge(user_id=user_id, token_id=token["token_id"], checkout_id=checkout.checkout_id,
                                    amount=amount, currency=checkout.currency, demo=demo, trace=trace)
     return result
@@ -333,7 +431,7 @@ async def merchant_charge(
                   {"action": SCOPE_PAYMENT, "failed_check": decision.failed_check, "reason": decision.reason},
                   direction="in")
         return _block(trace, user_id, checkout_id, token_id, "TRUST_VALIDATION_FAILED",
-                      "The merchant did not accept the shopping agent for payment.")
+                      f"{merchant_catalog_name(checkout.merchant_id)} could not verify this shopping agent for payment, so no charge was authorized.")
     trace.add(merchant, "CustomerAgent", "TRUST", "trusted_session_verified",
               {"action": SCOPE_PAYMENT, "trusted_session_id": trusted.session_id, "amount": amount}, direction="in")
 
@@ -351,7 +449,7 @@ async def merchant_charge(
               {"token_id": token_id, "charge_cents": round(amount * 100), "checks": checks}, direction="in")
     if not ok:
         return _block(trace, user_id, checkout_id, token_id, reason,
-                      "The payment did not match the authorized checkout or the token's scope. Nothing was charged.")
+                      "The payment amount or scope did not match what you authorized for this exact order, so nothing was charged.")
 
     with get_session() as db:
         cart_doc = _load_mandate(db, checkout.checkout_id, "cart")
@@ -436,7 +534,7 @@ async def merchant_charge(
         db.commit()
 
     result, events, blocked_reason = await payit.execute_payment(
-        request, token_ctx, checkout.total, checkout.checkout_hash, consent_exists,
+        request, token_ctx, checkout.payable, checkout.checkout_hash, consent_exists,
         processor_wallet=methods.processor_wallet(pm) if pm else None)
     passed = sum(1 for e in events if e.passed)
     trace.add("PaymentService", "PaymentService", "PAYMENT", "payment_checks", {
@@ -453,8 +551,13 @@ async def merchant_charge(
         "decline_reason": result.decline_reason, "payment_method": pm["display"] if pm else None,
     })
     if result.status != "success":
+        _reasons = {
+            "NO_ACTIVE_PAYMENT_METHOD": "there was no active payment method on file",
+            "CARD_EXPIRED": "the card on file has expired",
+        }
+        why = _reasons.get(result.decline_reason or "", "the card was declined")
         return _block(trace, user_id, checkout_id, token_id, result.decline_reason or "DECLINED",
-                      "The card processor declined the payment.", revoke=False)
+                      f"{merchant_catalog_name(checkout.merchant_id)}'s payment processor declined the payment because {why}. No charge was made.", revoke=False)
 
     with get_session() as db:
         order = confirm_paid_order(db, checkout, result, user_id)
@@ -469,17 +572,9 @@ async def merchant_charge(
         "message": "ORDER_CONFIRMED", "order_id": checkout.checkout_id, "amount": result.amount,
         "delivery_date": checkout.delivery_date,
     }, direction="in")
-    return _result("approved", trace, order={
-        "order_id": checkout.checkout_id, "merchant_id": checkout.merchant_id,
-        "merchant_name": checkout.merchant_name, "product_id": checkout.product_id,
-        "product_title": checkout.product_title, "size": checkout.size, "color": checkout.color,
-        "quantity": checkout.quantity, "subtotal": checkout.subtotal, "tax": checkout.tax,
-        "shipping": checkout.shipping, "total": result.amount, "currency": checkout.currency,
-        "delivery_date": checkout.delivery_date, "delivery_display": _pretty_date(checkout.delivery_date),
-        "transaction_id": result.transaction_id, "tracking_number": order["tracking_number"],
-        "payment_method": pm["display"] if pm else None,
-        "points_earned": order["points_earned"], "loyalty_balance": order["loyalty_balance"],
-    }, delegated_token_id=token_id)
+    return _result("approved", trace,
+                   order=_order_payload(checkout, result, order, pm["display"] if pm else None),
+                   delegated_token_id=token_id)
 
 
 # ── 4. Re-consent after the merchant changed a term ─────────────────────────
@@ -531,7 +626,7 @@ async def reconsent(*, user_id: str, checkout_id: str, decision: str) -> dict:
         "cart_mandate_id": ap2["cart_mandate_id"], "checkout_hash": updated.checkout_hash,
         "verified": ap2["cart_verified"], "delivery_date": new_date, "note": "Re-bound to the new delivery date.",
     })
-    pm = methods.get_method(user_id, pm_id) if pm_id else methods.default_method(user_id, False)
+    pm = methods.get_method(user_id, pm_id) if pm_id else methods.default_method(user_id, updated.merchant_id)
     consent = _record_consent(user_id, updated, pm, kind="reconsent")
     trace.add("Customer", "CustomerAgent", "HUMAN", "reconsent_received", {
         "consent_id": consent, "checkout_id": checkout_id, "checkout_hash": updated.checkout_hash,
