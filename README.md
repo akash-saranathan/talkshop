@@ -8,6 +8,38 @@ It's a working prototype of the same problem Stripe's [Agentic Commerce Protocol
 
 ---
 
+## Current branch: `demo-2-generic-assistant`
+
+Builds on the Demo 2 protocol work (A2A/UCP/AP2/ACP checkout across 6
+synthetic merchants — Nike, Adidas, Zara, H&M, Fossil, Casio) with a
+polish pass aimed at making the app feel like a general-purpose
+ChatGPT-style shopping assistant rather than a single merchant's login-gated
+app. See [`status.md`](status.md) ("Final Demo Polish Plan") for the full
+phased plan and what's done vs. still open; summary of what changed:
+
+- **No login screen.** The app opens straight into chat as one persistent
+  demo identity (John Carter), bootstrapped automatically
+  (`POST /api/auth/demo-session`) instead of a login form.
+- **Merchant-scoped customer status.** Being "a customer" is now a
+  `(user, merchant)` fact, not global — John is a member at Nike/Zara/Fossil
+  (saved card + loyalty points) and a guest everywhere else, each
+  independently.
+- **Secure payment entry.** Card number/CVC are tokenized entirely in the
+  browser — only a `{brand, last4, expiry}` reference reaches the backend.
+  A mocked "Connect PayPal" flow (signed-in account, funding-source choice,
+  no credentials) produces the same kind of opaque reference.
+- **Merchant-specific loyalty, redeemed automatically.** Points are tracked
+  per merchant and spent with no extra click — the agent decides
+  points-only / points+card / card-only from a standing reward preference,
+  and the AP2/ACP/guardrail amount reflects whatever's left after
+  redemption (skipping the card rails entirely when points cover it all).
+- Hidden visible countdowns (silent ~3s auto-advance instead), fixed
+  several chat auto-scroll gaps, clearer demo-scenario/error wording, a
+  guardrail fix for false-blocking short follow-up replies, and Dashboard
+  filters (merchant, Order ID/tracking search) plus a mock carrier.
+
+---
+
 ## Version 2 — Conversational Commerce (current branch: `v2-upgrade`)
 
 Version 2 transforms TalkShop into a fully conversational single-screen experience. The entire purchase flow — search → add to cart → checkout → pay → order confirmation — happens inline in the chat. The right panel shows a live real-time trace of the 6-agent pipeline as it runs.
@@ -120,10 +152,16 @@ Discovery (VibeCheck → SneakPeek) runs as a [LangGraph](https://github.com/lan
 - **Pipeline progress bar** — N / 6 with gradient fill
 
 ### Auth & identity
-- Known Customer / Guest two-CTA landing page
-- JWT + bcrypt registered accounts
-- Guest checkout with session-scoped card memory
-- Loyalty points: 1 pt per $1 on every confirmed order
+- No login screen — opens straight into chat as one persistent demo
+  identity (JWT session bootstrapped automatically on load)
+- Customer status is merchant-scoped: a `(user, merchant)` relationship,
+  not one global flag — the demo identity is a member at some merchants
+  (saved card + loyalty points) and a guest at others
+- Guest/non-member checkout uses client-side-tokenized card entry or a
+  mocked PayPal connect; the method is forgotten after that purchase
+- Loyalty points: merchant-scoped, 1 pt per $1 earned on a member
+  purchase, redeemed automatically (no extra click) against future orders
+  at that same merchant
 
 ---
 
@@ -181,12 +219,9 @@ npm run dev                 # http://localhost:5175
 
 ### Try it
 
-```
-email:    demo@talkshop.io
-password: demo1234
-```
-
-Then ask: *"Find running shoes, size 10, under $100"* — or anything else.
+No login needed — open the app and it's already signed in as the demo
+identity. Just ask: *"Find running shoes, size 10, under $100"* — or
+anything else.
 
 ---
 
