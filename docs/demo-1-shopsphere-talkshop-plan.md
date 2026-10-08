@@ -16,7 +16,7 @@
 
 ### Progress
 
-**Phases approved: 7 / 12 · Steps done: 96 / 96** · Phases 7–11 👀 ready for your review
+**Phases approved: 7 / 13 · Steps done: 101 / 101** · Phases 7–12 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
@@ -32,6 +32,7 @@
 | 9 | Secure checkout details in Talkshop | 8 / 8 | 👀 Ready for your review |
 | 10 | Every shopper can buy: guest checkout, wallet, email, Track Order | 10 / 10 | 👀 Ready for your review |
 | 11 | Real confirmation emails + Track Order everywhere (website button, Talkshop) | 5 / 5 | 👀 Ready for your review |
+| 12 | Loyalty points: earn, see and redeem (customers) | 5 / 5 | 👀 Ready for your review |
 
 Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review · ✅ Approved
 
@@ -177,6 +178,15 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 11.4 Tests: SMTP delivery (with a fake mail server), chat tracking (right/wrong email, own order, "track my order" without an ID)
 - [x] 11.5 Browser check + a real email to your mail account *(browser: chat tracking, own order, header at 4 widths. Real email: Gmail App Password in .env, test email + guest order SS-80995 confirmation delivered, status sent)*
 - [x] **Checkpoint:** an order placed in any scenario sends a real email with its Order ID; that Order ID + email shows the order and tracking on the website and in Talkshop
+- [ ] **Approved, proceed to Phase 12**
+
+### Phase 12: Loyalty points (customers)
+- [x] 12.1 Earning: customers only, 1 point per $1 paid (the existing pipeline rule); guests no longer earn and instead see "Create an account to earn N points"
+- [x] 12.2 Redeeming: "Use my points" at checkout. 100 points = $1 off the product price, before tax; at least $1 of product stays payable; points are deducted only when the payment is authorized (a decline keeps them)
+- [x] 12.3 Showing points: account menu balance; "You'll earn N points" on Review / checkout; points earned/used on the confirmation, the order page and the email
+- [x] 12.4 Talkshop: "how many points do I have?"; the Review card's "Use my points"; points on the confirmation
+- [x] 12.5 Tests + browser check (earn, redeem, decline keeps points, guest earns none)
+- [x] **Checkpoint:** a customer earns points on every order, sees the balance, and can spend points at checkout in the chat and on the website; guests earn none *(browser: menu balance, website + chat redeem, guest; 349 tests)*
 - [ ] **Approved: Demo 1 complete 🎉**
 
 ---

@@ -38,7 +38,7 @@ export type TalkAction =
   | { type: "select" | "ask_about"; product_id: string }
   | { type: "choose_size" | "choose_color"; value: string }
   | { type: "checkout"; guest?: boolean } | { type: "keep_shopping" } | { type: "cancel_checkout" }
-  | { type: "update_checkout"; delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; quantities?: Record<string, number> }
+  | { type: "update_checkout"; delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; points_used?: number; quantities?: Record<string, number> }
   // consent "auto_countdown": the review card's countdown ran out (no Stop pressed)
   | { type: "go_ahead"; checkout_id: string; consent?: "auto_countdown" }
   // Order ID + email typed into the secure lookup card (not chat text)

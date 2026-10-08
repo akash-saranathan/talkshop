@@ -116,6 +116,11 @@ def track_order(order_id: str, email: str) -> Optional[dict]:
         return order_service.tracking_view(db, order) if order else None
 
 
+def points_balance(user_id: str) -> int:
+    with _db() as db:
+        return checkout_service.points_balance(db, user_id)
+
+
 def own_orders(user_id: str, limit: int = 10) -> list[dict]:
     """A logged-in customer's recent ShopSphere orders, newest first, each with
     the words that describe it (product names, brands, categories) for matching

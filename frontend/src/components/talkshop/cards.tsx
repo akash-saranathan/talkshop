@@ -236,6 +236,31 @@ function PayCountdown({ onFire, onStop }: { onFire: () => void; onStop: () => vo
   );
 }
 
+/** Loyalty points on the review card: use / remove, and what this order earns. */
+function PointsLine({ co, live, busy, onUse }: { co: Checkout; live: boolean; busy: boolean; onUse: (n: number) => void }) {
+  const pts = co.points;
+  if (!pts) {
+    return co.guest ? <p className="text-xs text-muted">Create a ShopSphere account to earn {co.earn_points.toLocaleString()} points on orders like this.</p> : null;
+  }
+  return (
+    <div className="flex flex-col gap-1 text-xs">
+      {pts.used > 0 ? (
+        <p className="flex items-center justify-between gap-2">
+          <span>Using {pts.used.toLocaleString()} points (−{money(pts.discount)})</span>
+          {live && <button type="button" disabled={busy} onClick={() => onUse(0)} className="font-medium underline">Remove</button>}
+        </p>
+      ) : pts.max_usable > 0 ? (
+        <p className="flex items-center justify-between gap-2">
+          <span>You have {pts.balance.toLocaleString()} points</span>
+          {live && <button type="button" disabled={busy} onClick={() => onUse(pts.max_usable)} className="font-medium text-talk underline">
+            Use {pts.max_usable.toLocaleString()} (−{money(pts.max_usable * pts.value_per_point)})</button>}
+        </p>
+      ) : null}
+      <p className="text-muted">You'll earn {co.earn_points.toLocaleString()} points with this order.</p>
+    </div>
+  );
+}
+
 /* ── Review your order (the consent gate) ──────────────────────────────── */
 export function ReviewOrderCard({ checkout: co, active, busy, onAct, autoPay = false, onAutoPay }:
   { checkout: Checkout; active: boolean; busy: boolean; onAct: Act; autoPay?: boolean; onAutoPay?: (checkoutId: string) => void }) {
@@ -275,10 +300,13 @@ export function ReviewOrderCard({ checkout: co, active, busy, onAct, autoPay = f
 
         <div className="border-t border-line pt-3 flex flex-col gap-1 text-sm">
           <Row label="Product" value={money(co.subtotal)} />
+          {co.points_discount > 0 && <Row label={`Points (${co.points?.used.toLocaleString()})`} value={`−${money(co.points_discount)}`} />}
           <Row label={`Tax`} value={money(co.tax)} />
           {co.shipping > 0 && <Row label="Express delivery" value={money(co.shipping)} />}
           <div className="flex justify-between font-semibold text-[15px] pt-1.5 border-t border-line mt-1"><span>Total</span><span className="tabular-nums">{money(co.total)}</span></div>
         </div>
+
+        <PointsLine co={co} live={live} busy={busy} onUse={(n) => update({ points_used: n })} />
 
         <div className="flex flex-col gap-1.5">
           <p className="flex items-center gap-1.5 text-xs font-medium text-muted"><Truck size={13} /> Delivery</p>
@@ -430,9 +458,11 @@ export function OrderConfirmedCard({ order, email }: { order: Order; email?: str
           </div>
         ))}
         <div className="flex flex-col gap-1 border-t border-line pt-3">
+          {!!order.points?.used && <Row label={`Points used (${order.points.used.toLocaleString()})`} value={`−${money(order.points.discount)}`} />}
           <Row label="Total" value={money(order.total)} />
           <Row label="Paid with" value={order.payment?.display ?? "—"} />
           <Row label="Expected delivery" value={niceDate(order.delivery_date)} />
+          {!!order.points?.earned && <Row label="Points earned" value={`+${order.points.earned.toLocaleString()}`} />}
         </div>
         {email && <p className="text-xs text-muted">Confirmation emailed to <span className="text-ink break-all">{email}</span></p>}
         {order.guest ? (

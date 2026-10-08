@@ -233,22 +233,26 @@ async def execute_payment_endpoint(
                                agent_id=TRACKIT.agent_id, order_id=req.checkout_id,
                                metadata={"transaction_id": result.transaction_id})
 
-            # Award 1 loyalty point per $1 spent (rounded down)
-            points_earned = int(result.amount)
+            # Award 1 loyalty point per $1 spent (rounded down). Customers only:
+            # a guest has no account to keep points in (Phase 12).
+            points_earned = 0 if current_user.is_visitor else int(result.amount)
             lp = session.query(LoyaltyPoints).filter(LoyaltyPoints.user_id == current_user.user_id).first()
-            if not lp:
+            if not points_earned:
+                pass
+            elif not lp:
                 lp = LoyaltyPoints(user_id=current_user.user_id, balance=points_earned, lifetime_points=points_earned)
                 session.add(lp)
             else:
                 lp.balance += points_earned
                 lp.lifetime_points += points_earned
-            session.add(LoyaltyTransaction(
-                transaction_id=uuid.uuid4().hex,
-                user_id=current_user.user_id,
-                order_id=req.checkout_id,
-                points_earned=points_earned,
-                reason="purchase",
-            ))
+            if points_earned:
+                session.add(LoyaltyTransaction(
+                    transaction_id=uuid.uuid4().hex,
+                    user_id=current_user.user_id,
+                    order_id=req.checkout_id,
+                    points_earned=points_earned,
+                    reason="purchase",
+                ))
             session.commit()
 
             return ExecutePaymentResponse(
@@ -257,7 +261,7 @@ async def execute_payment_endpoint(
                 summary=trackit.summarize_order(checkout, result),
                 wallet_balance=wallet.balance if wallet else None,
                 points_earned=points_earned,
-                loyalty_balance=lp.balance,
+                loyalty_balance=lp.balance if lp else 0,
             )
 
 
@@ -282,7 +286,7 @@ def _shop_fields(session, order: Order) -> dict:
     return {"display_id": d["order_id"], "lines": d["lines"], "subtotal": d["subtotal"], "tax": d["tax"],
             "shipping": d["shipping"], "delivery_method": d["delivery_method"],
             "delivery_date": d["delivery_date"], "ship_to": d["ship_to"], "payment": d["payment"],
-            "payment_status": d["payment_status"]}
+            "payment_status": d["payment_status"], "points": d["points"]}
 
 
 def _delivery_fields(order: Order, product: Optional[Product], cart_fallback: Optional[CartItem] = None) -> dict:

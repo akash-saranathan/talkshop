@@ -10,6 +10,7 @@ interface OrderView {
   id: string; created_at: string | null; total: number; delivery_date: string | null; delivery_method: string | null;
   lines: OrderLine[]; ship_to: Address | null; payment: { display: string } | null; tracking_number: string | null;
   subtotal: number; tax: number; shipping: number; delivery_status: string | null; shipment: Shipment | null;
+  points: { used: number; discount: number; earned: number } | null;
 }
 
 function toView(o: Record<string, unknown>): OrderView | null {
@@ -22,6 +23,7 @@ function toView(o: Record<string, unknown>): OrderView | null {
     subtotal: Number(o.subtotal ?? 0), tax: Number(o.tax ?? 0), shipping: Number(o.shipping ?? 0),
     delivery_status: (o.delivery_status as string) ?? null,
     shipment: (o.shipment as Shipment) ?? null,
+    points: (o.points as { used: number; discount: number; earned: number }) ?? null,
   };
 }
 
@@ -121,6 +123,8 @@ export function OrderDetailPage() {
         <div className="rounded-3xl border border-line p-5 text-sm">
           <p className="flex items-center gap-2 font-semibold mb-2"><CreditCard size={16} /> Payment</p>
           <p>{order.payment?.display ?? "—"}</p><p className="text-good mt-1">Authorized</p>
+          {!!order.points?.earned && <p className="text-muted mt-1">+{order.points.earned.toLocaleString()} points earned</p>}
+          {!!order.points?.used && <p className="text-muted">{order.points.used.toLocaleString()} points used (−{money(order.points.discount)})</p>}
         </div>
       </div>
 

@@ -49,6 +49,9 @@ def send_order_confirmation(db: Session, order: Order) -> Optional[str]:
         f" × {ln.quantity} — ${ln.line_total:.2f}" for ln in lines)
     tracking = (f"Tracking ID: {track['tracking_number']}\n" if track["tracking_number"]
                 else "Tracking ID: you'll get one when your order ships.\n")
+    points_used_line = (f"Points used: {order.points_used:,} (-${order.points_discount:.2f})\n"
+                        if order.points_used else "")
+    points_earned_line = f"Points earned: +{order.points_earned:,}\n" if order.points_earned else ""
     body = (
         f"Hi {(order.guest_name or (ship_to.get('full_name') or 'there')).split()[0]},\n\n"
         f"Your ShopSphere order has been confirmed.\n\n"
@@ -57,7 +60,9 @@ def send_order_confirmation(db: Session, order: Order) -> Optional[str]:
         f"{tracking}"
         f"Estimated delivery: {track['estimated_delivery'] or 'to be confirmed'}\n\n"
         f"Items:\n{items}\n\n"
+        f"{points_used_line}"
         f"Order total: ${order.amount:.2f}\n"
+        f"{points_earned_line}"
         f"Shipping to: {ship_to.get('city', '')}, {ship_to.get('state', '')} {ship_to.get('postal_code', '')}\n\n"
         f"Track your order any time: open ShopSphere, choose \"Track order\", and enter your Order ID "
         f"({order.display_id}) and this email address. You can also ask Talkshop, our shopping assistant.\n"

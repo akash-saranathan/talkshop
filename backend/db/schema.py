@@ -160,6 +160,9 @@ class Checkout(Base):
     pay_with = Column(String(10), nullable=False, default="card")   # card | wallet (Phase 10)
     guest_email = Column(String(255))                  # guest checkout: no customer account (Phase 10)
     guest_name = Column(String(100))
+    # Phase 12: loyalty points spent on this checkout (100 points = $1 off, before tax)
+    points_used = Column(Integer, nullable=False, default=0)
+    points_discount = Column(Float, nullable=False, default=0.0)
     subtotal = Column(Float, nullable=False, default=0.0)
     tax = Column(Float, nullable=False, default=0.0)
     shipping = Column(Float, nullable=False, default=0.0)
@@ -205,6 +208,10 @@ class Order(Base):
     # Simulated shipment (backend/shop/shipping.py); tracking_number is set when it ships
     shipment_status = Column(String(30))
     shipment_events_json = Column(Text)
+    # Loyalty points (Phase 12): spent on this order, the discount they gave, and earned
+    points_used = Column(Integer)
+    points_discount = Column(Float)
+    points_earned = Column(Integer)
 
 
 class EmailOutbox(Base):

@@ -216,6 +216,15 @@ def order_ref(text: str) -> Optional[str]:
     return f"SS-{m.group(1)}" if m else None
 
 
+_POINTS = re.compile(r"\b(loyalty|reward points?|rewards|my points|points balance|how many points|"
+                     r"points (?:do i have|have i got)|point balance)\b", re.I)
+
+
+def asks_about_points(text: str) -> bool:
+    """'how many points do I have?', 'my loyalty points'…"""
+    return bool(_POINTS.search(text or ""))
+
+
 def about_past_order(text: str) -> bool:
     """Clearly about an order already placed, even if it names a product."""
     return bool(_PAST_ORDER.search(text or ""))

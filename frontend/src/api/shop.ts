@@ -48,6 +48,11 @@ export interface Checkout {
   delivery: { method: "standard" | "express"; date: string; options: DeliveryOption[] };
   address: Address | null; payment_method: (Card | WalletOption) | null; saved_addresses: Address[]; saved_payment_methods: Card[];
   pay_with: "card" | "wallet"; wallet: WalletOption | null;
+  /** Loyalty points (customers only; null for guests). 100 points = $1 off before tax. */
+  points: { balance: number; used: number; discount: number; max_usable: number; value_per_point: number } | null;
+  points_discount: number;
+  /** Points this order earns (guests: what they'd earn with an account). */
+  earn_points: number;
   /** Guest checkout (no account): the email and name once given. */
   guest: { email: string | null; name: string | null } | null;
   issues: CheckoutIssue[]; ready: boolean; checkout_hash: string;
@@ -77,6 +82,7 @@ export interface Order {
   delivery_method: string | null; delivery_date: string | null; ship_to: Address | null;
   payment: { brand: string; last4: string | null; display: string } | null; tracking_number: string | null; created_at: string | null;
   payment_method_type?: "card" | "wallet"; guest?: boolean; guest_email?: string | null; shipment?: Shipment;
+  points?: { used: number; discount: number; earned: number };
 }
 export type ConfirmResult =
   | { status: "authorized"; order: Order; transaction_id: string; confirmation_email?: string | null }
@@ -140,8 +146,9 @@ export const shop = {
   createCheckout: (lineIds: string[], guest = false) => call<Checkout>("/api/checkouts", json("POST", { line_ids: lineIds, guest })),
   guestDetails: (id: string, details: GuestDetails) => call<Checkout>(`/api/checkouts/${id}/guest-details`, json("POST", details)),
   checkout: (id: string) => call<Checkout>(`/api/checkouts/${id}`),
-  updateCheckout: (id: string, changes: { delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; quantities?: Record<string, number> }) =>
+  updateCheckout: (id: string, changes: { delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; points_used?: number; quantities?: Record<string, number> }) =>
     call<Checkout>(`/api/checkouts/${id}`, json("PATCH", changes)),
+  loyalty: () => call<{ balance: number; lifetime_points: number }>("/api/loyalty"),
   cancelCheckout: (id: string) => call<Checkout>(`/api/checkouts/${id}/cancel`, json("POST")),
   confirm: (id: string) => call<ConfirmResult>(`/api/checkouts/${id}/confirm`, json("POST", { consent: true })),
 

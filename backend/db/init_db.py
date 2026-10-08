@@ -84,6 +84,12 @@ def init_db(db_path: Path = DB_PATH):
     # Phase 11: real email delivery status
     _ensure_column(engine, "email_outbox", "delivery", "delivery VARCHAR(20) NOT NULL DEFAULT 'outbox'")
     _ensure_column(engine, "email_outbox", "delivery_error", "delivery_error VARCHAR(200)")
+    # Phase 12: loyalty points on checkouts and orders
+    _ensure_column(engine, "checkouts", "points_used", "points_used INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(engine, "checkouts", "points_discount", "points_discount FLOAT NOT NULL DEFAULT 0")
+    for col in ("points_used", "points_earned"):
+        _ensure_column(engine, "orders", col, f"{col} INTEGER")
+    _ensure_column(engine, "orders", "points_discount", "points_discount FLOAT")
     return engine
 
 

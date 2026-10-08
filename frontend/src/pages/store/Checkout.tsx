@@ -277,8 +277,27 @@ export default function CheckoutPage() {
             <div className="flex justify-between"><span className="text-muted">Items</span><span className="tabular-nums">{money(co.subtotal)}</span></div>
             <div className="flex justify-between"><span className="text-muted">Delivery ({co.delivery.method === "express" ? "Express" : "Standard"})</span>
               <span className="tabular-nums">{co.shipping ? money(co.shipping) : "Free"}</span></div>
+            {co.points_discount > 0 && (
+              <div className="flex justify-between"><span className="text-muted">Points ({co.points?.used.toLocaleString()})</span>
+                <span className="tabular-nums text-good">−{money(co.points_discount)}</span></div>
+            )}
             <div className="flex justify-between"><span className="text-muted">Tax ({(co.tax_rate * 100).toFixed(2)}%)</span><span className="tabular-nums">{money(co.tax)}</span></div>
           </div>
+          {co.points ? (
+            <div className="rounded-2xl bg-panel p-4 text-sm flex flex-col gap-1.5">
+              <p className="font-medium">ShopSphere points · {co.points.balance.toLocaleString()}</p>
+              {co.points.used > 0 ? (
+                <p className="flex justify-between gap-2"><span className="text-muted">Using {co.points.used.toLocaleString()} (−{money(co.points.discount)})</span>
+                  <button type="button" disabled={busy} onClick={() => change({ points_used: 0 })} className="font-medium underline">Remove</button></p>
+              ) : co.points.max_usable > 0 ? (
+                <button type="button" disabled={busy} onClick={() => change({ points_used: co.points!.max_usable })}
+                  className="self-start font-medium underline">Use {co.points.max_usable.toLocaleString()} points (−{money(co.points.max_usable * co.points.value_per_point)})</button>
+              ) : <p className="text-muted">100 points = $1 off. Keep shopping to earn more.</p>}
+              <p className="text-muted">You'll earn {co.earn_points.toLocaleString()} points with this order.</p>
+            </div>
+          ) : guest && (
+            <p className="text-sm text-muted">Create a ShopSphere account to earn {co.earn_points.toLocaleString()} points on orders like this.</p>
+          )}
           <div className="flex justify-between border-t border-line pt-4 text-lg font-semibold"><span>Total</span><span className="tabular-nums">{money(co.total)}</span></div>
           <p className="text-sm text-muted -mt-2">Arrives {niceDate(co.delivery.date)}</p>
           {missing.length > 0 && <Notice tone="talk">{missing.join(" ")}</Notice>}

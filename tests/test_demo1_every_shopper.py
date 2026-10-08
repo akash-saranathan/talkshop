@@ -527,3 +527,91 @@ def test_guest_still_needs_id_and_email(client, quiet_llm):
     h, _ = visitor(client)
     ev = say(client, h, f"own-{uuid.uuid4().hex[:6]}", text="hey i placed an order of nike shoes, where is it?")
     assert first(ev, "track_order_form") and not [e for e in ev if e["type"] == "order_tracking"]
+
+
+# ── Phase 12: loyalty points ─────────────────────────────────────────────────
+
+from backend.db.schema import LoyaltyPoints
+
+
+def _points(client, h):
+    return client.get("/api/loyalty", headers=h).json()["balance"]
+
+
+def _ready_customer(client):
+    h, email = customer(client)
+    client.post("/api/me/addresses", json=HOME, headers=h)
+    client.post("/api/me/payment-methods", json=CARD, headers=h)
+    return h, email
+
+
+def _give_points(client, h, n):
+    me = client.get("/api/auth/me", headers=h).json()
+    with Session(get_engine()) as db:
+        lp = db.query(LoyaltyPoints).filter_by(user_id=me["user_id"]).first()
+        if lp:
+            lp.balance = n
+        else:
+            db.add(LoyaltyPoints(user_id=me["user_id"], balance=n, lifetime_points=n))
+        db.commit()
+
+
+def test_customers_earn_points_guests_do_not(client):
+    h, _ = _ready_customer(client)
+    co = checkout(client, h)
+    assert co["points"]["balance"] == 0 and co["earn_points"] == int(co["total"])
+    res = confirm(client, h, co["checkout_id"])
+    assert res["order"]["points"]["earned"] == int(co["total"]) == _points(client, h)
+    gh, gid, _, _, gres = guest_buys(client)
+    assert gres["order"]["points"]["earned"] == 0
+    with Session(get_engine()) as db:
+        assert db.query(LoyaltyPoints).filter_by(user_id=gid).first() is None
+
+
+def test_redeem_points_discount_tax_and_balance(client):
+    h, _ = _ready_customer(client)
+    _give_points(client, h, 2500)                                   # $25.00 worth
+    co = checkout(client, h)                                       # FlexRun 5, $139.00
+    co = client.patch(f"/api/checkouts/{co['checkout_id']}", json={"points_used": 2500}, headers=h).json()
+    assert co["points"]["used"] == 2500 and co["points_discount"] == 25.0
+    assert co["tax"] == round((139.0 - 25.0) * 0.0825, 2) and co["total"] == round(139.0 - 25.0 + co["tax"], 2)
+    res = confirm(client, h, co["checkout_id"])                    # payment checks pass on the discounted total
+    assert res["status"] == "authorized" and res["order"]["total"] == co["total"]
+    assert res["order"]["points"] == {"used": 2500, "discount": 25.0, "earned": int(co["total"])}
+    assert _points(client, h) == 2500 - 2500 + int(co["total"])
+
+
+def test_points_are_capped_and_kept_on_decline(client):
+    h, _ = _ready_customer(client)
+    _give_points(client, h, 99999)
+    co = checkout(client, h)
+    co = client.patch(f"/api/checkouts/{co['checkout_id']}", json={"points_used": 99999}, headers=h).json()
+    assert co["points"]["used"] == 13800 and co["points_discount"] == 138.0   # $1 of the $139 stays payable
+    me = client.get("/api/auth/me", headers=h).json()
+    with Session(get_engine()) as db:                               # the card will be declined
+        db.query(PaymentMethod).filter_by(user_id=me["user_id"]).update({"behaviour": "decline"})
+        db.commit()
+    assert confirm(client, h, co["checkout_id"])["status"] == "declined"
+    assert _points(client, h) == 99999                             # nothing spent without an authorized payment
+
+
+def test_guests_cannot_use_points(client):
+    h, _ = visitor(client)
+    co = checkout(client, h, guest=True)
+    assert co["points"] is None and co["earn_points"] > 0          # UI: "create an account to earn N points"
+    r = client.patch(f"/api/checkouts/{co['checkout_id']}", json={"points_used": 100}, headers=h)
+    assert r.status_code == 403 and r.json()["detail"]["code"] == "POINTS_UNAVAILABLE"
+
+
+def test_talkshop_points_question_and_review_toggle(client, quiet_llm):
+    h, _ = _ready_customer(client)
+    _give_points(client, h, 1415)
+    ev = say(client, h, f"pts-{uuid.uuid4().hex[:6]}", text="how many points do I have?")
+    assert "1,415 ShopSphere points, worth $14.15" in first(ev, "message")["text"]
+    sid = to_offer(client, h)
+    co = first(say(client, h, sid, action={"type": "checkout"}), "checkout_ready")["checkout"]
+    ev = say(client, h, sid, action={"type": "update_checkout", "points_used": 1415})
+    upd = first(ev, "checkout_updated")["checkout"]
+    assert upd["points_discount"] == 14.15 and upd["total"] < co["total"]
+    vh, _ = visitor(client)
+    assert "create an account" in first(say(client, vh, f"pts-{uuid.uuid4().hex[:6]}", text="my loyalty points?"), "message")["text"]

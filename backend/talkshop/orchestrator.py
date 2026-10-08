@@ -423,7 +423,7 @@ async def _details_added(t: Turn, action: dict) -> None:
 async def _update_checkout(t: Turn, changes: dict) -> None:
     s = t.s
     changes = {k: v for k, v in changes.items()
-               if k in ("delivery_method", "address_id", "payment_method_id", "pay_with", "quantities")
+               if k in ("delivery_method", "address_id", "payment_method_id", "pay_with", "points_used", "quantities")
                and v is not None}
     try:
         co = tools.update_checkout(s.user_id, s.checkout_id, **changes)
@@ -495,6 +495,9 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str], cons
     email = result.get("confirmation_email")
     sent = f" A confirmation email is on its way to {email}." if email else ""
     track = " You can track it any time with your Order ID and email." if order.get("guest") else ""
+    pts = order.get("points") or {}
+    if pts.get("earned"):
+        track += f" You earned {pts['earned']:,} points."
     t.say(f"Your order is confirmed! Order {order['order_id']} arrives {_nice_date(order['delivery_date'])}.{sent}{track}")
     t.emit("order_confirmed", order=order, email=email)
     t.stage(Stage.ORDER_CONFIRMED)
@@ -638,6 +641,17 @@ async def _handle_text(t: Turn, text: str) -> None:
         return _ask_for_details(t, tools.get_checkout(s.user_id, s.checkout_id))
     t.emit("user_message", text=text)
     s.history.append({"role": "user", "text": parse.mask_emails(text)})   # emails never go to the LLM
+
+    # Loyalty points (Phase 12): answered from ShopSphere's records, not the LLM
+    if parse.asks_about_points(text) and s.stage != Stage.PAYING:
+        if s.is_visitor:
+            t.say("Loyalty points are for ShopSphere customers: create an account and you'll earn 1 point for every "
+                  "$1 you spend. 100 points = $1 off a later order.")
+        else:
+            bal = tools.points_balance(s.user_id)
+            t.say(f"You have {bal:,} ShopSphere points, worth ${bal / 100:.2f}. You earn 1 point per $1 you spend, "
+                  "and you can use them at checkout (100 points = $1 off).")
+        return
 
     # An order already placed ("here's my order SS-12345, show me the tracking")
     ref = parse.order_ref(text)

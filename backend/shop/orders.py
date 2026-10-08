@@ -11,7 +11,8 @@ from typing import Optional
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from backend.db.schema import Address, CartItem, Checkout, Order, OrderLine, PaymentMethod, Product, ProductVariant, User
+from backend.db.schema import (Address, CartItem, Checkout, LoyaltyPoints, LoyaltyTransaction, Order, OrderLine,
+                               PaymentMethod, Product, ProductVariant, User)
 from backend.shop import shipping
 from backend.shop.profile import address_dict
 
@@ -45,6 +46,19 @@ def finalize(db: Session, co: Checkout, payment_ref: str) -> Order:
     # Guest order: the checkout email/name, never a customer account (Phase 10)
     order.guest_email, order.guest_name = co.guest_email, co.guest_name
     shipping.start(order)
+    # Loyalty points (Phase 12): spent only now that the payment is authorized;
+    # earned at 1 point per $1 paid (the payment step credits them; customers only).
+    owner = db.query(User).filter_by(user_id=co.user_id).first()
+    is_customer = bool(owner and not owner.is_guest)
+    order.points_used, order.points_discount = co.points_used or 0, co.points_discount or 0.0
+    order.points_earned = int(order.amount) if is_customer else 0
+    if is_customer and order.points_used:
+        lp = db.query(LoyaltyPoints).filter_by(user_id=co.user_id).first()
+        spent = min(order.points_used, lp.balance if lp else 0)
+        if lp and spent:
+            lp.balance -= spent
+            db.add(LoyaltyTransaction(transaction_id=f"RDM-{order.order_id}"[:50], user_id=co.user_id,
+                                      order_id=order.order_id, points_earned=-spent, reason="redeemed"))
 
     for ln in lines:
         db.add(OrderLine(
@@ -95,6 +109,8 @@ def order_dict(db: Session, order: Order) -> dict:
         "guest": bool(order.guest_email),
         "guest_email": order.guest_email,
         "shipment": shipping.view(order),
+        "points": {"used": order.points_used or 0, "discount": order.points_discount or 0.0,
+                   "earned": order.points_earned or 0},
         "tracking_number": order.tracking_number,
         "created_at": order.created_at.isoformat() if order.created_at else None,
     }

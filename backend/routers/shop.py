@@ -198,6 +198,7 @@ class UpdateCheckoutRequest(BaseModel):
     address_id: Optional[str] = None
     payment_method_id: Optional[str] = None
     pay_with: Optional[str] = None                # card | wallet (Phase 10)
+    points_used: Optional[int] = None             # loyalty points to spend (Phase 12)
     quantities: Optional[dict[str, int]] = None   # cart line id → quantity
 
 

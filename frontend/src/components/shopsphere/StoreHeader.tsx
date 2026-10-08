@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, LogOut, Menu, Moon, Package, Search, ShoppingBag, Sun, Truck, User as UserIcon, X } from "lucide-react";
+import { ChevronDown, LogOut, Menu, Moon, Package, Search, ShoppingBag, Star, Sun, Truck, User as UserIcon, X } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCart } from "../../store/cart";
-import { DEPARTMENTS } from "../../api/shop";
+import { DEPARTMENTS, money, shop } from "../../api/shop";
 import { cx } from "../ui";
 
 export function Wordmark({ className }: { className?: string }) {
@@ -33,6 +33,10 @@ export default function StoreHeader() {
   const [dark, toggleTheme] = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [points, setPoints] = useState<number | null>(null);
+  useEffect(() => {   // fresh balance each time the account menu opens
+    if (accountOpen && isCustomer) shop.loyalty().then((l) => setPoints(l.balance)).catch(() => setPoints(null));
+  }, [accountOpen, isCustomer]);
   const [q, setQ] = useState("");
   const accountRef = useRef<HTMLDivElement>(null);
 
@@ -109,6 +113,12 @@ export default function StoreHeader() {
             </button>
             {accountOpen && (
               <div className="absolute right-0 mt-2 w-52 rounded-2xl border border-line bg-canvas shadow-float p-1.5">
+                {points !== null && (
+                  <p className="flex items-center gap-2.5 px-3 py-2.5 text-sm border-b border-line mb-1">
+                    <Star size={16} className="text-accent" /> <span><span className="font-semibold tabular-nums">{points.toLocaleString()}</span> points
+                    <span className="block text-xs text-muted">worth {money(points / 100)}</span></span>
+                  </p>
+                )}
                 <Link to="/orders" onClick={() => setAccountOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel">
                   <Package size={16} /> My orders
                 </Link>

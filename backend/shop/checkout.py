@@ -16,7 +16,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from backend.db.schema import Address, CartItem, Checkout, PaymentMethod, Product, ProductVariant, User, Wallet
+from backend.db.schema import (Address, CartItem, Checkout, LoyaltyPoints, PaymentMethod, Product, ProductVariant,
+                               User, Wallet)
 from backend.payment.policy import TAX_RATE
 from backend.shop.profile import address_dict, card_dict, list_addresses, list_cards
 
@@ -51,6 +52,7 @@ def _hash(co: Checkout, lines: list[dict]) -> str:
         "lines": [[ln["sku"], ln["quantity"], ln["unit_price"]] for ln in lines],
         "address_id": co.address_id, "delivery_method": co.delivery_method,
         "payment_method_id": co.payment_method_id, "pay_with": co.pay_with or "card",
+        "points_used": co.points_used or 0, "points_discount": co.points_discount or 0.0,
         "guest_email": co.guest_email,
         "subtotal": co.subtotal, "tax": co.tax, "shipping": co.shipping, "total": co.total, "currency": co.currency,
     }
@@ -74,13 +76,32 @@ def _recalculate(db: Session, co: Checkout) -> list[dict]:
                            "requested": ln["quantity"], "available": ln["stock"]})
     co.lines_json = json.dumps(lines)
     co.subtotal = round(sum(ln["line_total"] for ln in lines), 2)
-    co.tax = round(co.subtotal * TAX_RATE, 2)
+    # Loyalty points (Phase 12): 100 points = $1 off the products, before tax.
+    co.points_used = min(co.points_used or 0, max_points(db, co.user_id, co.subtotal))
+    co.points_discount = round(co.points_used * POINT_VALUE, 2)
+    co.tax = round((co.subtotal - co.points_discount) * TAX_RATE, 2)
     co.shipping = EXPRESS_PRICE if co.delivery_method == "express" else 0.0
-    co.total = round(co.subtotal + co.tax + co.shipping, 2)
+    co.total = round(co.subtotal - co.points_discount + co.tax + co.shipping, 2)
     std_days = max((ln.get("delivery_days") or 5) for ln in lines)
     co.delivery_date = datetime.combine(delivery_dates(std_days)[co.delivery_method], datetime.min.time())
     co.checkout_hash = _hash(co, lines)
     return issues
+
+
+POINT_VALUE = 0.01          # 100 points = $1
+MIN_PRODUCT_PAYABLE = 1.00  # points never make the products free
+
+
+def points_balance(db: Session, user_id: str) -> int:
+    lp = db.query(LoyaltyPoints).filter_by(user_id=user_id).first()
+    return int(lp.balance) if lp and not is_guest_owner(db, user_id) else 0
+
+
+def max_points(db: Session, user_id: str, subtotal: float) -> int:
+    """The most points this order can take: what the customer has, leaving at
+    least $1 of products to pay. Guests have none."""
+    cap = int(round((subtotal - MIN_PRODUCT_PAYABLE) / POINT_VALUE)) if subtotal > MIN_PRODUCT_PAYABLE else 0
+    return max(0, min(points_balance(db, user_id), cap))
 
 
 def is_guest_owner(db: Session, user_id: str) -> bool:
@@ -139,7 +160,7 @@ def get_checkout(db: Session, user_id: str, checkout_id: str) -> Checkout:
 
 def update_checkout(db: Session, user_id: str, checkout_id: str, *, delivery_method: Optional[str] = None,
                     address_id: Optional[str] = None, payment_method_id: Optional[str] = None,
-                    pay_with: Optional[str] = None,
+                    pay_with: Optional[str] = None, points_used: Optional[int] = None,
                     quantities: Optional[dict[str, int]] = None) -> Checkout:
     """Changes made on the review screen. Only an open checkout can change."""
     co = get_checkout(db, user_id, checkout_id)
@@ -165,6 +186,12 @@ def update_checkout(db: Session, user_id: str, checkout_id: str, *, delivery_met
                                      or not db.query(Wallet).filter_by(user_id=user_id).first()):
             raise CheckoutError("WALLET_UNAVAILABLE", "The ShopSphere Wallet is for customers with an account.", 403)
         co.pay_with = pay_with
+    if points_used is not None:
+        if is_guest_owner(db, user_id):
+            raise CheckoutError("POINTS_UNAVAILABLE", "Loyalty points are for customers with an account.", 403)
+        if int(points_used) < 0:
+            raise CheckoutError("INVALID_POINTS", "Points can't be negative.")
+        co.points_used = int(points_used)          # capped to the balance and order in _recalculate
     if quantities:
         lines = _lines(co)
         by_id = {ln["line_id"]: ln for ln in lines}
@@ -276,6 +303,14 @@ def snapshot(db: Session, co: Checkout, issues: Optional[list[dict]] = None) -> 
         "pay_with": "wallet" if on_wallet else "card",
         "wallet": wallet_view,
         "guest": {"email": co.guest_email, "name": co.guest_name} if guest else None,
+        "points_discount": co.points_discount or 0.0,
+        # Phase 12: customers see their balance, what they can use, and what this order earns.
+        "points": None if guest else {
+            "balance": points_balance(db, co.user_id), "used": co.points_used or 0,
+            "discount": co.points_discount or 0.0, "max_usable": max_points(db, co.user_id, co.subtotal),
+            "value_per_point": POINT_VALUE,
+        },
+        "earn_points": int(co.total),             # what this order earns (guests: if they had an account)
         "saved_addresses": [] if guest else [address_dict(a) for a in list_addresses(db, co.user_id)],
         "saved_payment_methods": [] if guest else [card_dict(c) for c in list_cards(db, co.user_id)],
         "issues": problems,
