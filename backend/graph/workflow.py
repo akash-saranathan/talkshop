@@ -352,14 +352,15 @@ async def _run_a2a_sidecar(state: CommerceState, intent: ShoppingIntent) -> None
     for ag in agents:
         await _emit_protocol(state, source="CustomerAgent", target=f"{ag.merchant_name}Agent",
                              protocol="A2A", direction="out", label="message/send",
-                             detail={"method": "message/send", "skill": "product_search",
+                             detail={"mode": "real HTTP — JSON-RPC 2.0 POST to the merchant's A2A endpoint",
+                                     "method": "message/send", "skill": "product_search",
                                      "trusted_session_id": trusted[ag.merchant_id],
                                      "intent": {"category": intent.category, "brand": intent.brand}})
         await _emit_protocol(state, source=f"{ag.merchant_name}Agent", target="UCPCatalog",
                              protocol="UCP", direction="out", label="catalog_search",
                              detail={"merchant": ag.merchant_id, "query": intent.category})
         t0 = time.perf_counter()
-        products, checks = merchant_catalog.search_agent_checked(ag, a2a_intent)
+        products, checks = await merchant_catalog.search_agent_over_a2a(ag, a2a_intent)
         duration_ms = round((time.perf_counter() - t0) * 1000, 1)
         await _emit_protocol(state, source="UCPCatalog", target=f"{ag.merchant_name}Agent",
                              protocol="UCP", direction="in", label="catalog_results",

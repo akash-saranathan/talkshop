@@ -3,13 +3,18 @@ Product source for Talk Shop search: the six demo merchant catalogs.
 Each catalog variant becomes one NormalizedProduct so cards, cart and checkout keep their existing shape.
 """
 import re
+import uuid
 from functools import lru_cache
 from pathlib import Path
+
+import httpx
 
 from backend.a2a.merchants import adidas, casio, fossil, hm, nike, zara
 from backend.a2a.models import ShoppingIntent as A2AIntent
 from backend.guardrails.agent_checks import check_merchant_response
 from backend.models.product import NormalizedProduct
+
+A2A_REQUEST_TIMEOUT_SECONDS = 6.0
 
 _AGENTS = [nike.agent, adidas.agent, zara.agent, hm.agent, fossil.agent, casio.agent]
 
@@ -86,6 +91,42 @@ def search_agent_checked(agent, intent: A2AIntent) -> tuple[list[NormalizedProdu
     if not matches and intent.category:
         matches = agent.search(A2AIntent(raw_query=intent.raw_query, brand=intent.brand,
                                          max_price=intent.max_price, size=intent.size))
+    products = [p for product in matches for p in _to_products(agent, product, product["variants"])]
+    return check_merchant_response(agent.merchant_id, products)
+
+
+async def _a2a_message_send(agent, intent: A2AIntent) -> list[dict]:
+    """One real JSON-RPC 2.0 message/send call to the merchant's own A2A HTTP
+    endpoint (POST /a2a/{merchant}) — the same endpoint backend/routers/a2a.py
+    serves and backend/a2a/merchants/*.py's handle_message() answers. Returns
+    the raw product dicts from the response artifact, or [] on any failure
+    (connection error, timeout, or a JSON-RPC error) so a merchant being
+    unreachable never crashes the caller."""
+    payload = {
+        "jsonrpc": "2.0", "method": "message/send", "id": f"req_{uuid.uuid4().hex[:10]}",
+        "params": {"intent": intent.model_dump(), "message": {"contextId": f"ctx_{uuid.uuid4().hex[:8]}"}},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=A2A_REQUEST_TIMEOUT_SECONDS) as client:
+            resp = await client.post(f"{agent.base_url}/a2a/{agent.merchant_id}", json=payload)
+        resp.raise_for_status()
+        body = resp.json()
+        if body.get("error"):
+            return []
+        artifacts = body.get("result", {}).get("artifacts") or []
+        return artifacts[0]["parts"][0]["data"].get("products", []) if artifacts else []
+    except (httpx.HTTPError, KeyError, IndexError, TypeError):
+        return []
+
+
+async def search_agent_over_a2a(agent, intent: A2AIntent) -> tuple[list[NormalizedProduct], list[dict]]:
+    """Same contract and result shape as search_agent_checked, but the actual
+    merchant search travels over a real HTTP request to that merchant's A2A
+    endpoint instead of an in-process agent.search() call."""
+    matches = await _a2a_message_send(agent, intent)
+    if not matches and intent.category:
+        matches = await _a2a_message_send(agent, A2AIntent(raw_query=intent.raw_query, brand=intent.brand,
+                                                           max_price=intent.max_price, size=intent.size))
     products = [p for product in matches for p in _to_products(agent, product, product["variants"])]
     return check_merchant_response(agent.merchant_id, products)
 
