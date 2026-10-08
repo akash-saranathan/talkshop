@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Mic, Square, X, LogOut, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2, CheckCircle2, ShoppingBag, Activity, GitBranch, ChevronRight, ChevronLeft } from "lucide-react";
+import { Send, Mic, Square, X, ShoppingCart, Sparkles, ArrowUpDown, Star, Zap, TrendingDown, GitCompare, ChevronDown, ChevronUp, Trash2, CheckCircle2, ShoppingBag, Activity, GitBranch, ChevronRight, ChevronLeft } from "lucide-react";
 import { streamChat, getSessionMessages, attachImage, type AgentEvent, type ProductData, type ChatMessageRecord, type ChatAction } from "../api/chat";
 import { getCart, addToCart, removeFromCart, updateCartItemQuantity, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
@@ -14,10 +14,10 @@ import AgentTrailPanel from "../components/AgentTrailPanel";
 import ProtocolTracePanel, { type ProtocolEvent } from "../components/ProtocolTracePanel";
 import ThemeToggle from "../components/ThemeToggle";
 import InlineCheckout, { type AutoState, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape, type PaymentMethod, type CardInput, type ProcessingStep, type ConfirmedOrder } from "../components/InlineCheckout";
-import AutoStepBar from "../components/AutoStepBar";
 import InlineOrderTracker from "../components/InlineOrderTracker";
 import { useAuth } from "../auth/AuthContext";
 import { getProductVisual } from "../utils/productVisual";
+import { tokenizeCard } from "../utils/mockTokenizer";
 import { autocorrectOnType, autocorrectLastWord, type Correction } from "../utils/autocorrect";
 
 // ── Intent parsing ──────────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ function isAddToCartPhrase(text: string): boolean {
 }
 
 // Inline cart card — shown in chat after add-to-cart or when user asks to view cart.
-const AUTO_SECONDS = 10;
+const AUTO_SECONDS = 3;
 const SESSION_CART_TIMER_ID = "session-cart";
 
 interface AutoTimer extends AutoState {
@@ -201,7 +201,7 @@ function InlineCartCard({
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--color-border)]"
           style={{ background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)" }}>
           <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-          <p className="text-sm font-semibold text-emerald-700">Added to cart!</p>
+          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Added to cart!</p>
         </div>
       )}
       {!addedProduct && (
@@ -264,14 +264,8 @@ function InlineCartCard({
           View Cart
         </button>
       </div>
-      {auto && (
-        <AutoStepBar
-          label="Checkout"
-          secondsLeft={auto.secondsLeft}
-          paused={auto.paused}
-          onPauseToggle={onPauseToggle!}
-        />
-      )}
+      {/* Auto-advance countdown hidden: the flow continues silently after a
+          short delay (no visible timer). */}
     </motion.div>
   );
 }
@@ -378,8 +372,7 @@ function messagesToTurns(messages: ChatMessageRecord[]): Turn[] {
 }
 
 export default function Chat() {
-  const navigate = useNavigate();
-  const { user, logout, isGuest } = useAuth();
+  const { user, isGuest } = useAuth();
   // Saved payment method references from the server (brand + last4 only, never a card number).
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   // Demo-only failure scenario chosen in the composer (off by default).
@@ -487,6 +480,7 @@ export default function Chat() {
   }, []);
 
   const addProductToSessionCart = useCallback(async (product: ProductData) => {
+    followBottomRef.current = true; // explicit action — reveal the cart strip even if the user had scrolled away
     const item = await addToCart(product);
     await syncSessionCart(item.cart_item_id);
     setAutoTimer({ turnId: SESSION_CART_TIMER_ID, stage: "cart", secondsLeft: AUTO_SECONDS, paused: false, product });
@@ -557,21 +551,85 @@ export default function Chat() {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
   }, []);
 
-  // Reveal the newest content only as far as needed, and only when the user is
-  // already near the bottom or has just sent a message, so their scrolling is respected.
+  // ChatGPT-style scrolling, to minimise manual scrolling:
+  //  • a NEW message jumps to the top of the view so the reply streams into the
+  //    space below it — no chasing the bottom as the answer grows.
+  //  • any later growth below the fold — streaming text, a checkout card
+  //    attaching to the current turn, a child component (e.g. InlineOrderTracker)
+  //    fetching and rendering its own content after mount — reveals itself by
+  //    nudging just enough to show the new bottom edge, as long as the user
+  //    hasn't deliberately scrolled away (tracked by the onScroll handler below).
+  //    A MutationObserver is used (not just a `turns` effect) because content
+  //    like InlineOrderTracker's fetched rows changes the DOM without changing
+  //    `turns` at all, so nothing would otherwise notice it grew.
   const followBottomRef = useRef(true);
   const lastTurnCountRef = useRef(0);
-  useEffect(() => {
+  const revealBottom = useCallback((smooth = true) => {
     const el = scrollRef.current;
-    if (!el) return;
-    const sentNewMessage = turns.length > lastTurnCountRef.current;
-    lastTurnCountRef.current = turns.length;
-    if (!sentNewMessage && !followBottomRef.current) return;
+    if (!el || !followBottomRef.current) return;
     const last = el.lastElementChild as HTMLElement | null;
     if (!last) return;
     const overflow = last.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom;
-    if (overflow > 0) el.scrollBy({ top: overflow + 24, behavior: "smooth" });
-  }, [turns]);
+    if (overflow > 0) el.scrollBy({ top: overflow + 24, behavior: smooth ? "smooth" : "auto" });
+  }, []);
+
+  useEffect(() => {
+    const sentNewMessage = turns.length > lastTurnCountRef.current;
+    lastTurnCountRef.current = turns.length;
+    const el = scrollRef.current;
+    const last = el?.lastElementChild as HTMLElement | null;
+    if (sentNewMessage && last) {
+      followBottomRef.current = true;
+      last.scrollIntoView({ block: "start", behavior: "smooth" });
+      return;
+    }
+    revealBottom();
+  }, [turns, revealBottom]);
+
+  // Selecting a product attaches a checkout card to the CURRENT turn a few
+  // seconds later (the silent auto-advance) — the customer explicitly asked
+  // for this, so always re-enable following when it appears, even if they'd
+  // scrolled away to browse other results.
+  const checkoutSignalRef = useRef("");
+  useEffect(() => {
+    const signal = turns.map((t) => (t.checkout ? `${t.id}:${t.checkout.phase}` : "")).join("|");
+    if (signal === checkoutSignalRef.current) return;
+    checkoutSignalRef.current = signal;
+    followBottomRef.current = true;
+    requestAnimationFrame(() => revealBottom(false));
+  }, [turns, revealBottom]);
+
+  // Catch-all: any DOM growth inside the scroll area (including a child
+  // component's own async-rendered content, which the effects above can't see
+  // since it doesn't change `turns`) reveals itself the same way, while the
+  // user is following the bottom.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let frame = 0;
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => revealBottom());
+    });
+    observer.observe(el, { childList: true, subtree: true });
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [revealBottom]);
+
+  // Also catch the log's OWN box shrinking — e.g. the session-cart strip
+  // appearing below it (a sibling, not inside it) after Add to Cart reduces
+  // how much height the log gets, which the observer above can't see since
+  // nothing changed inside the log itself.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => revealBottom());
+    });
+    observer.observe(el);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [revealBottom]);
 
   const updateActiveTurn = useCallback((updater: (turn: Turn) => Turn) => {
     const id = activeTurnId.current;
@@ -1229,6 +1287,26 @@ export default function Chat() {
           { id: "pay-0", message: `${data.order!.merchant_name} — order confirmed`, status: "done" as const }],
         checkout: { phase: "confirmed" as const, product, order: data.order },
       } : t));
+      // Remove the purchased item from the backend cart so the header count
+      // reflects reality (a later getCart() refresh won't resurrect it), then
+      // reconcile the badge with whatever actually remains.
+      const usedPmId = turnsRef.current.find((t) => t.id === turnId)?.checkout?.paymentMethodId;
+      void (async () => {
+        try {
+          const items = await getCart();
+          await Promise.all(items
+            .filter((i) => i.product_id === product.product_id)
+            .map((i) => removeFromCart(i.cart_item_id)));
+          // Forget a one-off method (secure entry / PayPal for a merchant John
+          // isn't a member of). Seeded member cards (pm_demo_*) are kept.
+          if (usedPmId && !usedPmId.startsWith("pm_demo_")) {
+            await authFetch(`/api/payment-methods/${usedPmId}`, { method: "DELETE" }).catch(() => {});
+            await refreshPaymentMethods();
+          }
+          const remaining = await getCart();
+          setCartCount(remaining.length);
+        } catch { setCartCount(0); }
+      })();
       setCartCount(0);
       setSessionCartCount(0);
       setSessionCartIds(new Set());
@@ -1317,7 +1395,8 @@ export default function Chat() {
 
   const selectPaymentMethod = useCallback((turnId: string, paymentMethodId: string) => {
     setTurns((prev) => prev.map((t) => t.id === turnId ? { ...t, checkout: { ...t.checkout!, paymentMethodId } } : t));
-    // A changed card restarts the countdown, so the customer always gets the full 10 seconds on what they see.
+    // Selecting or adding a method (re)starts the countdown, so the customer
+    // always gets the full window on the method they see.
     const co = turnsRef.current.find((t) => t.id === turnId)?.checkout;
     if (co?.phase === "summary") {
       setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product: co.product });
@@ -1328,28 +1407,56 @@ export default function Chat() {
     setAutoTimer((a) => (a?.turnId === turnId && a.stage === "checkout" ? { ...a, paused: true } : a));
   }, []);
 
-  // The typed card goes straight to the mock processor's tokenize endpoint; only its reference comes back.
+  const merchantForTurn = (turnId: string): string | undefined =>
+    turnsRef.current.find((t) => t.id === turnId)?.checkout?.checkoutData?.merchant_id;
+
+  // The card is validated and tokenized IN THE BROWSER (tokenizeCard). Only the
+  // non-sensitive reference (brand + last4 + expiry) is sent — the raw number
+  // and CVC never leave this function, so they never reach the backend, the AI,
+  // the merchant, the protocol trace or any log.
   const addCard = useCallback(async (turnId: string, card: CardInput): Promise<string | null> => {
-    const [mm, yy] = card.expiry.split("/").map(Number);
+    const { ref, error } = tokenizeCard({ number: card.number, expiry: card.expiry, cvc: card.cvc });
+    if (error || !ref) {
+      const messages: Record<string, string> = {
+        card_number_invalid: "That card number isn't valid.",
+        expiry_invalid: "Expiry must be MM/YY (e.g. 09/27).",
+        card_expired: "That card has expired.",
+        cvc_invalid: "CVC must be 3 or 4 digits.",
+      };
+      return messages[error ?? ""] ?? "Please check the card details.";
+    }
     try {
-      const res = await authFetch("/api/psp/tokenize", {
+      const res = await authFetch("/api/psp/payment-methods", {
         method: "POST",
-        body: JSON.stringify({ number: card.number.replace(/\s/g, ""), exp_month: mm, exp_year: 2000 + yy, cvc: card.cvc }),
+        body: JSON.stringify({ ...ref, merchant_id: merchantForTurn(turnId) }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const messages: Record<string, string> = {
-          card_number_invalid: "That card number isn't valid.",
-          cvc_invalid: "CVC must be 3 or 4 digits.",
-          card_expired: "That card has expired.",
-        };
-        return messages[data.error] ?? "The card processor rejected that card.";
-      }
+      if (!res.ok) return "We couldn't save that card. Please try again.";
+      appendServerEvents(data.events);
       await refreshPaymentMethods();
       selectPaymentMethod(turnId, data.payment_method.payment_method_id);
       return null;
     } catch {
-      return "Could not reach the card processor. Please try again.";
+      return "Could not reach the payment service. Please try again.";
+    }
+  }, [refreshPaymentMethods, selectPaymentMethod]);
+
+  // Mocked PayPal handoff: no credentials are collected or sent; the backend
+  // returns an opaque authorized reference that is used like any other method.
+  const connectPayPal = useCallback(async (turnId: string): Promise<string | null> => {
+    try {
+      const res = await authFetch("/api/psp/paypal-connect", {
+        method: "POST",
+        body: JSON.stringify({ merchant_id: merchantForTurn(turnId) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return "Could not complete the PayPal authorization. Please try again.";
+      appendServerEvents(data.events);
+      await refreshPaymentMethods();
+      selectPaymentMethod(turnId, data.payment_method.payment_method_id);
+      return null;
+    } catch {
+      return "Could not reach PayPal. Please try again.";
     }
   }, [refreshPaymentMethods, selectPaymentMethod]);
 
@@ -1560,11 +1667,6 @@ export default function Chat() {
     recognitionRef.current?.abort();
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
-
   // Close profile dropdown on outside click
   useEffect(() => {
     if (!showProfile) return;
@@ -1618,10 +1720,10 @@ export default function Chat() {
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
-        <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
+        <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm shrink-0 z-10">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] grid place-items-center shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-accent)] grid place-items-center shrink-0 shadow-sm">
                 <Sparkles size={13} className="text-white" />
               </div>
               <div className="leading-none">
@@ -1631,12 +1733,12 @@ export default function Chat() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {/* Dashboard */}
+            {/* Dashboard / Order tracker */}
             <Link
               to="/dashboard"
-              className="text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
+              className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] shadow-card hover:shadow-card-hover hover:border-[var(--color-primary)]/40 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-all"
             >
-              Dashboard
+              <ShoppingBag size={14} /> Orders
             </Link>
 
             {/* Daylight */}
@@ -1658,30 +1760,13 @@ export default function Chat() {
               {showProfile && (
                 <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg z-50 overflow-hidden">
                   {/* User info */}
-                  <div className="px-4 py-3 border-b border-[var(--color-border)]">
+                  <div className="px-4 py-3">
                     <p className="text-sm font-semibold text-[var(--color-text)] truncate">{user?.name}</p>
                     <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">{user?.email}</p>
                   </div>
-                  {/* Loyalty points (registered users only) */}
-                  {!isGuest && (
-                    <div className="px-4 py-2.5 flex items-center gap-2.5 border-b border-[var(--color-border)]">
-                      <Star size={13} className="text-amber-400 shrink-0" />
-                      <div>
-                        <p className="text-xs font-semibold text-[var(--color-text)]">
-                          {loyaltyBalance !== null ? `${loyaltyBalance} pts` : "— pts"}
-                        </p>
-                        <p className="text-[10px] text-[var(--color-text-muted)]">Loyalty balance</p>
-                      </div>
-                    </div>
-                  )}
-                  {/* Logout */}
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
-                  >
-                    <LogOut size={13} />
-                    Log out
-                  </button>
+                  {/* Loyalty points hidden for now — a single global balance is
+                      misleading once loyalty becomes merchant-specific; rebuilt
+                      per-merchant in a later step. */}
                 </div>
               )}
             </div>
@@ -1703,7 +1788,7 @@ export default function Chat() {
               <div key={turn.id} className="flex flex-col gap-3">
                 {/* User message bubble */}
                 <div className="flex justify-end">
-                  <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-[var(--color-primary)] text-white px-4 py-2.5 text-sm">
+                  <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-primary)] text-white px-4 py-2.5 text-sm shadow-raised">
                     {turn.image && (
                       <img src={turn.image} alt="Attached" className="w-40 h-40 object-cover rounded-lg mb-2" />
                     )}
@@ -1730,39 +1815,46 @@ export default function Chat() {
                       </div>
                     )}
 
-                    {/* Agent steps — humanized first-person messages */}
-                    <AnimatePresence>
-                      {turn.steps.map((step, i) => {
-                        const friendly = humanizeStep(step.message);
-                        if (!friendly) return null;
-                        return (
-                          <motion.div
-                            key={step.id + i}
-                            initial={{ opacity: 0, x: -8 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="flex items-center gap-2.5 text-sm"
-                          >
-                            {step.status === "done" ? (
-                              <span className="w-4 h-4 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] text-[10px] grid place-items-center shrink-0 font-bold">✓</span>
-                            ) : step.status === "error" ? (
-                              <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-500 text-[10px] grid place-items-center shrink-0 font-bold">✗</span>
-                            ) : (
-                              <span className="w-4 h-4 rounded-full border-2 border-[var(--color-primary)] border-t-transparent animate-spin shrink-0" />
-                            )}
-                            <span className={step.status === "error" ? "text-rose-500" : "text-[var(--color-text-muted)]"}>
-                              {friendly}
-                            </span>
-                          </motion.div>
-                        );
-                      })}
-                    </AnimatePresence>
+                    {/* Agent steps — humanized first-person messages, grouped in a status card */}
+                    {turn.steps.some((s) => humanizeStep(s.message)) && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                        className="rounded-xl border border-[var(--color-primary)]/20 bg-[var(--color-surface)] shadow-card px-3.5 py-2.5 space-y-1.5 max-w-sm"
+                      >
+                        <AnimatePresence>
+                          {turn.steps.map((step, i) => {
+                            const friendly = humanizeStep(step.message);
+                            if (!friendly) return null;
+                            return (
+                              <motion.div
+                                key={step.id + i}
+                                initial={{ opacity: 0, x: -8 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                className="flex items-center gap-2.5 text-sm"
+                              >
+                                {step.status === "done" ? (
+                                  <span className="w-4 h-4 rounded-full bg-[var(--color-success)]/15 text-[var(--color-success)] text-[10px] grid place-items-center shrink-0 font-bold">✓</span>
+                                ) : step.status === "error" ? (
+                                  <span className="w-4 h-4 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-500 dark:text-rose-400 text-[10px] grid place-items-center shrink-0 font-bold">✗</span>
+                                ) : (
+                                  <span className="w-4 h-4 rounded-full border-2 border-[var(--color-primary)] border-t-transparent animate-spin shrink-0" />
+                                )}
+                                <span className={step.status === "error" ? "text-rose-500" : "text-[var(--color-text-muted)]"}>
+                                  {friendly}
+                                </span>
+                              </motion.div>
+                            );
+                          })}
+                        </AnimatePresence>
+                      </motion.div>
+                    )}
 
                     {/* Blocked message */}
                     {turn.blocked && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-700 flex items-start gap-2"
+                        className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 shadow-card px-4 py-3 text-sm text-rose-700 dark:text-rose-300 flex items-start gap-2"
                       >
                         <span className="shrink-0 mt-0.5">🛡️</span>
                         <span>{turn.blocked}</span>
@@ -1774,7 +1866,7 @@ export default function Chat() {
                       <motion.div
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="rounded-xl rounded-tl-sm bg-[var(--color-surface)] border border-[var(--color-border)] px-4 py-2.5 text-sm text-[var(--color-text)] max-w-[85%]"
+                        className="rounded-xl rounded-tl-sm bg-[var(--color-surface)] border border-[var(--color-border)] shadow-card px-4 py-2.5 text-sm text-[var(--color-text)] max-w-[85%]"
                       >
                         {renderWithBold(turn.recommendation)}
                       </motion.div>
@@ -1799,6 +1891,7 @@ export default function Chat() {
                         isTalkshopGuest={isGuest}
                         onPaymentMethodChange={(id) => selectPaymentMethod(turn.id, id)}
                         onAddCard={(card) => addCard(turn.id, card)}
+                        onConnectPayPal={() => connectPayPal(turn.id)}
                         onGoAhead={() => doGoAhead(turn.id, "click")}
                         auto={autoTimer?.turnId === turn.id && autoTimer.stage === "checkout" ? autoTimer : undefined}
                         onPauseToggle={togglePauseAuto}
@@ -1825,7 +1918,7 @@ export default function Chat() {
                             orderTracker: true,
                           }]);
                         }}
-                        className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-[var(--color-border)] text-xs font-semibold text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-colors self-start"
+                        className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card text-xs font-semibold text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-colors self-start"
                       >
                         📦 Track my orders
                       </motion.button>
@@ -1928,6 +2021,9 @@ export default function Chat() {
           {/* Empty state */}
           {turns.length === 0 && (
             <div className="flex flex-col items-center gap-6 mt-16">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-accent)] shadow-raised grid place-items-center">
+                <Sparkles size={20} className="text-white" />
+              </div>
               <div className="text-center">
                 <p className="text-lg font-semibold text-[var(--color-text)] mb-1">What are you shopping for?</p>
                 <p className="text-sm text-[var(--color-text-muted)]">Ask me anything — I'll search across multiple stores and find the best options for you.</p>
@@ -1941,7 +2037,7 @@ export default function Chat() {
                   <button
                     key={suggestion}
                     onClick={() => handleSendRef.current?.(suggestion)}
-                    className="text-sm px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+                    className="text-sm px-3.5 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card hover:shadow-card-hover text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all"
                   >
                     {suggestion}
                   </button>
@@ -1976,15 +2072,7 @@ export default function Chat() {
                   <ChevronRight size={14} className="text-[var(--color-primary)]" />
                 </div>
               </button>
-              {autoTimer?.turnId === SESSION_CART_TIMER_ID && (
-                <AutoStepBar
-                  label="Checkout"
-                  secondsLeft={autoTimer.secondsLeft}
-                  paused={autoTimer.paused}
-                  onPauseToggle={togglePauseAuto}
-                />
-              )}
-
+              {/* Auto-advance countdown hidden — continues silently after a short delay. */}
             </motion.div>
           )}
         </AnimatePresence>
@@ -2094,7 +2182,7 @@ export default function Chat() {
             </p>
           </>
           ) : (
-            <div className="flex items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+            <div className="flex items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card focus-within:border-[var(--color-primary)]/50 focus-within:shadow-card-hover transition-shadow px-4 py-3">
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -2156,7 +2244,7 @@ export default function Chat() {
                 type="button"
                 onClick={() => handleSend()}
                 disabled={loading || !input.trim()}
-                className="p-1.5 rounded-lg bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-light)] transition-colors disabled:opacity-40"
+                className="p-1.5 rounded-lg bg-gradient-to-b from-[var(--color-primary-light)] to-[var(--color-primary)] text-white shadow-sm hover:brightness-105 active:scale-95 transition-all disabled:opacity-40 disabled:shadow-none"
               >
                 <Send size={18} />
               </button>
@@ -2168,12 +2256,12 @@ export default function Chat() {
               id="demo-scenario"
               value={demoScenario}
               onChange={(e) => setDemoScenario(e.target.value)}
-              className={`rounded-md border px-1.5 py-0.5 bg-[var(--color-surface)] ${demoScenario ? "border-amber-400 text-amber-700" : "border-[var(--color-border)]"}`}
+              className={`rounded-md border px-1.5 py-0.5 bg-[var(--color-surface)] ${demoScenario ? "border-amber-400 dark:border-amber-500 text-amber-700 dark:text-amber-300" : "border-[var(--color-border)]"}`}
             >
-              <option value="">Normal</option>
-              <option value="bad_agent_credential">Invalid agent credential (trust fails)</option>
-              <option value="delivery_change">Merchant changes delivery date</option>
-              <option value="tampered_amount">Agent tries to charge $20 more</option>
+              <option value="">Normal purchase</option>
+              <option value="bad_agent_credential">Invalid agent credential — merchant rejects the shopping agent</option>
+              <option value="delivery_change">Merchant changes the delivery date — asks you to re-approve</option>
+              <option value="tampered_amount">Agent tries to overcharge by $20 — guardrails block it</option>
             </select>
           </div>
         </div>
