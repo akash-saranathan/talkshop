@@ -18,7 +18,7 @@ from fastapi import HTTPException
 
 from backend.auth.dependencies import CurrentUser
 from backend.db.schema import Checkout, Order, PaymentAuthorization
-from backend.db.session_utils import get_session
+from backend.db.session_utils import get_session, write_audit_event
 from backend.shop import checkout as checkout_service
 from backend.shop import orders as order_service
 
@@ -34,7 +34,10 @@ DECLINE_MESSAGES = {
 }
 
 
-async def confirm(user: CurrentUser, checkout_id: str, consent: bool) -> dict:
+async def confirm(user: CurrentUser, checkout_id: str, consent: bool, consent_mode: str = "button") -> dict:
+    """consent_mode: "button" (GO AHEAD / Place order tapped) or "auto_countdown"
+    (Talkshop's 3-second countdown ran out without the shopper pressing Stop).
+    Either way it is recorded in the audit log with the checkout it applies to."""
     # Imported here: the routers import this module's callers.
     from backend.routers.authorizations import ApproveRequest, approve_authorization
     from backend.routers.payments import ExecutePaymentRequest, execute_payment_endpoint
@@ -67,6 +70,9 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool) -> dict:
         pay_with = "wallet" if co.pay_with == "wallet" else "card"
         payment_method_id = co.payment_method_id if pay_with == "card" else None
         co.status = "consented"
+        write_audit_event(db, "CHECKOUT_CONSENT", user_id=user.user_id, order_id=payment_ref,
+                          metadata={"mode": consent_mode if consent_mode in ("button", "auto_countdown") else "button",
+                                    "checkout_hash": co.checkout_hash, "total": co.total})
         db.commit()
 
     def reopen(outcome: str, reason: str, message: str) -> dict:

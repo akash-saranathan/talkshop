@@ -39,7 +39,8 @@ export type TalkAction =
   | { type: "choose_size" | "choose_color"; value: string }
   | { type: "checkout"; guest?: boolean } | { type: "keep_shopping" } | { type: "cancel_checkout" }
   | { type: "update_checkout"; delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; quantities?: Record<string, number> }
-  | { type: "go_ahead"; checkout_id: string }
+  // consent "auto_countdown": the review card's countdown ran out (no Stop pressed)
+  | { type: "go_ahead"; checkout_id: string; consent?: "auto_countdown" }
   // Order ID + email typed into the secure lookup card (not chat text)
   | { type: "track_order"; order_id: string; email: string }
   // A secure form saved the detail on ShopSphere; Talkshop gets only the id.

@@ -443,7 +443,9 @@ def smtp(monkeypatch):
     return FakeSMTP
 
 
-def test_confirmation_email_is_really_sent(client, smtp):
+def test_confirmation_email_is_really_sent(client, smtp, monkeypatch):
+    from backend.shop import mailer
+    monkeypatch.setattr(mailer, "deliverable", lambda a: True)               # test addresses use example.com
     _, _, email, _, res = guest_buys(client)
     order_id = res["order"]["order_id"]
     assert len(smtp.sent) == 1
@@ -454,9 +456,40 @@ def test_confirmation_email_is_really_sent(client, smtp):
     assert track(client, order_id, email, "/email").json()["delivery"] == "sent"
 
 
-def test_email_failure_never_undoes_the_order(client, smtp):
+def test_email_failure_never_undoes_the_order(client, smtp, monkeypatch):
+    from backend.shop import mailer
+    monkeypatch.setattr(mailer, "deliverable", lambda a: True)
     smtp.fail = True
     _, _, email, _, res = guest_buys(client)
     assert res["status"] == "authorized"
     mail = track(client, res["order"]["order_id"], email, "/email").json()
     assert mail["delivery"] == "failed"
+
+
+# ── Automatic payment after the review countdown ─────────────────────────────
+
+def test_auto_countdown_payment_records_how_consent_was_given(client, quiet_llm):
+    import json as _j
+    from backend.db.schema import AuditEvent
+    h, _ = customer(client)
+    client.post("/api/me/addresses", json=HOME, headers=h)
+    client.post("/api/me/payment-methods", json=CARD, headers=h)
+    modes = []
+    for consent in ("auto_countdown", None):
+        sid = to_offer(client, h)
+        co = first(say(client, h, sid, action={"type": "checkout"}), "checkout_ready")["checkout"]
+        action = {"type": "go_ahead", "checkout_id": co["checkout_id"], **({"consent": consent} if consent else {})}
+        assert first(say(client, h, sid, action=action), "order_confirmed")
+        with Session(get_engine()) as db:
+            ev = (db.query(AuditEvent).filter(AuditEvent.event_type == "CHECKOUT_CONSENT",
+                                              AuditEvent.order_id.like(f"{co['checkout_id']}-%")).one())
+            modes.append(_j.loads(ev.metadata_json)["mode"])
+    assert modes == ["auto_countdown", "button"]
+
+
+def test_made_up_addresses_are_not_mailed(client, smtp):
+    """kaajal@shopsphere.demo, example.com… would only bounce: they stay in the outbox."""
+    from backend.shop.mailer import deliverable
+    assert not deliverable("kaajal@shopsphere.demo") and not deliverable("a@example.com") and deliverable("a@gmail.com")
+    _, _, email, _, res = guest_buys(client)                                    # guest email is @example.com
+    assert smtp.sent == [] and track(client, res["order"]["order_id"], email, "/email").json()["delivery"] == "outbox"

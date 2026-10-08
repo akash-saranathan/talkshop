@@ -39,6 +39,17 @@ def settings() -> dict:
     }
 
 
+# Addresses that can never receive mail (demo accounts, test fixtures). Sending
+# to them only produces bounce messages in the sender's inbox.
+_UNDELIVERABLE_TLDS = (".demo", ".test", ".example", ".invalid", ".localhost", ".local")
+_UNDELIVERABLE_DOMAINS = ("example.com", "example.net", "example.org")
+
+
+def deliverable(address: str) -> bool:
+    domain = (address or "").rsplit("@", 1)[-1].strip().lower()
+    return bool(domain) and not domain.endswith(_UNDELIVERABLE_TLDS) and domain not in _UNDELIVERABLE_DOMAINS
+
+
 def configured() -> bool:
     cfg = settings()
     return bool(cfg["host"] and cfg["sender"])

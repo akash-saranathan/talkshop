@@ -124,6 +124,7 @@ def own_order(user_id: str, order_id: str) -> Optional[dict]:
         return order_service.tracking_view(db, order) if order and order.display_id else None
 
 
-async def confirm_and_pay(user: CurrentUser, checkout_id: str) -> dict:
-    """Only ever called for the shopper's explicit GO AHEAD action."""
-    return await payment_service.confirm(user, checkout_id, consent=True)
+async def confirm_and_pay(user: CurrentUser, checkout_id: str, consent_mode: str = "button") -> dict:
+    """Only ever called for the shopper's GO AHEAD action: tapped, or sent by the
+    review card's countdown (consent_mode="auto_countdown"). Never by the LLM."""
+    return await payment_service.confirm(user, checkout_id, consent=True, consent_mode=consent_mode)

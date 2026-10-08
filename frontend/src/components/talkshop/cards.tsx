@@ -140,9 +140,11 @@ export function QuickReplies({ choices, active, onPick }:
 
 /* ── Auto-checkout countdown ───────────────────────────────────────────── */
 
-export const AUTO_CHECKOUT_SECONDS = 4;
+export const AUTO_CHECKOUT_SECONDS = 3;
+/** Review Your Order places the order by itself after this, unless stopped. */
+export const AUTO_PAY_SECONDS = 3;
 
-/** After an item is added: move to checkout automatically in 4 seconds unless
+/** After an item is added: move to checkout automatically in 3 seconds unless
  *  the shopper taps Keep shopping. Checkout only opens the review card; paying
  *  still needs GO AHEAD. Pauses if the shopper starts typing to Talkshop. */
 export function CheckoutCountdown({ onPick }: { onPick: (c: { value: string; label: string }) => void }) {
@@ -196,13 +198,57 @@ export function CheckoutCountdown({ onPick }: { onPick: (c: { value: string; lab
   );
 }
 
+/** "Placing your order in 3s": fires once, then GO AHEAD is sent with
+ *  consent "auto_countdown". Stop (or clicking into the chat box) cancels it. */
+function PayCountdown({ onFire, onStop }: { onFire: () => void; onStop: () => void }) {
+  const [left, setLeft] = useState(AUTO_PAY_SECONDS);
+  const fired = useRef(false);
+  const [draining, setDraining] = useState(false);
+  useEffect(() => { const f = requestAnimationFrame(() => setDraining(true)); return () => cancelAnimationFrame(f); }, []);
+  useEffect(() => {
+    if (left <= 0) {
+      if (!fired.current) { fired.current = true; onFire(); }
+      return;
+    }
+    const timer = setTimeout(() => setLeft((n) => n - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [left]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const onFocus = (e: FocusEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.matches?.("textarea, input") && el.closest("[aria-label='Talkshop assistant']")) onStop();
+    };
+    document.addEventListener("focusin", onFocus);
+    return () => document.removeEventListener("focusin", onFocus);
+  }, [onStop]);
+  return (
+    <div className="rounded-xl bg-talk-soft/40 border border-talk/30 p-3 flex flex-col gap-2">
+      <p className="sr-only" role="status">Placing your order automatically in {AUTO_PAY_SECONDS} seconds. Tap Stop to review first.</p>
+      <div className="flex items-center justify-between gap-3">
+        <p aria-hidden="true" className="text-sm font-medium tabular-nums">Placing your order in {Math.max(left, 0)}s</p>
+        <Button size="sm" variant="secondary" onClick={onStop}>Stop</Button>
+      </div>
+      <div aria-hidden="true" className="h-1 rounded-full bg-line overflow-hidden">
+        <div className="h-full bg-talk transition-[width] ease-linear motion-reduce:transition-none"
+          style={{ width: draining ? "0%" : "100%", transitionDuration: `${AUTO_PAY_SECONDS}s` }} />
+      </div>
+    </div>
+  );
+}
+
 /* ── Review your order (the consent gate) ──────────────────────────────── */
-export function ReviewOrderCard({ checkout: co, active, busy, onAct }: { checkout: Checkout; active: boolean; busy: boolean; onAct: Act }) {
+export function ReviewOrderCard({ checkout: co, active, busy, onAct, autoPay = false, onAutoPay }:
+  { checkout: Checkout; active: boolean; busy: boolean; onAct: Act; autoPay?: boolean; onAutoPay?: (checkoutId: string) => void }) {
   const [changing, setChanging] = useState<"address" | "card" | null>(null);
   const [adding, setAdding] = useState<"address" | "card" | null>(null);
+  // Touching anything on the card stops the automatic payment: the shopper is reviewing.
+  const [stopped, setStopped] = useState(false);
   const live = active && co.status === "open";
-  const update = (changes: Omit<Extract<TalkAction, { type: "update_checkout" }>, "type">) =>
+  const update = (changes: Omit<Extract<TalkAction, { type: "update_checkout" }>, "type">) => {
+    setStopped(true);
     onAct({ type: "update_checkout", ...changes });
+  };
+  const counting = live && autoPay && co.ready && !busy && !stopped && !changing && !adding;
   const needsAddress = !co.address, needsCard = !co.payment_method;
 
   return (
@@ -253,7 +299,7 @@ export function ReviewOrderCard({ checkout: co, active, busy, onAct }: { checkou
           <p className="text-xs text-muted -mb-1">Guest checkout · confirmation to <span className="text-ink">{co.guest.email}</span></p>
         )}
         <Detail icon={<MapPin size={13} />} label="Ship to" value={co.address?.display}
-          canChange={live && co.saved_addresses.length > 0} onChange={() => { setChanging(changing === "address" ? null : "address"); setAdding(null); }} />
+          canChange={live && co.saved_addresses.length > 0} onChange={() => { setStopped(true); setChanging(changing === "address" ? null : "address"); setAdding(null); }} />
         {live && changing === "address" && (
           <Choices items={co.saved_addresses.map((a) => ({ id: a.address_id, label: `${a.label} · ${a.line1}`, on: a.address_id === co.address?.address_id }))}
             onPick={(id) => { update({ address_id: id }); setChanging(null); }} onAdd={() => { setAdding("address"); setChanging(null); }} addLabel="+ New address" />
@@ -264,7 +310,7 @@ export function ReviewOrderCard({ checkout: co, active, busy, onAct }: { checkou
         )}
 
         <Detail icon={<CreditCard size={13} />} label="Payment" value={co.payment_method?.display}
-          canChange={live && (co.saved_payment_methods.length > 0 || !!co.wallet)} onChange={() => { setChanging(changing === "card" ? null : "card"); setAdding(null); }} />
+          canChange={live && (co.saved_payment_methods.length > 0 || !!co.wallet)} onChange={() => { setStopped(true); setChanging(changing === "card" ? null : "card"); setAdding(null); }} />
         {live && changing === "card" && (
           <Choices items={[
               ...(co.wallet ? [{ id: "wallet", label: `ShopSphere Wallet · ${money(co.wallet.balance)}`, on: co.pay_with === "wallet" }] : []),
@@ -285,14 +331,21 @@ export function ReviewOrderCard({ checkout: co, active, busy, onAct }: { checkou
 
         {live && (
           <>
+            {counting && (
+              <PayCountdown onStop={() => setStopped(true)} onFire={() => {
+                onAutoPay?.(co.checkout_id);
+                onAct({ type: "go_ahead", checkout_id: co.checkout_id, consent: "auto_countdown", label: "Placing order automatically" });
+              }} />
+            )}
             <Button size="lg" variant="talk" className="w-full tracking-wide" disabled={!co.ready || busy}
-              onClick={() => onAct({ type: "go_ahead", checkout_id: co.checkout_id, label: "GO AHEAD" })}>
+              onClick={() => { onAutoPay?.(co.checkout_id); onAct({ type: "go_ahead", checkout_id: co.checkout_id, label: "GO AHEAD" }); }}>
               <Lock size={15} /> GO AHEAD · {money(co.total)}
             </Button>
             <button type="button" disabled={busy} onClick={() => onAct({ type: "cancel_checkout", label: "Cancel order" })}
               className="text-xs text-muted hover:text-ink -mt-1">Cancel</button>
             <p className="flex items-start gap-1.5 text-[11px] text-muted leading-snug">
-              <ShieldCheck size={13} className="shrink-0" /> Nothing is charged until you tap GO AHEAD. Talkshop never sees your card number.
+              <ShieldCheck size={13} className="shrink-0" />
+              {counting ? "Your order is placed automatically when the countdown ends. Tap Stop to review first." : "Nothing is charged until you tap GO AHEAD."} Talkshop never sees your card number.
             </p>
           </>
         )}

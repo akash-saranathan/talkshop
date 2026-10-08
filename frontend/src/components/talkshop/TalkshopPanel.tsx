@@ -159,6 +159,9 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
   const lastTrackForm = lastIndex(events, "track_order_form");
   // Each auto-checkout countdown fires at most once, whatever re-renders after it.
   const countdownsFired = useRef(new Set<number>());
+  // Each checkout is paid automatically at most once: after a decline (or any
+  // GO AHEAD) the shopper decides, so a declined card is never retried on its own.
+  const autoPaid = useRef(new Set<string>());
 
   return (
     <div ref={scroller} className="absolute inset-0 overflow-y-auto ss-scroll px-4 py-4 flex flex-col gap-3 [&>*]:shrink-0">
@@ -174,7 +177,10 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
         if (it.kind === "payment") return <PaymentStatusCard key={i} state={it.ev.state} payment={it.ev.payment} message={it.ev.message} />;
         if (it.kind === "review") return (
           <ReviewOrderCard key={i} checkout={it.checkout} busy={busy} onAct={act}
-            active={it.index === lastReview && stage === "AWAITING_CONSENT"} />
+            active={it.index === lastReview && stage === "AWAITING_CONSENT"}
+            autoPay={it.index >= ts.restoredCount && !autoPaid.current.has(it.checkout.checkout_id)
+              && !events.slice(it.index).some((e) => e.type === "payment_status")}
+            onAutoPay={(id) => autoPaid.current.add(id)} />
         );
         const ev = it.ev;
         switch (ev.type) {

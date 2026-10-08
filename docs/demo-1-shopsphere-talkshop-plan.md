@@ -795,7 +795,14 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
   - The server endpoints are `DELETE /api/me/addresses/{id}` and `DELETE /api/me/payment-methods/{id}`. They only delete the customer's own items; visitors get 403.
   - The next saved item becomes the default, and open checkouts switch to it, or ask again when none are left.
   - Past orders keep their own copy of the address and card.
-- **Follow-up: auto-checkout countdown.** After Talkshop adds an item, a card counts down 4 seconds ("Moving to checkout in 4s"; was 10 s), then opens Review on its own.
+- **Follow-up: auto-checkout countdown.** After Talkshop adds an item, a card counts down **3 seconds** ("Moving to checkout in 3s"; was 10 s, then 4 s), then opens Review on its own.
+- **Follow-up: automatic payment (your decision; replaces "GO AHEAD only").** When Review Your Order is ready, it shows "Placing your order in 3s" with a **Stop** button, then sends GO AHEAD by itself.
+  - **Recorded:** the consent is written to the audit log as `CHECKOUT_CONSENT` with mode `auto_countdown` (or `button` for a tap). Every payment check still runs.
+  - **Limits:**
+    - It pays automatically at most once per checkout; after a decline it never retries on its own.
+    - Touching the card (quantity, delivery, Change) or clicking into the chat stops it.
+    - Restored conversations never auto-pay.
+  - **Website:** Place order stays manual.
   - **Buttons:** Checkout now / Keep shopping.
   - **Pauses** when the shopper clicks into the chat box. **Doesn't run** while the panel is minimised, or for a conversation restored after a reload.
   - **Payment is unchanged:** moving to checkout never pays; GO AHEAD is still the only consent. A visitor's countdown ends at the sign-in card.

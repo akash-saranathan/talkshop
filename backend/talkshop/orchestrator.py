@@ -452,7 +452,7 @@ def _nice_date(iso) -> str:
         return str(iso)
 
 
-async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str]) -> None:
+async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str], consent_mode: str = "button") -> None:
     """The consent gate. Reachable only from the explicit GO AHEAD action."""
     s = t.s
     if s.stage != Stage.AWAITING_CONSENT or not s.checkout_id or checkout_id != s.checkout_id:
@@ -466,7 +466,7 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str]) -> N
     t.emit("payment_status", state="authorizing", payment=card)
     t.status("PayIt", "Running 12 security checks and authorizing payment…")
     try:
-        result = await tools.confirm_and_pay(user, s.checkout_id)
+        result = await tools.confirm_and_pay(user, s.checkout_id, consent_mode)
     except CheckoutError as exc:
         t.emit("payment_status", state="failed", payment=card, reason=exc.code, message=exc.message)
         t.say(exc.message)
@@ -596,7 +596,8 @@ async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
     elif kind == "track_order" and s.stage != Stage.PAYING:
         _track_lookup(t, str(action.get("order_id") or ""), str(action.get("email") or ""))
     elif kind == "go_ahead":
-        await _go_ahead(t, user, action.get("checkout_id"))
+        mode = "auto_countdown" if action.get("consent") == "auto_countdown" else "button"
+        await _go_ahead(t, user, action.get("checkout_id"), mode)
     else:
         t.say("That isn't available right now.")
 
