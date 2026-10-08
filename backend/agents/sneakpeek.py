@@ -179,7 +179,7 @@ async def search_and_rank(
     Full SneakPeek pipeline: MCP search → filter → rank → return top N.
     Returns (products, stats) where stats drives the SSE step messages.
     """
-    from backend.mcp.server import search_products as mcp_search
+    from backend.mcp.client import search_products as mcp_search
 
     # If the intent category is a composite alias (e.g. "shoes" maps to
     # running_shoes + sneakers + boots), passing it directly to the DB would

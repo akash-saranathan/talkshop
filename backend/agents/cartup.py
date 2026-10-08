@@ -1,9 +1,11 @@
 """
 CartUp — Merchant/Seller Agent (Agent 3).
 Triggered after the user selects a product.
-Calls MCP tools to verify inventory, get current price, calculate shipping,
-and produce a CheckoutObject. LLM is NOT used here — all values come from
-merchant tool responses, never from LLM reasoning.
+Calls MCP tools to verify inventory and get current price, then locks the
+cart's totals via a real HTTP call to the UCP checkout-session endpoint
+(backend/routers/ucp.py) instead of computing them in-process — the UCP
+spec's canonical "lock the total" step. LLM is NOT used here — all values
+come from merchant tool responses / the UCP endpoint, never from LLM reasoning.
 """
 import hashlib
 import json
@@ -11,9 +13,28 @@ import uuid
 from datetime import date, timedelta
 from typing import Optional
 
+import httpx
+
 from backend.models.checkout import CheckoutObject
 from backend.models.product import NormalizedProduct
-from backend.payment.policy import TAX_RATE, FREE_SHIPPING_THRESHOLD, FLAT_SHIPPING_COST
+
+UCP_CHECKOUT_SESSIONS_URL = "http://localhost:8000/ucp/checkout-sessions"
+
+
+async def _lock_totals_via_ucp(product: NormalizedProduct, unit_price: float, quantity: int) -> Optional[dict]:
+    """Real HTTP POST to the UCP checkout-session endpoint. Returns the
+    {type: amount} totals map, or None if the merchant's checkout service
+    didn't respond (connection error, timeout, bad response)."""
+    payload = {"product_id": product.product_id, "title": product.title, "unit_price": unit_price,
+              "quantity": quantity, "currency": "USD", "image_url": product.image_url}
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.post(UCP_CHECKOUT_SESSIONS_URL, json=payload)
+        resp.raise_for_status()
+        session = resp.json()
+        return {t["type"]: t["amount"] for t in session["totals"]}
+    except (httpx.HTTPError, KeyError, TypeError):
+        return None
 
 
 async def build_checkout(
@@ -25,7 +46,7 @@ async def build_checkout(
     Build a CheckoutObject for the selected product.
     Returns (checkout, error). All financial values sourced from DB — no LLM.
     """
-    from backend.mcp.server import check_inventory, get_price, calculate_shipping
+    from backend.mcp.client import check_inventory, get_price
 
     # Verify inventory
     inv = await check_inventory(product.product_id, product.size)
@@ -40,10 +61,13 @@ async def build_checkout(
         return None, f"price_check_failed: {price_data['error']}"
 
     unit_price = float(price_data["price"])
-    subtotal = round(unit_price * quantity, 2)
-    tax = round(subtotal * TAX_RATE, 2)
-    shipping = 0.0 if subtotal >= FREE_SHIPPING_THRESHOLD else FLAT_SHIPPING_COST
-    total = round(subtotal + tax + shipping, 2)
+
+    # Lock totals — real UCP checkout-session call, not an in-process calc.
+    totals = await _lock_totals_via_ucp(product, unit_price, quantity)
+    if totals is None:
+        return None, "ucp_checkout_session_failed"
+    subtotal, shipping, tax, total = totals["subtotal"], totals["fulfillment"], totals["tax"], totals["total"]
+
     # The merchant's delivery promise is part of what the customer agrees to.
     delivery_days = inv.get("delivery_days") or product.delivery_days or 5
     delivery_date = (date.today() + timedelta(days=delivery_days)).isoformat()

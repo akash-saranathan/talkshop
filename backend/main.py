@@ -1,6 +1,6 @@
 import os
 import tempfile
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -11,21 +11,31 @@ from backend.routers import auth, merchants, products, chat, authorizations, pay
 from backend.routers import a2a as a2a_router
 from backend.routers import generic_chat as generic_chat_router
 from backend.routers import purchase as purchase_router
+from backend.routers import ucp as ucp_router
 from backend.config.llm import resolve_llm
 from backend.observability.tracing import init_tracing
+from backend.mcp.server import mcp as mcp_server
 
 DB_PATH = Path(__file__).parent / "db" / "commerce.db"
+
+# Real MCP transport: mounted as an ASGI sub-app so the 7 commerce tools are
+# actually served over Streamable HTTP, not just imported as Python functions.
+# stateless_http=True — each tool call is independent, no session continuity
+# needed for this demo's short-lived search/price/inventory lookups.
+mcp_asgi_app = mcp_server.http_app(path="/", stateless_http=True)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db(DB_PATH)
-    seed_db()
-    llm_info = resolve_llm()
-    print(f"[LLM] Using {llm_info['provider']} / {llm_info['model']}")
-    tracing_enabled, endpoint = init_tracing()
-    print(f"[Observability] Tracing {'enabled -> ' + endpoint if tracing_enabled else 'disabled'}")
-    yield
+    async with AsyncExitStack() as stack:
+        await stack.enter_async_context(mcp_asgi_app.lifespan(app))
+        init_db(DB_PATH)
+        seed_db()
+        llm_info = resolve_llm()
+        print(f"[LLM] Using {llm_info['provider']} / {llm_info['model']}")
+        tracing_enabled, endpoint = init_tracing()
+        print(f"[Observability] Tracing {'enabled -> ' + endpoint if tracing_enabled else 'disabled'}")
+        yield
 
 
 app = FastAPI(
@@ -55,6 +65,8 @@ app.include_router(loyalty.router)
 app.include_router(a2a_router.router)
 app.include_router(generic_chat_router.router)
 app.include_router(purchase_router.router)
+app.include_router(ucp_router.router)
+app.mount("/mcp", mcp_asgi_app)  # real MCP Streamable HTTP transport (see mcp_asgi_app above)
 
 
 @app.get("/")

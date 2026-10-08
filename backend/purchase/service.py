@@ -182,7 +182,7 @@ async def create_proposal(
                                 document=checkout.model_dump_json(), status="proposed"))
         db.commit()
     trace.add("CustomerAgent", agent, "UCP", "checkout_created", {
-        "mode": "UCP-style checkout", "checkout_id": checkout.checkout_id, "merchant": checkout.merchant_id,
+        "mode": "real HTTP — totals locked via a UCP checkout-session POST", "checkout_id": checkout.checkout_id, "merchant": checkout.merchant_id,
         "totals": {"subtotal": checkout.subtotal, "shipping": checkout.shipping, "tax": checkout.tax,
                    "total": checkout.total, "loyalty_points_redeemed": checkout.loyalty_points_redeemed,
                    "loyalty_value": checkout.loyalty_value, "amount_due": checkout.payable,
