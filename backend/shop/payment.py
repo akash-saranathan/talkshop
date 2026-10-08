@@ -75,6 +75,16 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool, consent_mo
                                     "checkout_hash": co.checkout_hash, "total": co.total})
         db.commit()
 
+    # Live guardrail trace for Talkshop's info view (Phase: transparency). No secrets:
+    # token ids are shortened, no card data ever appears here.
+    trace: list[dict] = [
+        {"agent": "GreenLight", "check": "Consent gate", "result": "pass", "protocol": "AP2 cart mandate",
+         "detail": f"{'Automatic after the 3-second countdown' if consent_mode == 'auto_countdown' else 'GO AHEAD tapped'}"
+                   f" for checkout {checkout_id}, total ${amounts['total']:.2f}"},
+        {"agent": "GreenLight", "check": "Live stock + price refresh", "result": "pass", "protocol": "ACP",
+         "detail": "Re-checked against the catalog right before paying; order fingerprint (SHA-256) recomputed"},
+    ]
+
     def reopen(outcome: str, reason: str, message: str) -> dict:
         with get_session() as db:
             co = db.query(Checkout).filter_by(checkout_id=checkout_id).one()
@@ -84,7 +94,7 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool, consent_mo
             db.query(Order).filter_by(order_id=payment_ref).delete()
             db.commit()
             return {"status": outcome, "reason": reason, "message": message,
-                    "checkout": checkout_service.snapshot(db, co)}
+                    "checkout": checkout_service.snapshot(db, co), "trace": trace}
 
     # 1. Consent recorded + single-use scoped token (GreenLight)
     try:
@@ -93,7 +103,16 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool, consent_mo
             product_id=first["product_id"], product_title=title, **amounts,
         ), user)
     except HTTPException as exc:                       # policy refused before any token existed
+        trace.append({"agent": "GreenLight", "check": "Spending policy", "result": "blocked", "protocol": "AP2",
+                      "detail": str(exc.detail)[:160]})
         return reopen("blocked", "POLICY_DENIED", str(exc.detail))
+    trace += [
+        {"agent": "GreenLight", "check": "Spending policy", "result": "pass", "protocol": "AP2",
+         "detail": f"Approved merchant, {amounts['currency']}, ${amounts['total']:.2f} within the $2,500 limit"},
+        {"agent": "GreenLight", "check": "Payment token issued", "result": "pass", "protocol": "AP2 / ACP scoped token",
+         "detail": f"DPAT …{approval.token_id[-6:]}: HMAC-SHA256 signed, single use, expires in 15 min, "
+                   "bound to PayIt + ShopSphere + this amount + checkout fingerprint"},
+    ]
 
     # 2. 12-check guardrails + charge (PayIt → processor)
     result = await execute_payment_endpoint(ExecutePaymentRequest(
@@ -101,6 +120,23 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool, consent_mo
         merchant_name=MERCHANT_NAME, product_id=first["product_id"], product_title=title,
         payment_method=pay_with, payment_method_id=payment_method_id, **amounts,
     ), user)
+
+    names = {"token_exists": "Token exists", "token_active": "Token is active", "token_not_expired": "Token not expired",
+             "token_not_consumed": "Token not used before", "agent_id_match": "Right agent (PayIt)",
+             "merchant_id_match": "Right merchant", "order_id_match": "Right order", "currency_match": "Right currency",
+             "amount_within_limit": "Amount within authorized limit", "amount_matches_checkout": "Amount = checkout total",
+             "checkout_hash_match": "Order fingerprint unchanged", "consent_exists": "Consent record exists"}
+    for c in result.guardrail_checks:
+        trace.append({"agent": "PayIt", "check": f"Check {c['n']}/12 · {names.get(c['name'], c['name'])}",
+                      "result": "pass" if c["passed"] else "blocked", "protocol": "AP2 verification",
+                      "detail": None if c["passed"] else c.get("reason")})
+    if result.status == "success":
+        trace.append({"agent": "PayIt", "check": "Charge", "result": "pass", "protocol": "ACP delegated payment",
+                      "detail": f"{'Wallet balance' if pay_with == 'wallet' else 'Saved card token'} charged "
+                                f"${amounts['total']:.2f} (transaction …{(result.transaction_id or '')[-6:]})"})
+    elif result.guardrail_checks and all(c["passed"] for c in result.guardrail_checks):
+        trace.append({"agent": "PayIt", "check": "Charge", "result": "blocked", "protocol": "ACP delegated payment",
+                      "detail": f"Declined by the processor: {result.blocked_reason}. Nothing charged, no order created"})
 
     if result.status != "success":
         reason = result.blocked_reason or "PAYMENT_FAILED"
@@ -114,9 +150,17 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool, consent_mo
             co = db.query(Checkout).filter_by(checkout_id=checkout_id).one()
             order = order_service.finalize(db, co, payment_ref)
             outcome = {"status": "authorized", "order": order_service.order_dict(db, order),
-                       "transaction_id": result.transaction_id}
+                       "transaction_id": result.transaction_id, "trace": trace}
+            pts = outcome["order"]["points"]
+            trace.append({"agent": "TrackIt", "check": "Order created", "result": "pass", "protocol": "ACP complete checkout",
+                          "detail": f"{order.display_id}: created only after authorization; stock committed (guarded), "
+                                    f"cart updated, shipment started"
+                                    + (f"; {pts['used']:,} points spent" if pts["used"] else "")
+                                    + (f"; +{pts['earned']:,} points" if pts["earned"] else "")})
     except Exception:
         log.exception("order creation failed after authorization (%s); voiding", payment_ref)
+        trace.append({"agent": "TrackIt", "check": "Order created", "result": "blocked", "protocol": "ACP",
+                      "detail": "Order couldn't be created, so the authorization was voided: nothing charged"})
         from backend.payment.mock_processor import void_authorization
         void_authorization(result.transaction_id)
         return reopen("order_failed", "ORDER_CREATION_FAILED",
@@ -130,6 +174,13 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool, consent_mo
         with get_session() as db:
             order = db.query(Order).filter_by(order_id=payment_ref).one()
             outcome["confirmation_email"] = notifications.send_order_confirmation(db, order)
+            mail = notifications.confirmation_for(db, order) or {}
+            how = {"sending": "Queued for real delivery over SMTP (TLS, Gmail App Password); sent in the background",
+                   "outbox": "Kept in the demo outbox (no SMTP set, or a made-up address like .demo)"}
+            trace.append({"agent": "TrackIt", "check": "Confirmation email", "result": "pass",
+                          "protocol": "ACP / UCP order updates",
+                          "detail": f"{how.get(mail.get('delivery'), 'Recorded')}. Contains Order ID, items, total, "
+                                    "tracking link; no card data"})
     except Exception:
         log.exception("confirmation email failed for %s", payment_ref)
         outcome["confirmation_email"] = None

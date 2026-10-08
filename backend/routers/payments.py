@@ -58,6 +58,8 @@ class ExecutePaymentResponse(BaseModel):
     wallet_balance: Optional[float] = None
     points_earned: Optional[int] = None
     loyalty_balance: Optional[int] = None
+    # Each of the 12 PayIt guardrail checks: [{"n", "name", "passed", "reason"}] (live trace)
+    guardrail_checks: list[dict] = []
 
 
 def _insert_order_if_absent(session, fields: dict):
@@ -158,6 +160,8 @@ async def execute_payment_endpoint(
             result, events, blocked_reason = await payit.execute_payment(
                 payment_request, token_dict, req.total, req.checkout_hash, consent_exists,
             )
+            checks = [{"n": e.check_number, "name": e.check_name, "passed": e.passed, "reason": e.reason_code}
+                      for e in events]
 
             # One of the other 11 guardrail checks failed — no charge was attempted,
             # but the token is already consumed (claimed above), by design.
@@ -169,7 +173,7 @@ async def execute_payment_endpoint(
                 session.commit()
                 return ExecutePaymentResponse(
                     status="blocked", order_id=req.checkout_id, amount=req.total,
-                    merchant=req.merchant_name,
+                    merchant=req.merchant_name, guardrail_checks=checks,
                     summary=trackit.summarize_decline(req.checkout_id, blocked_reason),
                     blocked_reason=blocked_reason,
                 )
@@ -187,7 +191,7 @@ async def execute_payment_endpoint(
                 session.commit()
                 return ExecutePaymentResponse(
                     status="blocked", order_id=req.checkout_id, amount=req.total,
-                    merchant=req.merchant_name,
+                    merchant=req.merchant_name, guardrail_checks=checks,
                     summary=trackit.summarize_decline(req.checkout_id, result.decline_reason),
                     blocked_reason=result.decline_reason,
                 )
@@ -210,7 +214,7 @@ async def execute_payment_endpoint(
                     session.commit()
                     return ExecutePaymentResponse(
                         status="blocked", order_id=req.checkout_id, amount=req.total,
-                        merchant=req.merchant_name,
+                        merchant=req.merchant_name, guardrail_checks=checks,
                         summary=trackit.summarize_decline(req.checkout_id, "INSUFFICIENT_BALANCE"),
                         blocked_reason="INSUFFICIENT_BALANCE",
                         wallet_balance=wallet.balance if wallet else 0.0,
@@ -257,7 +261,7 @@ async def execute_payment_endpoint(
 
             return ExecutePaymentResponse(
                 status="success", order_id=req.checkout_id, amount=result.amount,
-                merchant=req.merchant_name, transaction_id=result.transaction_id,
+                merchant=req.merchant_name, guardrail_checks=checks, transaction_id=result.transaction_id,
                 summary=trackit.summarize_order(checkout, result),
                 wallet_balance=wallet.balance if wallet else None,
                 points_earned=points_earned,

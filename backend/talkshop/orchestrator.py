@@ -65,6 +65,11 @@ class Turn:
     def status(self, agent: str, message: str) -> dict:
         return self.emit("status", agent=agent, message=message)
 
+    def guard(self, agent: str, check: str, result: str, detail: str = "", protocol: str = "") -> dict:
+        """One guardrail decision for the live trace in the info view.
+        result: pass | blocked | info. Never carries card data or emails."""
+        return self.emit("guardrail", agent=agent, check=check, result=result, detail=detail, protocol=protocol)
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -128,6 +133,12 @@ async def _search(t: Turn, text: str, args: dict, note: str = "") -> None:
         return
     t.status("VibeCheck", "Picking the best matches…")
     copy = await brain.recommend(text, products)
+    t.guard("SneakPeek", "Catalog facts only", "pass",
+            f"{len(products)} in-stock products from ShopSphere's catalog; prices and stock never come from the AI",
+            "UCP product discovery")
+    t.guard("SneakPeek", "AI relevance check", "blocked" if copy.get("fits") is False and not note else "pass",
+            "None of the results is what was asked for: no cards shown" if copy.get("fits") is False and not note
+            else "The results match the kind of product asked for", "UCP")
     # The LLM: none of these is the kind of thing asked for. (Skipped when the
     # blocker already split off the part ShopSphere doesn't sell.)
     if copy.get("fits") is False and not note:
@@ -303,6 +314,8 @@ async def _confirm_variant(t: Turn, lead: str = "") -> None:
     check = tools.check_variant(s.product_id, size=s.size, color=s.color)
     sel = check["selected"]
     product = tools.get_product(s.product_id)
+    t.guard("CartUp", "Stock check", "pass" if sel and sel["available"] else "blocked",
+            f"{sel['sku']} in stock" if sel and sel["available"] else "That size/colour just sold out", "ACP / UCP")
     if not sel or not sel["available"]:
         s.color = None
         t.say("Sorry — that combination just sold out. Please pick another colour.")
@@ -342,6 +355,8 @@ async def _checkout(t: Turn, guest: bool = False) -> None:
         # Browsing and the cart are open to everyone. At checkout a visitor
         # chooses: log in, create an account, or continue as a guest (Phase 10).
         t.say("To check out, log in, create a ShopSphere account, or continue as a guest. Your cart comes with you.")
+        t.guard("CartUp", "Login gate", "info", "Checkout needs an account, or guest details (no account created)",
+                "UCP identity linking")
         t.emit("login_required", reason="checkout")
         t.stage(Stage.OFFER_CHECKOUT)
         return
@@ -358,7 +373,12 @@ async def _checkout(t: Turn, guest: bool = False) -> None:
         t.say(exc.message)
         return
     s.checkout_id = co["checkout_id"]
+    t.guard("CartUp", "Merchant-owned checkout", "pass",
+            f"ShopSphere calculated ${co['total']:.2f} (tax, delivery, points); fingerprint {co['checkout_hash'][:10]}…",
+            "ACP create checkout session")
     if _missing(co):
+        t.guard("CartUp", "Secure forms", "info",
+                "Missing details go straight to ShopSphere; the AI only receives the saved IDs", "ACP delegated payment")
         return _ask_for_details(t, co)
     t.say("Here's your order. Review it, then tap GO AHEAD to place it.")
     t.emit("checkout_ready", checkout=co)
@@ -407,8 +427,11 @@ async def _details_added(t: Turn, action: dict) -> None:
         # ownership checked by ShopSphere; a guest's details were saved by the form itself
         co = tools.update_checkout(s.user_id, s.checkout_id, **changes) if changes else before
     except CheckoutError as exc:
+        t.guard("CartUp", "Ownership check", "blocked", "That address/card isn't saved on this account", "ACP")
         t.say(exc.message)
         return _ask_for_details(t, before)
+    if changes:
+        t.guard("CartUp", "Ownership check", "pass", "The saved address/card belongs to this shopper", "ACP")
     if _missing(co):
         saved = "✓ Address saved." if "address_id" in changes else ("✓ Details saved." if co.get("guest") else "")
         return _ask_for_details(t, co, saved)
@@ -456,6 +479,7 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str], cons
     """The consent gate. Reachable only from the explicit GO AHEAD action."""
     s = t.s
     if s.stage != Stage.AWAITING_CONSENT or not s.checkout_id or checkout_id != s.checkout_id:
+        t.guard("GreenLight", "Consent gate", "blocked", "No order is waiting for a go-ahead: nothing charged", "AP2")
         t.say("There's no order waiting for your go-ahead right now.")
         return
     co = tools.get_checkout(s.user_id, s.checkout_id)
@@ -468,11 +492,14 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str], cons
     try:
         result = await tools.confirm_and_pay(user, s.checkout_id, consent_mode)
     except CheckoutError as exc:
+        t.guard("GreenLight", "Ready to pay", "blocked", exc.message, "AP2")
         t.emit("payment_status", state="failed", payment=card, reason=exc.code, message=exc.message)
         t.say(exc.message)
         t.emit("checkout_updated", checkout=tools.get_checkout(s.user_id, s.checkout_id))
         t.stage(Stage.AWAITING_CONSENT)
         return
+    for g in result.get("trace") or []:               # GreenLight → PayIt → TrackIt guardrails, as they ran
+        t.guard(g["agent"], g["check"], g["result"], g.get("detail") or "", g.get("protocol") or "")
     if result["status"] == "order_failed":           # authorized, then ShopSphere couldn't create the order
         t.emit("payment_status", state="failed", payment=card, reason=result["reason"], message=result["message"])
         t.say(result["message"])
@@ -627,6 +654,8 @@ async def _handle_text(t: Turn, text: str) -> None:
     # shown, stored, guard-railed or read by the LLM.
     text, had_card = parse.redact_payment_data(text)
     if had_card:
+        t.guard("VibeCheck", "Sensitive-data mask", "blocked",
+                "Card number / CVC / expiry masked before display, storage, guardrails or the AI", "Security")
         t.emit("user_message", text=text)
         s.history.append({"role": "user", "text": "[card details withheld]"})
         t.say("For your security I didn't keep that. Please never type card details in the chat.")
@@ -635,15 +664,21 @@ async def _handle_text(t: Turn, text: str) -> None:
         t.say("When you check out, the Secure Payment form sends your card straight to ShopSphere's payment partner.")
         return
     if s.stage == Stage.CHECKOUT_DETAILS and s.checkout_id and parse.looks_like_address(text):
+        t.guard("VibeCheck", "Address kept out of the chat", "blocked",
+                "Typed address withheld; the secure form sends it straight to ShopSphere", "Security")
         t.emit("user_message", text="📍 (address hidden)")
         s.history.append({"role": "user", "text": "[address withheld]"})
         t.say("Thanks! To keep it safe, I don't take addresses in the chat.")
         return _ask_for_details(t, tools.get_checkout(s.user_id, s.checkout_id))
     t.emit("user_message", text=text)
     s.history.append({"role": "user", "text": parse.mask_emails(text)})   # emails never go to the LLM
+    t.guard("VibeCheck", "Sensitive-data mask", "pass",
+            "No card data in the message; any email is masked before the AI sees the history", "Security")
 
     # Loyalty points (Phase 12): answered from ShopSphere's records, not the LLM
     if parse.asks_about_points(text) and s.stage != Stage.PAYING:
+        t.guard("VibeCheck", "Answered from records, not the AI", "info",
+                "Loyalty balance read from ShopSphere (customers only)", "UCP")
         if s.is_visitor:
             t.say("Loyalty points are for ShopSphere customers: create an account and you'll earn 1 point for every "
                   "$1 you spend. 100 points = $1 off a later order.")
@@ -657,10 +692,14 @@ async def _handle_text(t: Turn, text: str) -> None:
     ref = parse.order_ref(text)
     if s.stage != Stage.PAYING and (ref or parse.about_past_order(text)
                                     or (parse.wants_tracking(text) and not parse.search_intent(text))):
+        t.guard("VibeCheck", "Routed to order lookup", "info",
+                "Order questions are handled by code, never the AI", "UCP order management")
         return _track_request(t, ref, parse.email_in(text), text)
 
     from backend.guardrails.nemo import check_input
     allowed_input, block_msg = await check_input(text)
+    t.guard("VibeCheck", "Input guardrail (keywords + NeMo)", "pass" if allowed_input else "blocked",
+            "Message is a shopping request" if allowed_input else "Off-topic or unsafe request refused", "Security")
     if not allowed_input:
         t.say(block_msg or "I can only help with shopping at ShopSphere.")
         return
@@ -717,6 +756,8 @@ async def _handle_text(t: Turn, text: str) -> None:
     mid_question = s.stage in (Stage.RECOMMENDED, Stage.ASK_SIZE, Stage.ASK_COLOR)
     if s.allows("search") and intent and (not mid_question or parse.is_new_request(text)):
         t.status("VibeCheck", "Understanding your request…")
+        t.guard("VibeCheck", "Action allowed at this stage", "pass",
+                f"Clear request → search (fast path, no AI needed); allowed in stage {s.stage.value}", "MCP tool choice")
         return await _search(t, text, intent)
 
     # Everything else: the LLM chooses an action the stage allows
@@ -724,6 +765,9 @@ async def _handle_text(t: Turn, text: str) -> None:
     allowed = sorted(state.ALLOWED[s.stage])
     decision = await brain.decide(text, stage=s.stage.value, allowed=allowed, context=_context(s), history=s.history)
     act, args = decision["action"], decision["args"]
+    t.guard("VibeCheck", "AI action allowed at this stage", "pass",
+            f"The AI chose '{act}' from {len(allowed)} allowed actions in stage {s.stage.value}; payment is never one of them",
+            "MCP tool choice")
     if act == "search":
         await _search(t, text, args)
     elif act == "select_product":
@@ -786,6 +830,8 @@ def _track_own(t: Turn, text: str) -> None:
     """Logged in, no Order ID: pick from the customer's own orders by what they
     bought ("nike shoes"), else the newest; offer the others as buttons."""
     orders = tools.own_orders(t.s.user_id)
+    t.guard("TrackIt", "Logged-in owner", "pass", "Only this customer's own orders are searched; no ID or email needed",
+            "UCP order management")
     if not orders:
         t.say("You haven't placed any orders with ShopSphere yet. What can I find for you?")
         return
@@ -809,6 +855,9 @@ def _track_own(t: Turn, text: str) -> None:
 def _track_lookup(t: Turn, order_id: str, email: str) -> None:
     from backend.shop.orders import NOT_FOUND
     found = tools.track_order(order_id, email) if order_id and email else None
+    t.guard("TrackIt", "Order ID + email check", "pass" if found else "blocked",
+            "Both match the order" if found else "No match: the same neutral message whatever was wrong",
+            "UCP order management")
     if not found:
         t.say(NOT_FOUND + " Please check both and try again.")
         t.emit("track_order_form", order_id=parse.order_ref(order_id) or order_id or None)

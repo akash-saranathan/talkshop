@@ -615,3 +615,42 @@ def test_talkshop_points_question_and_review_toggle(client, quiet_llm):
     assert upd["points_discount"] == 14.15 and upd["total"] < co["total"]
     vh, _ = visitor(client)
     assert "create an account" in first(say(client, vh, f"pts-{uuid.uuid4().hex[:6]}", text="my loyalty points?"), "message")["text"]
+
+
+# ── Live guardrail trace (info view) ─────────────────────────────────────────
+
+def _guards(ev):
+    return [e for e in ev if e["type"] == "guardrail"]
+
+
+def test_trace_covers_every_step_of_a_purchase(client, quiet_llm):
+    h, _ = _ready_customer(client)
+    sid = to_offer(client, h)
+    co = first(say(client, h, sid, action={"type": "checkout"}), "checkout_ready")["checkout"]
+    ev = say(client, h, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"], "consent": "auto_countdown"})
+    g = _guards(ev)
+    payit = [x for x in g if x["agent"] == "PayIt" and x["check"].startswith("Check ")]
+    assert len(payit) == 12 and all(x["result"] == "pass" for x in payit)
+    names = [(x["agent"], x["check"]) for x in g]
+    for want in [("GreenLight", "Consent gate"), ("GreenLight", "Spending policy"), ("GreenLight", "Payment token issued"),
+                 ("PayIt", "Charge"), ("TrackIt", "Order created"), ("TrackIt", "Confirmation email")]:
+        assert want in names, want
+    assert "Automatic after the 3-second countdown" in next(x for x in g if x["check"] == "Consent gate")["detail"]
+    assert all(x["protocol"] for x in g)                                  # every check is tagged with its protocol
+
+
+def test_trace_shows_a_decline_and_no_secrets(client, quiet_llm):
+    h, email = _ready_customer(client)
+    me = client.get("/api/auth/me", headers=h).json()
+    with Session(get_engine()) as db:
+        db.query(PaymentMethod).filter_by(user_id=me["user_id"]).update({"behaviour": "decline"})
+        db.commit()
+    sid = to_offer(client, h)
+    co = first(say(client, h, sid, action={"type": "checkout"}), "checkout_ready")["checkout"]
+    ev = say(client, h, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
+    charge = next(x for x in _guards(ev) if x["check"] == "Charge")
+    assert charge["result"] == "blocked" and "Nothing charged" in charge["detail"]
+    ev2 = say(client, h, sid, text=f"my card is 4242 4242 4242 4242 and email {email}")
+    blob = str(_guards(ev) + _guards(ev2))
+    assert "4242424242424242" not in blob and "4242 4242 4242 4242" not in blob and email not in blob
+    assert any(x["check"] == "Sensitive-data mask" and x["result"] == "blocked" for x in _guards(ev2))

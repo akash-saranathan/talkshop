@@ -242,7 +242,49 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
 }
 
 /* ── Presenter view ────────────────────────────────────────────────────── */
+const GUARDRAILS: { agent: string; checks: string[] }[] = [
+  { agent: "VibeCheck", checks: ["Card numbers, CVC and expiry masked in the browser and again on the server",
+    "Emails masked before the AI sees the history", "Input guardrail: keyword list + NeMo",
+    "Not-sold blocker", "The AI may only pick an action allowed at this stage; payment is never one of them"] },
+  { agent: "SneakPeek", checks: ["Prices, stock and ratings only from the catalog", "AI relevance check (no unrelated cards)"] },
+  { agent: "CartUp", checks: ["Exact size/colour stock check", "Login, sign up or guest at checkout",
+    "Merchant-calculated total + SHA-256 fingerprint", "Secure forms: details go to ShopSphere, the AI gets IDs",
+    "Ownership check on saved address/card"] },
+  { agent: "GreenLight", checks: ["Consent gate: GO AHEAD (tap or 3-second countdown with Stop)",
+    "Live stock and price refresh", "Spending policy: approved merchant, USD, up to $2,500",
+    "One-time token: HMAC-SHA256 signed, 15 minutes, single use"] },
+  { agent: "PayIt", checks: ["12 checks: token exists · active · not expired · not used · right agent · right merchant · "
+    + "right order · right currency · within limit · equals checkout total · fingerprint unchanged · consent exists",
+    "Charge saved card token or wallet; decline = no order"] },
+  { agent: "TrackIt", checks: ["Order created only after authorization; payment voided if creation fails",
+    "Guarded stock decrement, points spent/earned", "Confirmation email (see Email)",
+    "Tracking: own orders when logged in, Order ID + email for guests"] },
+];
+
+const PROTOCOLS: { name: string; what: string; where: string }[] = [
+  { name: "MCP", what: "The AI uses tools from a fixed list", where: "VibeCheck picks search / select / checkout; code runs it" },
+  { name: "UCP", what: "Common store capabilities", where: "Product discovery, identity (log in / guest), order tracking" },
+  { name: "ACP", what: "Merchant-owned checkout session + delegated payment", where: "Create / update / complete checkout; card → token" },
+  { name: "AP2", what: "Proof the shopper approved this exact cart", where: "Consent record, signed scoped token, 12 checks, audit log" },
+  { name: "A2A", what: "Agents from different companies", where: "Not implemented: the agents hand off inside one app" },
+];
+
+const EMAIL_STEPS = [
+  "Order created (only after the payment is authorized)",
+  "Recipient: the customer's account email, or the guest's checkout email",
+  "Message written to the outbox: Order ID, items, total, status, tracking link (no card data)",
+  "Real address + SMTP set in .env → sent in the background via Gmail (TLS, App Password)",
+  "Made-up address (.demo, example.com) or no SMTP → kept in the demo outbox",
+  "Outbox records sent / failed; an email problem never undoes the order",
+  "Viewable on Track order → View confirmation email",
+];
+
+type InfoTab = "trace" | "guardrails" | "protocols" | "email";
+
 function PresenterTrace({ trace, onClose }: { trace: TraceStep[]; onClose: () => void }) {
+  const [tab, setTab] = useState<InfoTab>("trace");
+  const tabs: [InfoTab, string][] = [["trace", "Live trace"], ["guardrails", "Guardrails"], ["protocols", "Protocols"], ["email", "Email"]];
+  const chip = (r?: string) => r === "pass" ? "bg-good-soft text-good" : r === "blocked" ? "bg-bad-soft text-bad" : "bg-panel text-muted";
   return (
     <div className="absolute inset-0 z-10 bg-canvas/97 backdrop-blur overflow-y-auto ss-scroll p-4 flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -250,30 +292,78 @@ function PresenterTrace({ trace, onClose }: { trace: TraceStep[]; onClose: () =>
         <button onClick={onClose} className="text-xs underline">Back to chat</button>
       </div>
       <p className="text-xs text-muted leading-relaxed">
-        Talkshop decides what should happen; ShopSphere's services do it. Payment runs as plain code, never the AI,
-        and only after you tap GO AHEAD.
+        Talkshop decides what should happen; ShopSphere's services do it. Everything that touches money or private
+        data is plain code with fixed checks, never the AI.
       </p>
-      <div className="grid grid-cols-2 gap-1.5">
-        {Object.entries(AGENTS).map(([name, role]) => (
-          <div key={name} className="rounded-xl border border-line px-2.5 py-2">
-            <p className="text-xs font-semibold text-talk">{name}</p><p className="text-[11px] text-muted leading-snug">{role}</p>
-          </div>
+      <div role="tablist" className="grid grid-cols-4 rounded-full bg-panel p-1 text-[11px] font-medium">
+        {tabs.map(([key, label]) => (
+          <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+            className={cx("h-7 rounded-full", tab === key ? "bg-canvas shadow-card text-ink" : "text-muted hover:text-ink")}>{label}</button>
         ))}
       </div>
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">Live trace</p>
-        {trace.length === 0 ? <p className="text-xs text-faint">Steps appear here as Talkshop works.</p> : (
-          <ol className="flex flex-col gap-1.5">
-            {trace.map((t, i) => (
-              <li key={i} className="flex gap-2 text-xs">
-                <span className="text-faint tabular-nums w-14 shrink-0">{new Date(t.at).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" })}</span>
-                <span className="font-semibold text-talk w-20 shrink-0">{t.agent}</span>
-                <span className="text-ink-soft">{t.message}</span>
-              </li>
+
+      {tab === "trace" && (
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-3 gap-1.5">
+            {Object.entries(AGENTS).map(([name, role]) => (
+              <div key={name} className="rounded-xl border border-line px-2 py-1.5">
+                <p className="text-[11px] font-semibold text-talk">{name}</p><p className="text-[10px] text-muted leading-snug">{role}</p>
+              </div>
             ))}
-          </ol>
-        )}
-      </div>
+          </div>
+          {trace.length === 0 ? <p className="text-xs text-faint">Each step and guardrail appears here as Talkshop works.</p> : (
+            <ol className="flex flex-col gap-1.5" aria-label="Live guardrail trace">
+              {trace.map((t, i) => (
+                <li key={i} className="flex gap-2 text-xs">
+                  <span className="text-faint tabular-nums w-11 shrink-0">{new Date(t.at).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" })}</span>
+                  <span className="font-semibold text-talk w-[4.5rem] shrink-0">{t.agent}</span>
+                  {t.check ? (
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-1">
+                        <span className="font-medium text-ink">{t.check}</span>
+                        <span className={cx("rounded-full px-1.5 text-[10px] font-semibold uppercase", chip(t.result))}>{t.result}</span>
+                        {t.protocol && <span className="rounded-full border border-line px-1.5 text-[10px] text-muted">{t.protocol}</span>}
+                      </span>
+                      {t.message && <span className="block text-muted leading-snug">{t.message}</span>}
+                    </span>
+                  ) : <span className="text-ink-soft">{t.message}</span>}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+
+      {tab === "guardrails" && (
+        <div className="flex flex-col gap-2.5">
+          {GUARDRAILS.map((g) => (
+            <div key={g.agent} className="rounded-xl border border-line p-2.5">
+              <p className="text-xs font-semibold text-talk mb-1">{g.agent}</p>
+              <ul className="flex flex-col gap-0.5 text-[11px] text-ink-soft leading-snug list-disc pl-4">
+                {g.checks.map((c) => <li key={c}>{c}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "protocols" && (
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] text-muted">Inspired by these protocols, not a certified implementation of them.</p>
+          {PROTOCOLS.map((p) => (
+            <div key={p.name} className="rounded-xl border border-line p-2.5 text-[11px]">
+              <p className="text-xs font-semibold"><span className="text-talk">{p.name}</span> · {p.what}</p>
+              <p className="text-muted leading-snug mt-0.5">{p.where}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "email" && (
+        <ol className="flex flex-col gap-1.5 text-[11px] text-ink-soft leading-snug list-decimal pl-4">
+          {EMAIL_STEPS.map((step) => <li key={step}>{step}</li>)}
+        </ol>
+      )}
     </div>
   );
 }

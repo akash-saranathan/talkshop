@@ -31,6 +31,8 @@ export type TalkEvent =
       guest?: boolean; wallet?: { balance: number; enough: boolean } | null }
   | { type: "stage"; stage: Stage; step: string }
   | { type: "status"; agent: string; message: string }
+  /** One guardrail decision for the live trace (info view). */
+  | { type: "guardrail"; agent: string; check: string; result: "pass" | "blocked" | "info"; detail: string; protocol: string }
   | { type: "done"; stage: Stage; step: string };
 
 export type TalkAction =

@@ -22,7 +22,11 @@ function sessionId(): string {
   }
 }
 
-export interface TraceStep { agent: string; message: string; at: number }
+export interface TraceStep {
+  agent: string; message: string; at: number;
+  /** guardrail entries: the check, its result and the protocol it mirrors */
+  check?: string; result?: "pass" | "blocked" | "info"; protocol?: string;
+}
 export type Page = Record<string, unknown>;
 
 export function useTalkshop(getPage: () => Page) {
@@ -48,7 +52,10 @@ export function useTalkshop(getPage: () => Page) {
     try {
       const safe = input.text ? { ...input, text: maskPaymentData(input.text) } : input;   // card details never leave as chat
       await streamTurn(sid.current, { page: pageRef.current(), ...safe }, (ev) => {
-        if (ev.type === "status") {
+        if (ev.type === "guardrail") {
+          setTrace((t) => [...t.slice(-120), { agent: ev.agent, message: ev.detail, check: ev.check, result: ev.result,
+            protocol: ev.protocol, at: Date.now() }]);
+        } else if (ev.type === "status") {
           setStatus(ev.message);
           setTrace((t) => [...t.slice(-60), { agent: ev.agent, message: ev.message, at: Date.now() }]);
         } else if (ev.type === "stage" || ev.type === "done") {
@@ -72,7 +79,10 @@ export function useTalkshop(getPage: () => Page) {
       .then((s) => {
         if (cancelled) return;
         setStage(s.stage);
-        const restored = s.transcript.filter((e) => e.type !== "stage");
+        const restored = s.transcript.filter((e) => e.type !== "stage" && e.type !== "guardrail");
+        // After a reload the trace is rebuilt from the guardrail decisions in the transcript.
+        setTrace(s.transcript.flatMap((e) => e.type === "guardrail"
+          ? [{ agent: e.agent, message: e.detail, check: e.check, result: e.result, protocol: e.protocol, at: Date.now() }] : []).slice(-120));
         setEvents(restored);
         setRestoredCount(restored.length);
         setReady(true);

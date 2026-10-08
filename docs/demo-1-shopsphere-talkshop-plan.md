@@ -187,6 +187,7 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 12.4 Talkshop: "how many points do I have?"; the Review card's "Use my points"; points on the confirmation
 - [x] 12.5 Tests + browser check (earn, redeem, decline keeps points, guest earns none)
 - [x] **Checkpoint:** a customer earns points on every order, sees the balance, and can spend points at checkout in the chat and on the website; guests earn none *(browser: menu balance, website + chat redeem, guest; 349 tests)*
+- [x] Follow-up: **live guardrail trace + protocol map** in Talkshop's info view (ⓘ): every guardrail decision (VibeCheck → SneakPeek → CartUp → GreenLight → PayIt's 12 checks → TrackIt incl. the confirmation email) streams as a `guardrail` event with pass/blocked/info and the protocol it mirrors; tabs for Guardrails, Protocols and the Email flow. No card data or emails in the trace.
 - [ ] **Approved: Demo 1 complete 🎉**
 
 ---
