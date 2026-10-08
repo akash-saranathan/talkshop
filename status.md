@@ -391,7 +391,56 @@ The remainder of this file (below this line, if present after this rewrite) was 
 - [x] 7. Fix scrolling so it behaves predictably and smoothly everywhere (chat, trace panel, cart, checkout, modals). *(Done: ChatGPT-style scroll in Chat.tsx — sending a message jumps it to the top so the reply fills the space below instead of chasing the bottom; gentle auto-follow only when already near bottom. Trace/cart/checkout/modals were already structurally correct per the earlier audit — no changes needed there.)*
 - [x] 8. After the user selects a product, let the agent carry checkout and payment through automatically — no routine checkout/payment clicks — using a silent 2-3 second internal delay for pacing instead of a visible countdown timer. *(Done: AUTO_SECONDS 10→3; all three visible countdown bars (cart strip, session-cart, Auto GO AHEAD) hidden; auto-advance preserved silently; proposal copy updated to drop "countdown/pause" wording.)*
 - [x] 9. Rewrite vague error/status messages so each one names the real user/merchant/payment/loyalty relationship that failed or succeeded. *(Done: the four demo-scenario outcomes now read clearly — invalid-agent-credential (merchant can't verify the agent → checkout not authorized), overcharge attempt (amount/scope didn't match what you authorized → nothing charged), delivery-change (specific dates + re-approve), card decline (merchant + specific reason). Demo-scenario dropdown labels made descriptive.)*
-- [ ] 10. Run a final pass verifying A2A/UCP/AP2/ACP fidelity — confirm what's genuinely implemented vs. mocked/cosmetic is still accurately represented after all other changes, and that every demo scenario still works end to end.
+- [ ] 10. Run a final pass verifying A2A/UCP/AP2/ACP fidelity — confirm what's genuinely implemented vs. mocked/cosmetic is still accurately represented after all other changes, and that every demo scenario still works end to end. *(In progress: A2A, MCP, and UCP were upgraded from in-process/cosmetic to real HTTP calls — see Section 14 for exactly what's real vs. mimicked now. Manually verified end-to-end (search, checkout, GO AHEAD, payment) across two merchants with zero regressions in totals/loyalty/outcomes. Still open: the 7 tests broken by TODO #2's merchant-scoped cards haven't been fixed, and the full pytest suite hasn't been re-run since all changes landed together.)*
 - [x] 11. Extend the existing Dashboard/History view (no new dashboard) so every completed purchase — from any merchant, under the same persistent demo user — shows an Order ID, a mock carrier + tracking number, merchant, product, total, status, and estimated delivery date right after purchase, opens into a real shipping/tracking timeline from that same Dashboard, and can be filtered by merchant or looked up by Order ID. *(Called good enough for now. Done: merchant filter dropdown, Order ID/tracking-number search, mock carrier (UPS/USPS/FedEx/DHL) shown with tracking number — all on the existing Dashboard, no new one. Not done: a dedicated shipping/tracking timeline view — the Dashboard's existing audit-trail expand is what's there today, not a timeline.)*
 
 **Next step**: review this plan. Once Phase 1 is explicitly approved, implementation begins there and only there.
+
+---
+
+## 14. Protocol Reality Guide — plain-English, for demo narration
+
+This section exists so anyone narrating a demo can say, truthfully, exactly what's happening at each step — without overclaiming or underselling it. Written for a non-technical reader.
+
+### The one-sentence version
+
+**A2A, MCP, and UCP now make real network calls to real servers running inside this same app — they're genuinely "over the wire," just not to a different company's computer. AP2 and ACP were already doing real cryptographic-style signing and verification; the only mock part of those two is that the "signature" uses a simple demo key instead of real bank-grade cryptography.**
+
+### What each protocol actually does, and where
+
+| Protocol | Plain-English job | Where it fires | Real or mimicked? |
+|---|---|---|---|
+| **A2A** (Agent2Agent) | The shopping assistant "talks to" each merchant's own agent to ask it to search its catalog | Every product search | **Real network call.** A genuine HTTP request goes out to that merchant's own server address and a genuine response comes back. |
+| **MCP** (Model Context Protocol) | The standard way an AI agent calls a "tool" (search, check stock, get price) without the tool's raw code being exposed to the AI | Every product search, and every time a checkout is being built (price + stock check) | **Real protocol call.** A real MCP client connects to a real MCP server and calls the tool through the actual MCP handshake — not a shortcut function call. |
+| **UCP** (Universal Commerce Protocol) | The merchant's own checkout system calculates and "locks in" the official subtotal/tax/shipping/total for this exact cart | The moment a product is selected and a checkout is being prepared | **Real network call.** A real HTTP request asks a real checkout endpoint to compute and return the locked total. |
+| **AP2** (Agent Payments Protocol) | The customer's explicit, signed proof that they approved this exact purchase, for this exact amount | Twice: once when the cart is first shown (binds the cart), once when GO AHEAD is pressed (binds the payment) | **Real signing & verification logic.** A real digital document is built and a real signature is checked before anything proceeds — it's just signed with a simple demo key instead of real bank-grade cryptography. |
+| **ACP** (Agentic Commerce Protocol) | A one-time-use "permission slip" that lets the merchant charge a specific amount, and only that amount, and only once | Right after GO AHEAD, before the actual charge | **Real logic.** The permission slip genuinely can't be reused, can't be stretched to a bigger amount, and is checked by the merchant before it charges anything — same demo-key caveat as AP2. |
+| **Trust layer** (not one of the 5 named protocols, but the gatekeeper for all of them) | Each merchant checks that the shopping assistant is who it claims to be before answering it at all | Before every search and every checkout | **Fully real.** This has never been mocked — it's real signature verification with real pass/fail checks. |
+
+### What's still mimicked, and exactly how (no surprises)
+
+- **The network calls are to ourselves.** Every "real" HTTP call above (A2A, MCP, UCP) is this one app calling its own other parts over `localhost` — it's genuinely a network round trip, with everything that implies (it can be slow, it can time out, it can fail), but it's not reaching an actual different company's servers, because Nike/Adidas/etc. are synthetic demo merchants that live inside this same app.
+- **The signatures are demo-strength, not bank-strength.** AP2 and ACP's "signed documents" use a simple shared secret (HMAC) instead of the real asymmetric cryptography (public/private key pairs) a production system would use. The *process* — sign it, then verify it, then refuse to proceed if it doesn't check out — is completely real. Only the specific math underneath the signature is simplified.
+- **Card numbers never travel through any of this.** Whichever protocol step is running, the only payment information that ever moves between them is an opaque reference (like `pm_demo_nike` or `pp_auth_ab12cd`) — never a real card number, never a CVV. That boundary was never mocked.
+- **PayPal is a realistic mock, not a connection to real PayPal.** The "Connect PayPal" flow looks and behaves like the real thing (handoff, sign-in, choose a funding source, approve) but there's no real PayPal account or server involved — it's a believable simulation that produces the same *kind* of result a real connection would.
+- **Carrier/tracking numbers are invented, not real shipments.** UPS/USPS/FedEx/DHL tracking numbers shown after a purchase are generated to look plausible; no real package is ever created or tracked.
+
+### A worked example: buying Nike running shoes with Nike loyalty points
+
+Walking through one purchase end to end, naming exactly which protocol does what:
+
+1. **You ask**: "Nike running shoes."
+2. **Trust check** (real): the shopping assistant presents its credentials to Nike's agent; Nike's agent verifies the signature and opens a trusted session. If this fails, nothing below happens.
+3. **A2A** (real network call): the assistant sends Nike's agent a real HTTP message asking it to search its catalog.
+4. **MCP** (real protocol call): behind that search, the assistant calls the "search_products" tool through a real MCP connection — the actual mechanism by which an AI agent is allowed to call a tool safely.
+5. Products come back and are shown to you. You pick a pair of shoes.
+6. **UCP** (real network call): a real checkout-session request is sent to lock in the subtotal, tax, shipping, and total for exactly this item and quantity.
+7. **Loyalty redemption** (real logic, not a protocol): since you're a Nike member, the backend checks your Nike points balance and decides — automatically, no extra click — how many points to apply. This changes the amount owed on a card, but it isn't AP2/ACP/UCP itself; it's a merchant-side decision that happens between UCP's total and the payment step.
+8. **AP2 — Cart Mandate** (real signing): a signed document is created proving this exact cart (product, quantity, total) is what's being proposed to you.
+9. You see the order proposal and click (or silently auto-confirm after ~3 seconds) **GO AHEAD**.
+10. **AP2 — Payment Mandate** (real signing): a second signed document proves you personally approved paying the remaining amount (after points) using your saved card.
+11. **ACP** (real logic): a one-time "permission slip" is issued, scoped to that exact amount, that exact merchant, that exact order — and it can never be reused or stretched.
+12. The mock payment processor charges the card for the remaining amount. If points covered the whole order, **this step and the ACP step are skipped entirely** — there's no card to charge, so there's nothing to authorize on the card rails.
+13. The order is confirmed, loyalty points are deducted (if used) and earned (on whatever was actually charged), and a tracking number appears.
+
+Every step above either genuinely happened the way it's described, or is explicitly flagged in this document as mimicked — nothing in that list is overstated.
