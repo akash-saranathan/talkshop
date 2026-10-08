@@ -19,6 +19,11 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// The one persistent demo identity the app opens into automatically — no
+// login form. Backed by POST /api/auth/demo-session, which get-or-creates
+// this fixed demo user server-side; not a real multi-tenant login mechanism.
+const DEMO_EMAIL = "john@gmail.com";
+
 const GUEST_KEY = "talkshop_guest";
 // The server never stores a guest's name/email (only customers' details are
 // persisted), so the guest's own copy lives here — browser only — to keep
@@ -60,10 +65,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try { return localStorage.getItem(GUEST_KEY) === "1"; } catch { return false; }
   });
 
-  // Restore session on load, if a token was persisted from a previous visit.
+  // The app always opens as the one persistent demo identity — no login
+  // screen. If a token was persisted from a previous visit, it's only
+  // trusted if it's still that demo account; anything else (e.g. a stale
+  // token from a real login made while testing) is replaced.
   useEffect(() => {
-    if (!getToken()) {
-      setLoading(false);
+    const token = getToken();
+    if (!token) {
+      startDemoSession()
+        .catch(() => { /* backend unreachable — RequireAuth's /login fallback covers this */ })
+        .finally(() => setLoading(false));
       return;
     }
     authFetch("/api/auth/me")
@@ -71,10 +82,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error("session expired");
         return res.json();
       })
-      .then((data: User) => setUser(isGuest ? { ...data, ...readGuestProfile() } : data))
-      .catch(() => clearToken())
+      .then((data: User) => {
+        if (data.email !== DEMO_EMAIL) {
+          clearToken();
+          return startDemoSession();
+        }
+        setUser(isGuest ? { ...data, ...readGuestProfile() } : data);
+      })
+      .catch(() => {
+        clearToken();
+        return startDemoSession().catch(() => { /* fallback covers this */ });
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  async function startDemoSession() {
+    const res = await fetch("/api/auth/demo-session", { method: "POST" });
+    const data = await parseAuthResponse(res);
+    setToken(data.access_token);
+    setUser(data.user);
+    setIsGuest(false);
+    try { localStorage.removeItem(GUEST_KEY); localStorage.removeItem(GUEST_PROFILE_KEY); } catch { /* noop */ }
+  }
 
   async function login(email: string, password: string) {
     const res = await fetch("/api/auth/login", {

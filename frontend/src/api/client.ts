@@ -4,16 +4,20 @@
  */
 const TOKEN_KEY = "talkshop_token";
 
+// Stored in sessionStorage (not localStorage) so the demo identity lives for
+// the life of the tab: a refresh keeps the same session (earned/spent points
+// persist), but closing/reopening or a new tab starts a fresh demo session,
+// which resets the seeded demo state on the backend.
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+  try { sessionStorage.setItem(TOKEN_KEY, token); } catch { /* noop */ }
 }
 
 export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
+  try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* noop */ }
 }
 
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
@@ -25,9 +29,11 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   }
   const res = await fetch(url, { ...options, headers });
 
-  if (res.status === 401 && !window.location.pathname.startsWith("/login")) {
+  // No login screen: on an expired/invalid token, drop it and reload so the
+  // app re-bootstraps a fresh demo session rather than bouncing to a login.
+  if (res.status === 401) {
     clearToken();
-    window.location.href = "/login";
+    window.location.reload();
   }
 
   return res;

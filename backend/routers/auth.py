@@ -12,6 +12,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.auth.security import create_access_token, hash_password, verify_password
+from backend.config.demo_profile import DEMO_EMAIL, DEMO_NAME, DEMO_USER_ID, seed_demo_customer
 from backend.db.init_db import STARTING_WALLET_BALANCE
 from backend.db.schema import User, Wallet
 from backend.db.session_utils import get_session
@@ -60,6 +61,36 @@ async def register(req: RegisterRequest):
 
     current = CurrentUser(user_id=user_id, name=req.name, email=req.email)
     return AuthResponse(access_token=create_access_token(user_id), user=current)
+
+
+@router.post("/api/auth/demo-session", response_model=AuthResponse)
+async def demo_session():
+    """
+    The app opens straight into chat as one persistent demo identity — no
+    login screen. This issues a token for that fixed demo user, creating the
+    account (wallet + per-merchant loyalty/cards) on first use so it works on
+    any fresh database. Demo-only: not a real multi-tenant auth mechanism.
+    """
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == DEMO_USER_ID).first()
+        if not user:
+            user = User(
+                user_id=DEMO_USER_ID,
+                name=DEMO_NAME,
+                email=DEMO_EMAIL,
+                password_hash=hash_password(secrets.token_urlsafe(24)),
+                status="active",
+            )
+            session.add(user)
+            if not session.query(Wallet).filter(Wallet.user_id == DEMO_USER_ID).first():
+                session.add(Wallet(user_id=DEMO_USER_ID, balance=STARTING_WALLET_BALANCE))
+            session.commit()
+        # Idempotent: ensures the per-merchant memberships exist even if the
+        # user row was created before this seeding was added.
+        seed_demo_customer(session, DEMO_USER_ID)
+        current = CurrentUser(user_id=user.user_id, name=user.name, email=user.email)
+
+    return AuthResponse(access_token=create_access_token(current.user_id), user=current)
 
 
 @router.post("/api/auth/login", response_model=AuthResponse)

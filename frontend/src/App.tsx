@@ -8,18 +8,19 @@ import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
 import PaymentResult from "./pages/PaymentResult";
 import Dashboard from "./pages/Dashboard";
-import Login from "./pages/Login";
 
+// No login screen: the app opens straight into the assistant, signed in as
+// the persistent demo identity (AuthContext bootstraps the demo session).
+// While that bootstrap runs, show a loader rather than any login UI.
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) {
+  if (loading || !user) {
     return (
       <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center">
         <Loader className="animate-spin text-[var(--color-primary)]" />
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -29,7 +30,6 @@ export default function App() {
       <AuthProvider>
         <Routes>
           {/* main entry: original Talk Shop */}
-          <Route path="/login" element={<Login />} />
           <Route path="/" element={<RequireAuth><Chat /></RequireAuth>} />
 
           {/* shared routes */}
