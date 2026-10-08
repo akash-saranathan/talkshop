@@ -493,3 +493,37 @@ def test_made_up_addresses_are_not_mailed(client, smtp):
     assert not deliverable("kaajal@shopsphere.demo") and not deliverable("a@example.com") and deliverable("a@gmail.com")
     _, _, email, _, res = guest_buys(client)                                    # guest email is @example.com
     assert smtp.sent == [] and track(client, res["order"]["order_id"], email, "/email").json()["delivery"] == "outbox"
+
+
+# ── Logged-in customers track their own orders without ID or email ───────────
+
+def _buy(client, h, sku):
+    line = add_line(client, h, sku)
+    co = client.post("/api/checkouts", json={"line_ids": [line]}, headers=h).json()
+    return confirm(client, h, co["checkout_id"])["order"]["order_id"]
+
+
+def test_logged_in_customer_asks_by_product_name(client, quiet_llm):
+    h, _ = customer(client)
+    client.post("/api/me/addresses", json=HOME, headers=h)
+    client.post("/api/me/payment-methods", json=CARD, headers=h)
+    shoes = _buy(client, h, "SSP004-TEAL-10")          # Nike Pegasus 41
+    wallet = _buy(client, h, "SSP046-BLACK")            # newer order
+    ev = say(client, h, f"own-{uuid.uuid4().hex[:6]}", text="hey i placed an order of nike shoes, where is it?")
+    assert first(ev, "order_tracking")["order"]["order_id"] == shoes            # matched by product, not newest
+    assert not [e for e in ev if e["type"] in ("track_order_form", "recommendations")]
+    ev = say(client, h, f"own-{uuid.uuid4().hex[:6]}", text="where is my order?")
+    assert first(ev, "order_tracking")["order"]["order_id"] == wallet           # newest when nothing named
+    assert f"Track {shoes}" in first(ev, "suggestions")["chips"]                # the others offered as buttons
+
+
+def test_logged_in_customer_with_no_orders(client, quiet_llm):
+    h, _ = customer(client)
+    ev = say(client, h, f"own-{uuid.uuid4().hex[:6]}", text="where is my order?")
+    assert "haven't placed any orders" in first(ev, "message")["text"]
+
+
+def test_guest_still_needs_id_and_email(client, quiet_llm):
+    h, _ = visitor(client)
+    ev = say(client, h, f"own-{uuid.uuid4().hex[:6]}", text="hey i placed an order of nike shoes, where is it?")
+    assert first(ev, "track_order_form") and not [e for e in ev if e["type"] == "order_tracking"]

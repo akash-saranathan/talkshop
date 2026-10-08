@@ -116,6 +116,26 @@ def track_order(order_id: str, email: str) -> Optional[dict]:
         return order_service.tracking_view(db, order) if order else None
 
 
+def own_orders(user_id: str, limit: int = 10) -> list[dict]:
+    """A logged-in customer's recent ShopSphere orders, newest first, each with
+    the words that describe it (product names, brands, categories) for matching
+    "my nike shoes" to the right order."""
+    from backend.db.schema import Order, OrderLine, Product
+    from backend.shop import orders as order_service
+    with _db() as db:
+        rows = (db.query(Order).filter(Order.user_id == user_id, Order.display_id.isnot(None))
+                .order_by(Order.created_at.desc(), Order.id.desc()).limit(limit).all())
+        out = []
+        for order in rows:
+            words = []
+            for ln in db.query(OrderLine).filter_by(order_id=order.order_id).all():
+                p = db.query(Product).filter_by(product_id=ln.product_id).first()
+                words += [ln.product_name or "", ln.color or ""] + ([p.brand or "", p.category or "", p.department or ""] if p else [])
+            out.append({"view": order_service.tracking_view(db, order),
+                        "match": " ".join(words).lower().replace("_", " ")})
+        return out
+
+
 def own_order(user_id: str, order_id: str) -> Optional[dict]:
     """A logged-in customer's own order: no email needed."""
     from backend.shop import orders as order_service

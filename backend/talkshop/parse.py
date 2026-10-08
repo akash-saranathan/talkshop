@@ -195,6 +195,18 @@ def redact_payment_data(text: str) -> tuple[str, bool]:
 _ORDER_ID = re.compile(r"\bSS[\s-]?(\d{5})\b", re.I)
 _TRACKING = re.compile(r"\b(track(?:ing)?|where(?:'s| is) my (?:order|package|parcel|delivery|stuff)|order status|"
                        r"status of my order|my order|has my order|when will my order|delivery status)\b", re.I)
+# About an order already placed, even when it names a product ("I placed an order of nike shoes")
+_PAST_ORDER = re.compile(r"\b(placed (?:an |my |the |a )?order|i (?:ordered|bought|purchased)|my purchase|"
+                         r"track(?:ing)?|where(?:'s| is) my|order status|delivery status|has my order|"
+                         r"when will my order|did my order)\b", re.I)
+_ORDER_STOPWORDS = {
+    "the", "and", "order", "orders", "ordered", "placed", "place", "track", "tracking", "where", "when", "what",
+    "status", "delivery", "show", "can", "you", "please", "hey", "with", "this", "that", "for", "have", "has",
+    "did", "was", "were", "from", "about", "details", "detail", "package", "parcel", "arrive", "arriving", "bought",
+    "purchased", "purchase", "item", "items", "some", "pair", "get", "got", "yet", "still", "its", "whats", "here",
+    "there", "of", "my", "me", "is", "it", "an", "a", "i", "im", "are", "will", "be", "know", "want", "need", "check",
+    "last", "week", "weeks", "any", "update", "updates", "yesterday", "today", "days", "ago", "recently", "recent",
+}
 _EMAIL_IN_TEXT = re.compile(r"[^@\s,;:<>()]+@[^@\s,;:<>()]+\.[a-zA-Z]{2,}")
 
 
@@ -202,6 +214,17 @@ def order_ref(text: str) -> Optional[str]:
     """'order ss 12345' / 'SS-12345' → 'SS-12345'."""
     m = _ORDER_ID.search(text or "")
     return f"SS-{m.group(1)}" if m else None
+
+
+def about_past_order(text: str) -> bool:
+    """Clearly about an order already placed, even if it names a product."""
+    return bool(_PAST_ORDER.search(text or ""))
+
+
+def order_keywords(text: str) -> list[str]:
+    """Words that could identify which order ('nike shoes' → ['nike', 'shoes'])."""
+    words = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return [w for w in words if len(w) >= 3 and w not in _ORDER_STOPWORDS and not re.fullmatch(r"ss\d*|\d+", w)]
 
 
 def wants_tracking(text: str) -> bool:

@@ -1,12 +1,13 @@
 /**
- * Track Order (Phase 10): anyone can follow an order with its Order ID and the
- * email used for it. Guests have no account, so this is how they see their
- * order after checkout. A wrong ID or email gets the same neutral message.
+ * Track Order. Logged-in customers see their own orders straight away: we know
+ * who they are. Anyone else (guests) follows an order with its Order ID and the
+ * email used for it; a wrong ID or email gets the same neutral message.
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
-import { CheckCircle2, CreditCard, Mail, MapPin, Package } from "lucide-react";
-import { money, niceDate, shop, ShopError, type ConfirmationEmail, type TrackedOrder } from "../../api/shop";
+import { CheckCircle2, ChevronRight, CreditCard, Mail, MapPin, Package } from "lucide-react";
+import { money, niceDate, shop, ShopError, type ConfirmationEmail, type OrderLine, type TrackedOrder } from "../../api/shop";
+import { useAuth } from "../../auth/AuthContext";
 import { ShipmentProgress } from "../../components/shopsphere/ShipmentProgress";
 import { Badge, Button, Field, Notice } from "../../components/ui";
 
@@ -24,6 +25,16 @@ export default function TrackOrderPage() {
   const [advancing, setAdvancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const placed = !!state.placed;
+  const { isCustomer } = useAuth();
+  const [mine, setMine] = useState<{ id: string; created_at: string | null; total: number; lines: OrderLine[]; status: string }[] | null>(null);
+  useEffect(() => {
+    if (!isCustomer) { setMine(null); return; }
+    shop.orders().then((rows) => setMine(rows.filter((o) => o.display_id).map((o) => ({
+      id: String(o.display_id), created_at: (o.created_at as string) ?? null, total: Number(o.amount ?? 0),
+      lines: (o.lines as OrderLine[]) ?? [],
+      status: ((o.shipment as { status_label?: string } | null)?.status_label) ?? "Processing",
+    })))).catch(() => setMine([]));
+  }, [isCustomer]);
 
   const lookup = async (id = orderId, addr = email) => {
     setLoading(true); setError(null); setMail(null); setShowMail(false);
@@ -69,8 +80,40 @@ export default function TrackOrderPage() {
         </div>
       )}
 
-      <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mt-4">Track your order</h1>
-      <p className="text-muted mt-1">Enter your Order ID and the email you used at checkout.</p>
+      <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mt-4">{isCustomer ? "Track your orders" : "Track your order"}</h1>
+
+      {isCustomer && (
+        <section className="mt-6">
+          <p className="text-muted">You're logged in, so here are your orders. No Order ID needed.</p>
+          {mine === null ? <p className="text-sm text-muted mt-4">Loading your orders…</p>
+            : !mine.length ? <p className="text-sm text-muted mt-4">You haven't placed any orders yet.</p> : (
+            <ul className="mt-4 flex flex-col gap-3">
+              {mine.map((o) => (
+                <li key={o.id}>
+                  <Link to={`/orders/${o.id}`} className="flex items-center gap-4 rounded-3xl border border-line p-4 hover:border-line-strong transition-colors">
+                    <div className="w-14 h-14 rounded-2xl bg-photo overflow-hidden shrink-0">
+                      {o.lines[0]?.image_url && <img src={o.lines[0].image_url} alt="" className="h-full w-full object-cover" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="flex flex-wrap items-center gap-2 font-semibold">Order {o.id}
+                        <Badge tone={o.status === "Delivered" ? "good" : ["Shipped", "Out for delivery"].includes(o.status) ? "accent" : "neutral"}>{o.status}</Badge></p>
+                      <p className="text-sm text-muted line-clamp-1">
+                        {o.lines[0]?.name}{o.lines.length > 1 ? ` + ${o.lines.length - 1} more` : ""}{o.created_at ? ` · ${niceDate(o.created_at)}` : ""}
+                      </p>
+                    </div>
+                    <p className="font-semibold tabular-nums">{money(o.total)}</p>
+                    <ChevronRight size={18} className="text-muted shrink-0" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <h2 className="text-lg font-semibold mt-10">Track a guest order</h2>
+        </section>
+      )}
+      <p className="text-muted mt-1">{isCustomer
+        ? "For an order placed without logging in, enter its Order ID and the email used at checkout."
+        : "Enter your Order ID and the email you used at checkout."}</p>
 
       <form onSubmit={submit} className="mt-6 grid sm:grid-cols-[1fr_1.4fr_auto] gap-3 items-end">
         <Field id="track-order-id" label="Order ID" value={orderId} onChange={(e) => setOrderId(e.target.value)}

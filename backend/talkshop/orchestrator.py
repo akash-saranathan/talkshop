@@ -641,8 +641,9 @@ async def _handle_text(t: Turn, text: str) -> None:
 
     # An order already placed ("here's my order SS-12345, show me the tracking")
     ref = parse.order_ref(text)
-    if s.stage != Stage.PAYING and (ref or (parse.wants_tracking(text) and not parse.search_intent(text))):
-        return _track_request(t, ref, parse.email_in(text))
+    if s.stage != Stage.PAYING and (ref or parse.about_past_order(text)
+                                    or (parse.wants_tracking(text) and not parse.search_intent(text))):
+        return _track_request(t, ref, parse.email_in(text), text)
 
     from backend.guardrails.nemo import check_input
     allowed_input, block_msg = await check_input(text)
@@ -737,22 +738,25 @@ async def _handle_text(t: Turn, text: str) -> None:
     elif act == "cancel_checkout":
         await _cancel_checkout(t)
     elif act == "track_order":
-        _track_request(t, parse.order_ref(text), None)
+        _track_request(t, parse.order_ref(text), None, text)
     else:
         t.say(decision["reply"] or "Happy to help! What are you shopping for today?")
 
 
 # ── Orders already placed: tracking in the chat (Phase 11) ──────────────────
 
-def _track_request(t: Turn, ref: Optional[str], email: Optional[str]) -> None:
-    """Show an order's details and tracking. Like the website, that takes the
-    Order ID + the email used for the order; a logged-in customer's own order
-    shows straight away. The lookup is code, not the LLM."""
+def _track_request(t: Turn, ref: Optional[str], email: Optional[str], text: str = "") -> None:
+    """Show an order's details and tracking. A logged-in customer's own orders
+    need nothing more (we know who they are): "my nike shoes order" finds it.
+    A guest gives the Order ID + the email used for it, like the website.
+    The lookup is code, not the LLM."""
     s = t.s
     if ref and not s.is_visitor:
         mine = tools.own_order(s.user_id, ref)
         if mine:
             return _show_tracking(t, mine)
+    if not ref and not s.is_visitor:
+        return _track_own(t, text)
     if ref and email:
         return _track_lookup(t, ref, email)
     if ref:
@@ -762,6 +766,30 @@ def _track_request(t: Turn, ref: Optional[str], email: Optional[str]) -> None:
         t.say("Happy to help you track an order. Enter your Order ID (it looks like SS-12345) and the email used "
               "for the order below.")
     t.emit("track_order_form", order_id=ref)
+
+
+def _track_own(t: Turn, text: str) -> None:
+    """Logged in, no Order ID: pick from the customer's own orders by what they
+    bought ("nike shoes"), else the newest; offer the others as buttons."""
+    orders = tools.own_orders(t.s.user_id)
+    if not orders:
+        t.say("You haven't placed any orders with ShopSphere yet. What can I find for you?")
+        return
+    words = parse.order_keywords(text)
+    scores = [sum(1 for w in words if w in o["match"] or w.rstrip("s") in o["match"]) for o in orders]
+    best = max(scores) if words else 0
+    matches = [o for o, sc in zip(orders, scores) if sc == best and best > 0] if best else orders
+    lead = ""
+    if words and not best:
+        lead = f"I couldn't find an order with {' '.join(words)}, so here's your most recent one. "
+    pick = matches[0]
+    others = [o["view"]["order_id"] for o in (matches if best else orders) if o is not pick][:3]
+    if lead:
+        t.say(lead.strip())
+    _show_tracking(t, pick["view"])
+    if others:
+        t.say("You have other orders too. Tap one to see it.")
+        t.emit("suggestions", chips=[f"Track {oid}" for oid in others])
 
 
 def _track_lookup(t: Turn, order_id: str, email: str) -> None:
