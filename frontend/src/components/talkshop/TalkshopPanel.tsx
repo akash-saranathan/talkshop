@@ -156,6 +156,8 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
   const lastSuggest = lastIndex(events, "suggestions");
   const lastLogin = lastIndex(events, "login_required");
   const lastDetails = lastIndex(events, "checkout_details_needed");
+  // Each auto-checkout countdown fires at most once, whatever re-renders after it.
+  const countdownsFired = useRef(new Set<number>());
 
   return (
     <div ref={scroller} className="absolute inset-0 overflow-y-auto ss-scroll px-4 py-4 flex flex-col gap-3 [&>*]:shrink-0">
@@ -191,11 +193,17 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
             return <CartUpdatedCard key={i} cart={ev.cart} lineId={ev.added_line_id} />;
           case "offer_checkout": {
             const live = it.index === lastOffer && lastOffer > lastReview && !busy && (stage === "OFFER_CHECKOUT" || stage === "IN_CART");
-            const pick = (c: { value: string; label: string }) =>
+            const pick = (c: { value: string; label: string }) => {
+              countdownsFired.current.add(it.index);
               act({ type: c.value === "checkout" ? "checkout" : "keep_shopping", label: c.label });
-            // Just added → count down to checkout; a restored conversation just shows the buttons.
-            if (live && stage === "OFFER_CHECKOUT" && it.index >= ts.restoredCount) return <CheckoutCountdown key={i} onPick={pick} />;
-            return <QuickReplies key={i} choices={ev.choices} active={live} onPick={pick} />;
+            };
+            // The step after this offer has already happened (a tap, the auto-checkout,
+            // the sign-in card): the offer is done — never count down again.
+            const settled = lastUser > it.index || lastLogin > it.index;
+            const counting = live && !settled && stage === "OFFER_CHECKOUT"
+              && it.index >= ts.restoredCount && !countdownsFired.current.has(it.index);
+            if (counting) return <CheckoutCountdown key={i} onPick={pick} />;
+            return <QuickReplies key={i} choices={ev.choices} active={live && !settled} onPick={pick} />;
           }
           case "order_confirmed":
             return <OrderConfirmedCard key={i} order={ev.order} />;
