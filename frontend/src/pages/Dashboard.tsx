@@ -25,6 +25,7 @@ interface Order {
   product_category: string | null;
   product_image_url: string | null;
   tracking_number: string | null;
+  carrier: string | null;
   delivery_status: DeliveryStatus | null;
   estimated_delivery: string | null;
 }
@@ -38,9 +39,9 @@ interface AuditEvent {
 }
 
 const DELIVERY_META: Record<DeliveryStatus, { label: string; icon: LucideIcon; cls: string }> = {
-  processing: { label: "Processing", icon: Package,      cls: "bg-amber-100 text-amber-700" },
-  shipped:    { label: "Shipped",    icon: Truck,        cls: "bg-blue-100 text-blue-700" },
-  delivered:  { label: "Delivered",  icon: PackageCheck, cls: "bg-emerald-100 text-emerald-700" },
+  processing: { label: "Processing", icon: Package,      cls: "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300" },
+  shipped:    { label: "Shipped",    icon: Truck,        cls: "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300" },
+  delivered:  { label: "Delivered",  icon: PackageCheck, cls: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300" },
 };
 
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -94,7 +95,7 @@ function AISummary({ orders }: { orders: Order[] }) {
   }
 
   return (
-    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4 mb-5">
+    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card px-5 py-4 mb-5">
       <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">AI Summary</p>
       <p className="text-sm text-[var(--color-text)]">
           {insight}
@@ -118,6 +119,9 @@ export default function Dashboard() {
   const [dateTo, setDateTo] = useState("");
   const [sortCol, setSortCol] = useState<SortCol>("purchase_date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [merchantFilter, setMerchantFilter] = useState("");
+  const [orderQuery, setOrderQuery] = useState("");
+  const merchants = Array.from(new Set(orders.map((o) => o.merchant))).sort();
 
   useEffect(() => {
     Promise.all([
@@ -159,6 +163,11 @@ export default function Dashboard() {
     let result = applyFilter(orders, activeFilter);
     if (dateFrom) result = result.filter((o) => o.created_at && o.created_at >= dateFrom);
     if (dateTo)   result = result.filter((o) => o.created_at && o.created_at <= dateTo + "T23:59:59");
+    if (merchantFilter) result = result.filter((o) => o.merchant === merchantFilter);
+    if (orderQuery.trim()) {
+      const q = orderQuery.trim().toLowerCase();
+      result = result.filter((o) => o.order_id.toLowerCase().includes(q) || (o.tracking_number ?? "").toLowerCase().includes(q));
+    }
     return [...result].sort((a, b) => {
       const av = sortCol === "purchase_date" ? (a.created_at ?? "") : (a.estimated_delivery ?? "");
       const bv = sortCol === "purchase_date" ? (b.created_at ?? "") : (b.estimated_delivery ?? "");
@@ -174,12 +183,13 @@ export default function Dashboard() {
         {/* KPI row */}
         <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
           {[
-            { label: "Items Ordered", value: paid.length,               cls: "text-[var(--color-primary)]" },
-            { label: "In Transit",    value: inTransit.length,           cls: "text-blue-500" },
-            { label: "Arrived",       value: arrived.length,             cls: "text-[var(--color-success)]" },
-            { label: "Total Spent",   value: `$${spend.toFixed(2)}`,    cls: "text-[var(--color-text)]" },
+            { label: "Items Ordered", value: paid.length,               cls: "text-[var(--color-primary)]", bar: "var(--color-primary)" },
+            { label: "In Transit",    value: inTransit.length,           cls: "text-blue-500",               bar: "#3b82f6" },
+            { label: "Arrived",       value: arrived.length,             cls: "text-[var(--color-success)]", bar: "var(--color-success)" },
+            { label: "Total Spent",   value: `$${spend.toFixed(2)}`,    cls: "text-[var(--color-text)]",    bar: "var(--color-accent)" },
           ].map((k) => (
-            <div key={k.label} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+            <div key={k.label} className="relative rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 pl-5 overflow-hidden">
+              <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: k.bar }} />
               <p className="text-xs text-[var(--color-text-muted)] mb-1">{k.label}</p>
               <p className={`text-xl font-bold ${k.cls}`}>{loading ? "—" : k.value}</p>
             </div>
@@ -210,6 +220,21 @@ export default function Dashboard() {
                 )}
               </button>
             ))}
+            <select
+              value={merchantFilter}
+              onChange={(e) => setMerchantFilter(e.target.value)}
+              className="text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-2 py-1.5 text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+            >
+              <option value="">All merchants</option>
+              {merchants.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <input
+              type="text"
+              value={orderQuery}
+              onChange={(e) => setOrderQuery(e.target.value)}
+              placeholder="Search Order ID / tracking #"
+              className="text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-2 py-1.5 text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)] w-48"
+            />
             <div className="flex items-center gap-1.5 ml-2 border-l border-[var(--color-border)] pl-3">
               <span className="text-xs text-[var(--color-text-muted)]">From</span>
               <input
@@ -234,6 +259,14 @@ export default function Dashboard() {
                 </button>
               )}
             </div>
+            {(merchantFilter || orderQuery) && (
+              <button
+                onClick={() => { setMerchantFilter(""); setOrderQuery(""); }}
+                className="text-xs text-[var(--color-text-muted)] hover:text-rose-500 transition-colors"
+              >
+                Clear search
+              </button>
+            )}
           </div>
         )}
 
@@ -257,7 +290,7 @@ export default function Dashboard() {
             <p className="text-sm text-[var(--color-text-muted)]">No orders match this filter.</p>
           </div>
         ) : (
-          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card overflow-hidden">
             {/* Table header */}
             <div className="grid grid-cols-[2.5rem_1fr_7rem_9rem_7rem_8rem_2.5rem] items-center gap-3 px-5 py-3 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
               <span />
@@ -322,7 +355,7 @@ export default function Dashboard() {
                     {/* Status */}
                     <div className="flex flex-col gap-1">
                       <span className={`inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                        order.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                        order.status === "paid" ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300" : "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
                       }`}>
                         {order.status === "paid" ? "✓ Authorized" : "⛔ Blocked"}
                       </span>
@@ -373,7 +406,7 @@ export default function Dashboard() {
                       </div>
 
                       {order.status === "blocked" && order.reason && (
-                        <p className="text-xs text-rose-500 font-mono mb-3 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200">
+                        <p className="text-xs text-rose-500 font-mono mb-3 bg-rose-50 dark:bg-rose-950/30 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-800/40">
                           Blocked: {order.reason}
                         </p>
                       )}
@@ -406,8 +439,8 @@ export default function Dashboard() {
                       )}
 
                       {order.tracking_number && (
-                        <p className="text-xs text-[var(--color-text-muted)] font-mono mt-3">
-                          Tracking: {order.tracking_number}
+                        <p className="text-xs text-[var(--color-text-muted)] mt-3">
+                          <span className="font-mono">{order.carrier ? `${order.carrier} ` : ""}{order.tracking_number}</span>
                           {order.estimated_delivery && ` · Est. ${formatDate(order.estimated_delivery)}`}
                         </p>
                       )}

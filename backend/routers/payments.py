@@ -312,6 +312,14 @@ def _block_reason(session, order_id: str) -> Optional[str]:
     return None
 
 
+_CARRIERS = ["UPS", "USPS", "FedEx", "DHL"]
+
+
+def _carrier_for(order_id: str) -> str:
+    """Deterministic mock carrier for an order (stable, no real shipment)."""
+    return _CARRIERS[sum(ord(c) for c in order_id) % len(_CARRIERS)]
+
+
 def _delivery_fields(order: Order, product: Optional[Product], cart_fallback: Optional[CartItem] = None) -> dict:
     """Product info + time-based delivery simulation, shared by both order endpoints.
     cart_fallback is a CartItem snapshot used when the Product row is missing (e.g. external product IDs)."""
@@ -332,6 +340,7 @@ def _delivery_fields(order: Order, product: Optional[Product], cart_fallback: Op
         "product_category":  (product.category  if product else None) or (fb.category  if fb else None),
         "product_image_url": (product.image_url if product else None) or (fb.image_url if fb else None),
         "tracking_number": order.tracking_number,
+        "carrier": _carrier_for(order.order_id) if order.tracking_number else None,
         "delivery_status": delivery["status"] if order.status == "confirmed" else None,
         "estimated_delivery": delivery["estimated_delivery"] if order.status == "confirmed" else None,
     }

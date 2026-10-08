@@ -108,6 +108,7 @@ async def _emit_protocol(state: CommerceState, *, source: str, target: str, prot
 async def input_guardrail(state: CommerceState) -> CommerceState:
     from backend.guardrails.input_checks import run_input_checks
     from backend.guardrails.nemo import check_input_detailed
+    from backend.graph import session_state
 
     await _emit(state, "step_start", "VibeCheck is reviewing your request for safety...")
     message = state["user_message"]
@@ -123,7 +124,17 @@ async def input_guardrail(state: CommerceState) -> CommerceState:
         await _emit(state, "blocked", blocked["reason"])
         return {**state, "blocked": True, "error": blocked["reason"]}
 
-    nemo = await check_input_detailed(message)
+    # An ongoing shopping conversation: a short reply ("anything is fine", "no
+    # preference") is a follow-up answer, so skip the off-topic scope classifier
+    # — it would otherwise misread a bare answer as off-topic. Credential checks
+    # still run inside check_input_detailed.
+    sid = state["session_id"]
+    in_shopping_context = bool(
+        session_state.get_partial_intent(sid)
+        or session_state.has_asked_followup(sid)
+        or session_state.get_ranked_products(sid)
+    )
+    nemo = await check_input_detailed(message, skip_scope=in_shopping_context)
     credential_blocked = nemo["credential_check"] == "blocked"
     checks.append({
         "framework": "custom", "check": "credential_keyword",

@@ -93,11 +93,17 @@ def _result(allowed: bool, message: Optional[str], credential_check: str, nemo: 
     }
 
 
-async def check_input_detailed(user_message: str) -> dict:
+async def check_input_detailed(user_message: str, skip_scope: bool = False) -> dict:
     msg_lower = user_message.lower()
     for kw in _CREDENTIAL_KEYWORDS:
         if kw in msg_lower:
             return _result(False, _BLOCKED_CREDENTIAL_MSG, "blocked", "not_run", "credential_request")
+
+    # Already in an active shopping conversation: a short reply like "anything is
+    # fine" or "no preference" is a follow-up answer, not an off-topic message, so
+    # the scope classifier is skipped (the credential check above still ran).
+    if skip_scope:
+        return _result(True, None, "pass", "pass", "commerce_allowed")
 
     rails = get_rails()
     if rails is None:
