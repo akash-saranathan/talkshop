@@ -81,6 +81,9 @@ def init_db(db_path: Path = DB_PATH):
                      ("shipment_status", "shipment_status VARCHAR(30)"), ("shipment_events_json", "shipment_events_json TEXT")]:
         _ensure_column(engine, "orders", col, ddl)
     _ensure_column(engine, "payment_methods", "saved", "saved BOOLEAN NOT NULL DEFAULT 1")
+    # Phase 11: real email delivery status
+    _ensure_column(engine, "email_outbox", "delivery", "delivery VARCHAR(20) NOT NULL DEFAULT 'outbox'")
+    _ensure_column(engine, "email_outbox", "delivery_error", "delivery_error VARCHAR(200)")
     return engine
 
 

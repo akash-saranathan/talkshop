@@ -26,6 +26,7 @@ LLM_TOOLS = {
     "keep_shopping": "The shopper doesn't want to check out yet.",
     "update_checkout": "Change delivery (standard/express), quantity, address or card on the review screen.",
     "cancel_checkout": "The shopper doesn't want to place this order.",
+    "track_order": "The shopper asks about an order they already placed (status, tracking, delivery, order details).",
     "answer": "Answer a question or comment without changing anything.",
 }
 
@@ -105,6 +106,22 @@ def update_checkout(user_id: str, checkout_id: str, **changes) -> dict:
 def cancel_checkout(user_id: str, checkout_id: str) -> dict:
     with _db() as db:
         return checkout_service.snapshot(db, checkout_service.cancel_checkout(db, user_id, checkout_id))
+
+
+def track_order(order_id: str, email: str) -> Optional[dict]:
+    """Order ID + the email used for it — the same check as the website's Track Order."""
+    from backend.shop import orders as order_service
+    with _db() as db:
+        order = order_service.find_for_tracking(db, order_id, email)
+        return order_service.tracking_view(db, order) if order else None
+
+
+def own_order(user_id: str, order_id: str) -> Optional[dict]:
+    """A logged-in customer's own order: no email needed."""
+    from backend.shop import orders as order_service
+    with _db() as db:
+        order = order_service.find_order(db, user_id, (order_id or "").strip().upper())
+        return order_service.tracking_view(db, order) if order and order.display_id else None
 
 
 async def confirm_and_pay(user: CurrentUser, checkout_id: str) -> dict:

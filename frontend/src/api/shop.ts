@@ -64,7 +64,11 @@ export interface TrackedOrder {
   subtotal: number; tax: number; shipping: number; total: number; delivery_method: string | null; delivery_date: string | null;
   ship_to: { city: string | null; state: string | null }; payment: { display: string } | null; guest: boolean; shipment: Shipment;
 }
-export interface ConfirmationEmail { to: string; subject: string; body: string; sent_at: string | null; demo_outbox: boolean }
+export interface ConfirmationEmail {
+  to: string; subject: string; body: string; sent_at: string | null; demo_outbox: boolean;
+  /** outbox (no email server set) | sending | sent | failed */
+  delivery?: "outbox" | "sending" | "sent" | "failed";
+}
 export interface GuestDetails { full_name: string; email: string; line1: string; line2?: string; city: string; state: string; postal_code: string }
 export interface OrderLine { sku: string; product_id: string; name: string; size: string | null; color: string; quantity: number; unit_price: number; line_total: number; image_url: string | null }
 export interface Order {

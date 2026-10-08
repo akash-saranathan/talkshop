@@ -10,6 +10,16 @@ It's a working prototype of the same problem Stripe's [Agentic Commerce Protocol
 
 ## Demo 1 — ShopSphere × Talkshop (branch: `demo-1-merchant-chat-assistant`)
 
+> **Real confirmation emails (optional).** Add your mail account to `.env`, restart the backend, and every order's confirmation is emailed for real. Without these settings, emails stay in the demo outbox, viewable on the Track Order page.
+> ```
+> SMTP_HOST=smtp.gmail.com
+> SMTP_PORT=587
+> SMTP_SECURITY=starttls
+> SMTP_USERNAME=your.address@gmail.com
+> SMTP_PASSWORD=your-16-character-app-password
+> ```
+> For Gmail, use an **App Password** (Google Account → Security → 2-Step Verification → App passwords), not your normal password. Test the settings with `python -m backend.shop.mailer you@example.com`.
+
 **ShopSphere** is a merchant website; **Talkshop** is its built-in shopping assistant, docked on the right of every page. Anyone can browse, fill a cart and chat with Talkshop without an account. Logging in (or signing up) is needed only to check out, and the visitor's cart and conversation come along. Talkshop understands the request and decides what should happen; ShopSphere's own services (catalog, inventory, cart, checkout, payment, orders) do it. Payment only ever runs when the customer taps **GO AHEAD**.
 
 Full plan, phases, decisions and checklist: [`docs/demo-1-shopsphere-talkshop-plan.md`](docs/demo-1-shopsphere-talkshop-plan.md).
@@ -43,6 +53,7 @@ To reset between demos: stop the backend, run `python -m backend.db.reset_demo -
 | **D: no account yet** | Open the store logged out → add a wallet → in Talkshop pick Runner Pro X, 8, Black → **Yes, checkout** → sign-in card → **Use demo account** → **Log in & continue** → GO AHEAD | Browsing, cart and chat without an account; login only at checkout; the cart and conversation carry over and Talkshop continues straight to Review |
 | **E: guest checkout** | Logged out → add an item → Cart → **Checkout selected** → **Continue as guest** → name, email, address → card (used once) → **Place order** (or in Talkshop: sign-in card → **Continue as guest**) | No account created; Order **SS-#####**; "confirmation sent to …"; Track Order opens with the order |
 | **F: track an order** | Footer → **Track order** → Order ID + checkout email → **View confirmation email** → **Next shipping step** (demo control) until Shipped | Wrong email → "We could not find an order matching…"; steps Confirmed → … → Delivered; tracking ID **TRK######** appears at Shipped (simulated shipping) |
+| **H: track in Talkshop** | Not logged in, tell Talkshop *"I placed order SS-12345, show me the order details and tracking"* → enter the email in the secure card → **Show my order** | Order details + shipping progress in the chat; a wrong email is refused; a logged-in customer's own order shows straight away |
 | **G: wallet / no saved card** | Kaajal at checkout: Payment → **Change** → **ShopSphere Wallet** → Place order. A new account with no card: the card form shows **Save this card for next time** (unticked) and **Or pay with your ShopSphere Wallet** | Pay with wallet balance; cards are saved only when ticked |
 | **C: site + Talkshop** | Shoes → FlexRun 5 → **Ask Talkshop about this** → size/colour in chat → Keep shopping → add a wallet on the website → Cart: select only the wallet → Checkout selected → Place order | One cart for both, page-aware chat, website checkout of selected items, both orders in My Orders |
 

@@ -13,7 +13,7 @@ import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 import Composer from "./Composer";
 import {
   CartUpdatedCard, CheckoutCountdown, OptionChips, OrderConfirmedCard, PaymentStatusCard, QuickReplies,
-  RecommendationCards, ReviewOrderCard, SecureDetailsCard, SelectedProduct, SignInCard,
+  OrderTrackingCard, RecommendationCards, ReviewOrderCard, SecureDetailsCard, SelectedProduct, SignInCard, TrackLookupCard,
 } from "./cards";
 import { cx } from "../ui";
 
@@ -156,6 +156,7 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
   const lastSuggest = lastIndex(events, "suggestions");
   const lastLogin = lastIndex(events, "login_required");
   const lastDetails = lastIndex(events, "checkout_details_needed");
+  const lastTrackForm = lastIndex(events, "track_order_form");
   // Each auto-checkout countdown fires at most once, whatever re-renders after it.
   const countdownsFired = useRef(new Set<number>());
 
@@ -207,6 +208,11 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
           }
           case "order_confirmed":
             return <OrderConfirmedCard key={i} order={ev.order} email={ev.email} />;
+          case "track_order_form":
+            return <TrackLookupCard key={i} orderId={ev.order_id} onAct={act}
+              active={it.index === lastTrackForm && lastUser < it.index && !busy} />;
+          case "order_tracking":
+            return <OrderTrackingCard key={i} order={ev.order} />;
           case "checkout_details_needed":
             return <SecureDetailsCard key={i} checkoutId={ev.checkout_id} needs={ev.needs} guest={ev.guest} wallet={ev.wallet} onAct={act}
               active={it.index === lastDetails && stage === "CHECKOUT_DETAILS" && !busy} />;

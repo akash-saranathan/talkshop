@@ -190,6 +190,34 @@ def redact_payment_data(text: str) -> tuple[str, bool]:
     return out, found or bool(n_cvc or n_exp) or already
 
 
+# ── Orders already placed (Phase 11) ─────────────────────────────────────────
+
+_ORDER_ID = re.compile(r"\bSS[\s-]?(\d{5})\b", re.I)
+_TRACKING = re.compile(r"\b(track(?:ing)?|where(?:'s| is) my (?:order|package|parcel|delivery|stuff)|order status|"
+                       r"status of my order|my order|has my order|when will my order|delivery status)\b", re.I)
+_EMAIL_IN_TEXT = re.compile(r"[^@\s,;:<>()]+@[^@\s,;:<>()]+\.[a-zA-Z]{2,}")
+
+
+def order_ref(text: str) -> Optional[str]:
+    """'order ss 12345' / 'SS-12345' → 'SS-12345'."""
+    m = _ORDER_ID.search(text or "")
+    return f"SS-{m.group(1)}" if m else None
+
+
+def wants_tracking(text: str) -> bool:
+    """'where is my order', 'track my package', 'order status'…"""
+    return bool(_TRACKING.search(text or ""))
+
+
+def email_in(text: str) -> Optional[str]:
+    m = _EMAIL_IN_TEXT.search(text or "")
+    return m.group(0).strip(".").lower() if m else None
+
+
+def mask_emails(text: str) -> str:
+    return _EMAIL_IN_TEXT.sub("[email]", text or "")
+
+
 def looks_like_address(text: str) -> bool:
     """"12 Oak Street, Austin TX 78704" — a street line, or a street number plus a ZIP."""
     return bool(_ADDRESS.search(text)) or (bool(_ZIP.search(text)) and bool(re.match(r"\s*\d{1,6}\s+[a-z]", text, re.I)))

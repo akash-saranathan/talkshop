@@ -5,7 +5,8 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { Link } from "react-router-dom";
 import { ArrowUpRight, Check, CheckCircle2, CreditCard, Loader2, Lock, MapPin, ShieldCheck, ShoppingBag, Truck, UserRound, XCircle } from "lucide-react";
 import type { OptionChoice, TalkAction, TalkEvent } from "../../api/talkshop";
-import { money, niceDate, type Cart, type Checkout, type Order, type Product } from "../../api/shop";
+import { money, niceDate, type Cart, type Checkout, type Order, type Product, type TrackedOrder } from "../../api/shop";
+import { ShipmentProgress } from "../shopsphere/ShipmentProgress";
 import { AddressForm, CardForm, GuestDetailsForm } from "../shopsphere/CheckoutForms";
 import { Button, Field, Notice, Rating, Stepper, cx } from "../ui";
 import { useAuth } from "../../auth/AuthContext";
@@ -515,6 +516,71 @@ export function SignInCard({ active, onGuest }: { active: boolean; onGuest?: () 
           </>
         )}
       </form>
+    </Shell>
+  );
+}
+
+/* ── Orders already placed (Phase 11) ──────────────────────────────────── */
+
+/** Order ID + email, straight to ShopSphere's order lookup (like the website's
+ *  Track Order). The email is sent with the lookup, not as chat text, so it
+ *  never reaches the LLM. */
+export function TrackLookupCard({ orderId, active, onAct }: { orderId: string | null; active: boolean; onAct: Act }) {
+  const [id, setId] = useState(orderId ?? "");
+  const [email, setEmail] = useState("");
+  if (!active) return null;
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const order = id.trim().toUpperCase();
+    onAct({ type: "track_order", order_id: order, email: email.trim(), label: `Track order ${order}` });
+  };
+  return (
+    <Shell className="border-talk/50 shadow-card">
+      <div className="px-4 py-3 bg-panel flex items-center gap-2">
+        <Truck size={15} className="text-talk" /><p className="text-xs font-bold tracking-[0.16em]">TRACK YOUR ORDER</p>
+      </div>
+      <form onSubmit={submit} className="p-4 flex flex-col gap-3">
+        <Field label="Order ID" value={id} onChange={(e) => setId(e.target.value)} required placeholder="SS-12345" autoComplete="off" />
+        <Field label="Email used for the order" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          required placeholder="you@example.com" autoComplete="email" />
+        <Button type="submit" variant="talk">Show my order</Button>
+        <p className="flex items-start gap-1.5 text-[11px] text-muted leading-snug">
+          <ShieldCheck size={13} className="shrink-0" /> Your email is only used to find your order and keep it private.
+        </p>
+      </form>
+    </Shell>
+  );
+}
+
+export function OrderTrackingCard({ order }: { order: TrackedOrder }) {
+  return (
+    <Shell>
+      <div className="px-4 py-3 bg-panel flex items-center justify-between gap-2">
+        <p className="text-xs font-bold tracking-[0.16em]">ORDER {order.order_id}</p>
+        <span className="text-xs font-medium text-talk">{order.shipment.status_label}</span>
+      </div>
+      <div className="p-4 flex flex-col gap-4 text-sm">
+        {order.lines.map((l, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-lg bg-photo overflow-hidden shrink-0">{l.image_url && <img src={l.image_url} alt="" className="h-full w-full object-cover" />}</div>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium line-clamp-1">{l.name}</p>
+              <p className="text-xs text-muted">{l.size ? `${l.size} · ` : ""}{l.color} · Qty {l.quantity}</p>
+            </div>
+            <p className="font-semibold tabular-nums">{money(l.line_total)}</p>
+          </div>
+        ))}
+        <div className="flex flex-col gap-1 border-t border-line pt-3">
+          <Row label="Total" value={money(order.total)} />
+          <Row label="Paid with" value={order.payment?.display ?? "—"} />
+          <Row label="Shipping to" value={[order.ship_to.city, order.ship_to.state].filter(Boolean).join(", ") || "—"} />
+        </div>
+        <ShipmentProgress shipment={order.shipment} />
+        <Link to={`/track?order=${encodeURIComponent(order.order_id)}`}
+          className="inline-flex items-center justify-center gap-1.5 h-10 rounded-full border border-line-strong text-sm font-medium hover:border-ink">
+          Open in Track Order <ArrowUpRight size={14} />
+        </Link>
+      </div>
     </Shell>
   );
 }

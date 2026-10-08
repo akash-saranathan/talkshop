@@ -140,7 +140,12 @@ export default function TrackOrderPage() {
 
           {showMail && (
             <section className="rounded-3xl border border-line p-6 min-w-0">
-              <p className="text-xs text-muted mb-3">Demo outbox: this is the email ShopSphere sent. A real store would deliver it to the inbox.</p>
+              <p className="text-xs text-muted mb-3">
+                {mail?.delivery === "sent" ? "Delivered to the inbox. This is the email ShopSphere sent."
+                  : mail?.delivery === "sending" ? "Sending to the inbox now. This is the email ShopSphere is sending."
+                  : mail?.delivery === "failed" ? "The email server didn't accept this message, so it's shown here instead."
+                  : "Demo outbox: no email server is set up, so the email ShopSphere would send is shown here."}
+              </p>
               {mail ? (
                 <>
                   <p className="text-sm"><span className="text-muted">To:</span> {mail.to}</p>

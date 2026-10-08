@@ -16,7 +16,7 @@
 
 ### Progress
 
-**Phases approved: 7 / 11 · Steps done: 91 / 91** · Phases 7, 8, 9 and 10 👀 ready for your review
+**Phases approved: 7 / 12 · Steps done: 95 / 96** · Phase 11 waiting on your mail settings for 11.5 · Phases 7–10 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
@@ -31,6 +31,7 @@
 | 8 | Shop without logging in (login only at checkout) | 9 / 9 | 👀 Ready for your review |
 | 9 | Secure checkout details in Talkshop | 8 / 8 | 👀 Ready for your review |
 | 10 | Every shopper can buy: guest checkout, wallet, email, Track Order | 10 / 10 | 👀 Ready for your review |
+| 11 | Real confirmation emails + Track Order everywhere (website button, Talkshop) | 4 / 5 | 🔨 Needs your SMTP settings for the real-email check |
 
 Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review · ✅ Approved
 
@@ -167,6 +168,15 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 10.9 Website: Log in / Sign up / **Continue as guest** at checkout; guest details on the checkout page; wallet option; save-card checkbox; guest confirmation; Track Order page
 - [x] 10.10 Tests: the 15 required cases + browser runs of demo flows A–D and guest tracking
 - [x] **Checkpoint:** an existing customer (saved card or wallet), a customer without a saved card, a new customer and a guest can all buy, in the chat and on the website; a guest can track the order with Order ID + email *(browser: guest website + chat, tracking, wallet, no-saved-card, light + dark; demo scripts A–D; 333 tests)*
+- [ ] **Approved, proceed to Phase 11**
+
+### Phase 11: Real confirmation emails + Track Order everywhere
+- [x] 11.1 Real email: confirmation emails are delivered through an SMTP mail account set in `.env` (the outbox stays as the record, with a sent/failed status; without SMTP settings it stays outbox-only)
+- [x] 11.2 Website: a **Track order** button in the header, for everyone (logged in or not)
+- [x] 11.3 Talkshop: "I placed order SS-12345, show me the tracking" → a secure Track Order card (Order ID filled in, email field) → order details and shipping progress in the chat, with no login. A logged-in customer's own order shows straight away. The email never goes through the LLM
+- [x] 11.4 Tests: SMTP delivery (with a fake mail server), chat tracking (right/wrong email, own order, "track my order" without an ID)
+- [ ] 11.5 Browser check + a real email to your mail account *(browser check done: chat tracking, own order, header button at 4 widths; real email waits for SMTP settings in .env)*
+- [ ] **Checkpoint:** an order placed in any scenario sends a real email with its Order ID; that Order ID + email shows the order and tracking on the website and in Talkshop
 - [ ] **Approved: Demo 1 complete 🎉**
 
 ---

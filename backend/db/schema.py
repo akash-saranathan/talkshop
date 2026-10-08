@@ -217,6 +217,9 @@ class EmailOutbox(Base):
     subject = Column(String(200), nullable=False)
     body = Column(Text, nullable=False)
     order_id = Column(String(50), index=True)          # internal order id
+    # Phase 11: outbox (no SMTP) | sending | sent | failed
+    delivery = Column(String(20), nullable=False, default="outbox")
+    delivery_error = Column(String(200))
     created_at = Column(DateTime, server_default=func.now())
 
 

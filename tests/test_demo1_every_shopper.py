@@ -349,3 +349,114 @@ def test_talkshop_customer_without_card_can_use_wallet(client, quiet_llm):
     assert co["pay_with"] == "wallet"
     ev = say(client, h, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
     assert first(ev, "order_confirmed")["order"]["payment"]["display"] == "ShopSphere Wallet"
+
+
+# ── Phase 11: tracking in Talkshop ───────────────────────────────────────────
+
+from backend.talkshop import state as talk_state
+
+
+def test_chat_tracks_an_order_with_id_and_email(client, quiet_llm):
+    _, _, email, _, res = guest_buys(client)
+    order_id = res["order"]["order_id"]
+    h, vid = visitor(client)                                     # someone new, not logged in
+    sid = f"trk-{uuid.uuid4().hex[:8]}"
+    ev = say(client, h, sid, text=f"hey i have placed an order with this order id {order_id}, show me the order details and tracking")
+    form = first(ev, "track_order_form")
+    assert form["order_id"] == order_id and not [e for e in ev if e["type"] == "order_tracking"]
+    ev = say(client, h, sid, action={"type": "track_order", "order_id": order_id, "email": "wrong@example.com",
+                                     "label": f"Track order {order_id}"})
+    assert "could not find an order" in first(ev, "message")["text"] and first(ev, "track_order_form")
+    ev = say(client, h, sid, action={"type": "track_order", "order_id": order_id, "email": email,
+                                     "label": f"Track order {order_id}"})
+    shown = first(ev, "order_tracking")["order"]
+    assert shown["order_id"] == order_id and shown["shipment"]["status"] == "processing"
+    assert shown["ship_to"] == {"city": "Austin", "state": "TX"}
+    s = talk_state.peek(vid, sid)
+    assert email not in str(s.history)                           # the email never enters the LLM history
+
+
+def test_chat_tracking_with_the_email_typed_in(client, quiet_llm):
+    _, _, email, _, res = guest_buys(client)
+    order_id = res["order"]["order_id"]
+    h, vid = visitor(client)
+    sid = f"trk-{uuid.uuid4().hex[:8]}"
+    ev = say(client, h, sid, text=f"where is my order {order_id}? my email is {email}")
+    assert first(ev, "order_tracking")["order"]["order_id"] == order_id
+    assert email not in str(talk_state.peek(vid, sid).history)
+
+
+def test_chat_shows_a_customers_own_order_without_email(client, quiet_llm):
+    h, _ = customer(client)
+    client.post("/api/me/addresses", json=HOME, headers=h)
+    client.post("/api/me/payment-methods", json=CARD, headers=h)
+    order_id = confirm(client, h, checkout(client, h)["checkout_id"])["order"]["order_id"]
+    ev = say(client, h, f"trk-{uuid.uuid4().hex[:8]}", text=f"track my order {order_id}")
+    assert first(ev, "order_tracking")["order"]["order_id"] == order_id
+    other, _ = customer(client)                                  # someone else's order still needs the email
+    ev = say(client, other, f"trk-{uuid.uuid4().hex[:8]}", text=f"track order {order_id}")
+    assert first(ev, "track_order_form") and not [e for e in ev if e["type"] == "order_tracking"]
+
+
+def test_chat_where_is_my_order_asks_for_the_id(client, quiet_llm):
+    h, _ = visitor(client)
+    ev = say(client, h, f"trk-{uuid.uuid4().hex[:8]}", text="where is my order?")
+    assert first(ev, "track_order_form")["order_id"] is None and "SS-12345" in first(ev, "message")["text"]
+
+
+# ── Phase 11: real email delivery (fake SMTP server) ─────────────────────────
+
+class FakeSMTP:
+    sent: list = []
+    fail = False
+
+    def __init__(self, host, port, timeout=None, context=None):
+        self.host, self.port = host, port
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def starttls(self, context=None):
+        pass
+
+    def login(self, user, password):
+        self.user = user
+
+    def send_message(self, msg):
+        if FakeSMTP.fail:
+            raise OSError("mail server unreachable")
+        FakeSMTP.sent.append(msg)
+
+
+@pytest.fixture
+def smtp(monkeypatch):
+    from backend.shop import mailer, notifications
+    for k, v in {"SMTP_HOST": "smtp.example.com", "SMTP_PORT": "587", "SMTP_USERNAME": "shop@example.com",
+                 "SMTP_PASSWORD": "app-password", "SMTP_SECURITY": "starttls"}.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(mailer.smtplib, "SMTP", FakeSMTP)
+    monkeypatch.setattr(notifications, "_dispatch", lambda job: job())          # send inline in tests
+    FakeSMTP.sent, FakeSMTP.fail = [], False
+    return FakeSMTP
+
+
+def test_confirmation_email_is_really_sent(client, smtp):
+    _, _, email, _, res = guest_buys(client)
+    order_id = res["order"]["order_id"]
+    assert len(smtp.sent) == 1
+    msg = smtp.sent[0]
+    assert msg["To"] == email and order_id in msg["Subject"] and "shop@example.com" in msg["From"]
+    body = msg.get_content()
+    assert order_id in body and "/track?order=" + order_id in body and "4242424242424242" not in body
+    assert track(client, order_id, email, "/email").json()["delivery"] == "sent"
+
+
+def test_email_failure_never_undoes_the_order(client, smtp):
+    smtp.fail = True
+    _, _, email, _, res = guest_buys(client)
+    assert res["status"] == "authorized"
+    mail = track(client, res["order"]["order_id"], email, "/email").json()
+    assert mail["delivery"] == "failed"

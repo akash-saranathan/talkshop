@@ -3,7 +3,7 @@
  * answered as a stream of structured events (backend/talkshop/orchestrator.py).
  */
 import { authFetch } from "./client";
-import type { Cart, Checkout, Order, Product, ProductDetail } from "./shop";
+import type { Cart, Checkout, Order, Product, ProductDetail, TrackedOrder } from "./shop";
 
 export type Stage =
   | "GREETING" | "SEARCHING" | "RECOMMENDED" | "PRODUCT_SELECTED" | "ASK_SIZE" | "ASK_COLOR" | "VARIANT_CONFIRMED"
@@ -24,6 +24,8 @@ export type TalkEvent =
   | { type: "checkout_ready" | "checkout_updated"; checkout: Checkout }
   | { type: "payment_status"; state: "processing" | "authorizing" | "authorized" | "declined" | "failed"; payment: string | null; reason?: string; message?: string }
   | { type: "order_confirmed"; order: Order; email?: string | null }
+  | { type: "track_order_form"; order_id: string | null }
+  | { type: "order_tracking"; order: TrackedOrder }
   | { type: "login_required"; reason: string }
   | { type: "checkout_details_needed"; checkout_id: string; needs: { guest?: boolean; address: boolean; payment: boolean };
       guest?: boolean; wallet?: { balance: number; enough: boolean } | null }
@@ -38,6 +40,8 @@ export type TalkAction =
   | { type: "checkout"; guest?: boolean } | { type: "keep_shopping" } | { type: "cancel_checkout" }
   | { type: "update_checkout"; delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; quantities?: Record<string, number> }
   | { type: "go_ahead"; checkout_id: string }
+  // Order ID + email typed into the secure lookup card (not chat text)
+  | { type: "track_order"; order_id: string; email: string }
   // A secure form saved the detail on ShopSphere; Talkshop gets only the id.
   | { type: "details_added"; address_id?: string; payment_method_id?: string; pay_with?: "wallet" };
 

@@ -54,6 +54,10 @@ ALLOWED = {
     Stage.PAYING: set(),
     Stage.ORDER_CONFIRMED: {"search", "answer", "select_product"},
 }
+# Asking about an order already placed never changes where the shopper is (Phase 11).
+for _stage, _allowed in ALLOWED.items():
+    if _stage is not Stage.PAYING:
+        _allowed.add("track_order")
 
 
 @dataclass

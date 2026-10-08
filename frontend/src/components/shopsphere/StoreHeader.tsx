@@ -62,18 +62,23 @@ export default function StoreHeader() {
         </button>
         <Wordmark />
 
-        <nav className="hidden lg:flex items-center gap-5 xl:gap-7 ml-4" aria-label="Departments">
+        <nav className="hidden lg:flex items-center gap-4 xl:gap-7 ml-2 xl:ml-4" aria-label="Departments">
           <NavLink to="/" end className={navLink}>Home</NavLink>
           {DEPARTMENTS.map((d) => <NavLink key={d.slug} to={`/c/${d.slug}`} className={navLink}>{d.label}</NavLink>)}
         </nav>
 
         <div className="flex-1" />
 
-        <form onSubmit={submit} className="hidden md:flex items-center gap-2 h-10 w-64 rounded-full bg-panel px-4 border border-transparent focus-within:border-line-strong">
+        <form onSubmit={submit} className="hidden md:flex items-center gap-2 h-10 w-64 min-w-10 rounded-full bg-panel px-4 border border-transparent focus-within:border-line-strong">
           <Search size={15} className="text-muted shrink-0" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search ShopSphere"
             className="w-full bg-transparent text-sm outline-none placeholder:text-faint" aria-label="Search products" />
         </form>
+
+        <Link to="/track" aria-label="Track order" title="Track order"
+          className="flex items-center gap-1.5 p-2 2xl:px-3 shrink-0 whitespace-nowrap rounded-full text-sm text-ink hover:bg-panel">
+          <Truck size={18} /><span className="hidden 2xl:inline font-medium">Track order</span>
+        </Link>
 
         <button onClick={toggleTheme} className="p-2 rounded-full text-muted hover:text-ink hover:bg-panel" title={dark ? "Light mode" : "Dark mode"}>
           {dark ? <Sun size={18} /> : <Moon size={18} />}
@@ -89,8 +94,8 @@ export default function StoreHeader() {
         </Link>
 
         {!isCustomer && (
-          <Link to={loginHref} className="hidden sm:inline-flex items-center gap-2 h-10 px-4 rounded-full border border-line-strong text-sm font-medium hover:border-ink">
-            <UserIcon size={16} /> Log in
+          <Link to={loginHref} className="hidden sm:inline-flex items-center gap-2 h-10 px-3 xl:px-4 shrink-0 whitespace-nowrap rounded-full border border-line-strong text-sm font-medium hover:border-ink">
+            <UserIcon size={16} className="hidden xl:block" /> Log in
           </Link>
         )}
         {isCustomer && user && (

@@ -593,6 +593,8 @@ async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
         await _details_added(t, action)
     elif kind == "cancel_checkout" and s.stage in (Stage.AWAITING_CONSENT, Stage.CHECKOUT_DETAILS):
         await _cancel_checkout(t)
+    elif kind == "track_order" and s.stage != Stage.PAYING:
+        _track_lookup(t, str(action.get("order_id") or ""), str(action.get("email") or ""))
     elif kind == "go_ahead":
         await _go_ahead(t, user, action.get("checkout_id"))
     else:
@@ -634,7 +636,12 @@ async def _handle_text(t: Turn, text: str) -> None:
         t.say("Thanks! To keep it safe, I don't take addresses in the chat.")
         return _ask_for_details(t, tools.get_checkout(s.user_id, s.checkout_id))
     t.emit("user_message", text=text)
-    s.history.append({"role": "user", "text": text})
+    s.history.append({"role": "user", "text": parse.mask_emails(text)})   # emails never go to the LLM
+
+    # An order already placed ("here's my order SS-12345, show me the tracking")
+    ref = parse.order_ref(text)
+    if s.stage != Stage.PAYING and (ref or (parse.wants_tracking(text) and not parse.search_intent(text))):
+        return _track_request(t, ref, parse.email_in(text))
 
     from backend.guardrails.nemo import check_input
     allowed_input, block_msg = await check_input(text)
@@ -728,5 +735,47 @@ async def _handle_text(t: Turn, text: str) -> None:
         await _update_checkout(t, changes)
     elif act == "cancel_checkout":
         await _cancel_checkout(t)
+    elif act == "track_order":
+        _track_request(t, parse.order_ref(text), None)
     else:
         t.say(decision["reply"] or "Happy to help! What are you shopping for today?")
+
+
+# ── Orders already placed: tracking in the chat (Phase 11) ──────────────────
+
+def _track_request(t: Turn, ref: Optional[str], email: Optional[str]) -> None:
+    """Show an order's details and tracking. Like the website, that takes the
+    Order ID + the email used for the order; a logged-in customer's own order
+    shows straight away. The lookup is code, not the LLM."""
+    s = t.s
+    if ref and not s.is_visitor:
+        mine = tools.own_order(s.user_id, ref)
+        if mine:
+            return _show_tracking(t, mine)
+    if ref and email:
+        return _track_lookup(t, ref, email)
+    if ref:
+        t.say(f"Sure, I can look up order {ref}. To keep orders private, please enter the email address used for it "
+              "in the form below. It's only used to find your order.")
+    else:
+        t.say("Happy to help you track an order. Enter your Order ID (it looks like SS-12345) and the email used "
+              "for the order below.")
+    t.emit("track_order_form", order_id=ref)
+
+
+def _track_lookup(t: Turn, order_id: str, email: str) -> None:
+    from backend.shop.orders import NOT_FOUND
+    found = tools.track_order(order_id, email) if order_id and email else None
+    if not found:
+        t.say(NOT_FOUND + " Please check both and try again.")
+        t.emit("track_order_form", order_id=parse.order_ref(order_id) or order_id or None)
+        return
+    _show_tracking(t, found)
+
+
+def _show_tracking(t: Turn, order: dict) -> None:
+    ship = order["shipment"]
+    extra = f" Tracking ID {ship['tracking_number']}." if ship.get("tracking_number") else ""
+    eta = f" Estimated delivery {_nice_date(ship['estimated_delivery'])}." if ship.get("estimated_delivery") else ""
+    t.say(f"Here's order {order['order_id']}: {ship['status_label']}.{extra}{eta}")
+    t.emit("order_tracking", order=order)
