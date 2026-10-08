@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Eye, EyeOff, Sparkles } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import { afterSignIn } from "../auth/afterSignIn";
+import { afterSignIn, continueAsGuest } from "../auth/afterSignIn";
 import { Wordmark } from "../components/shopsphere/StoreHeader";
 import { Button, Field, Notice, cx } from "../components/ui";
 
@@ -31,6 +31,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [asGuest, setAsGuest] = useState(false);
+  const guestCheckout = async () => {
+    setAsGuest(true); setError(null);
+    try { navigate(await continueAsGuest(), { replace: true }); }
+    finally { setAsGuest(false); }
+  };
 
   const go = (s: Screen) => { setScreen(s); setError(null); setSuccess(null); setPassword(""); setNewPassword(""); };
 
@@ -94,7 +100,7 @@ export default function Login() {
             <>
               {next && (
                 <Notice tone="talk">
-                  {next === "checkout" ? "Log in or create an account to check out. Your cart is saved." : "Log in to continue."}
+                  {next === "checkout" ? "Log in, create an account, or continue as a guest to check out. Your cart is saved." : "Log in to continue."}
                 </Notice>
               )}
               <div>
@@ -132,6 +138,14 @@ export default function Login() {
               {screen === "login" ? "Log in" : screen === "register" ? "Create account" : "Set new password"}
             </Button>
           </form>
+
+          {next === "checkout" && screen !== "reset" && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3 text-xs text-muted"><span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" /></div>
+              <Button type="button" variant="secondary" size="lg" onClick={guestCheckout} loading={asGuest}>Continue as guest</Button>
+              <p className="text-center text-xs text-muted">No account needed. We'll email your confirmation, and you can track the order with its Order ID and your email.</p>
+            </div>
+          )}
 
           {screen === "login" && (
             <>

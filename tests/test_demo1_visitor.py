@@ -147,7 +147,7 @@ def test_visitor_chats_then_signs_in_at_checkout_and_continues(client, fake_llm)
     ch = {"Authorization": f"Bearer {body['access_token']}"}
     ev = turn(ch, action={"type": "checkout"})                       # the panel resumes
     need = next(e for e in ev if e["type"] == "checkout_details_needed")   # a new account has no address/card yet
-    assert need["needs"] == {"address": True, "payment": True}
+    assert need["needs"] == {"guest": False, "address": True, "payment": True}
     addr = client.post("/api/me/addresses", headers=ch, json={
         "full_name": "New Shopper", "line1": "1 Main St", "city": "Austin", "state": "TX", "postal_code": "78701"}).json()
     turn(ch, action={"type": "details_added", "address_id": addr["address_id"]})

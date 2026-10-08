@@ -23,9 +23,10 @@ export type TalkEvent =
   | { type: "offer_checkout"; choices: { value: string; label: string }[] }
   | { type: "checkout_ready" | "checkout_updated"; checkout: Checkout }
   | { type: "payment_status"; state: "processing" | "authorizing" | "authorized" | "declined" | "failed"; payment: string | null; reason?: string; message?: string }
-  | { type: "order_confirmed"; order: Order }
+  | { type: "order_confirmed"; order: Order; email?: string | null }
   | { type: "login_required"; reason: string }
-  | { type: "checkout_details_needed"; checkout_id: string; needs: { address: boolean; payment: boolean } }
+  | { type: "checkout_details_needed"; checkout_id: string; needs: { guest?: boolean; address: boolean; payment: boolean };
+      guest?: boolean; wallet?: { balance: number; enough: boolean } | null }
   | { type: "stage"; stage: Stage; step: string }
   | { type: "status"; agent: string; message: string }
   | { type: "done"; stage: Stage; step: string };
@@ -34,11 +35,11 @@ export type TalkAction =
   | { type: "greet" }
   | { type: "select" | "ask_about"; product_id: string }
   | { type: "choose_size" | "choose_color"; value: string }
-  | { type: "checkout" } | { type: "keep_shopping" } | { type: "cancel_checkout" }
-  | { type: "update_checkout"; delivery_method?: string; address_id?: string; payment_method_id?: string; quantities?: Record<string, number> }
+  | { type: "checkout"; guest?: boolean } | { type: "keep_shopping" } | { type: "cancel_checkout" }
+  | { type: "update_checkout"; delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; quantities?: Record<string, number> }
   | { type: "go_ahead"; checkout_id: string }
   // A secure form saved the detail on ShopSphere; Talkshop gets only the id.
-  | { type: "details_added"; address_id?: string; payment_method_id?: string };
+  | { type: "details_added"; address_id?: string; payment_method_id?: string; pay_with?: "wallet" };
 
 export interface TurnInput {
   text?: string;

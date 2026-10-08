@@ -3,6 +3,7 @@ Order service — finalizes a purchase only after payment is authorized:
 public order id (SS-#####), order lines, address and masked-card snapshots,
 delivery date, stock committed, purchased lines removed from the cart.
 """
+import hmac
 import json
 import random
 from typing import Optional
@@ -10,7 +11,8 @@ from typing import Optional
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from backend.db.schema import Address, CartItem, Checkout, Order, OrderLine, PaymentMethod, Product, ProductVariant
+from backend.db.schema import Address, CartItem, Checkout, Order, OrderLine, PaymentMethod, Product, ProductVariant, User
+from backend.shop import shipping
 from backend.shop.profile import address_dict
 
 
@@ -34,8 +36,15 @@ def finalize(db: Session, co: Checkout, payment_ref: str) -> Order:
     order.amount = co.total
     order.delivery_method, order.delivery_date = co.delivery_method, co.delivery_date
     order.ship_to_json = json.dumps(address_dict(address)) if address else None
-    order.payment_brand, order.payment_last4 = (card.brand, card.last4) if card else (None, None)
+    order.payment_method_type = co.pay_with or "card"
+    if order.payment_method_type == "wallet":
+        order.payment_brand, order.payment_last4 = "ShopSphere Wallet", None
+    else:
+        order.payment_brand, order.payment_last4 = (card.brand, card.last4) if card else (None, None)
     order.payment_status = "authorized"
+    # Guest order: the checkout email/name, never a customer account (Phase 10)
+    order.guest_email, order.guest_name = co.guest_email, co.guest_name
+    shipping.start(order)
 
     for ln in lines:
         db.add(OrderLine(
@@ -81,11 +90,57 @@ def order_dict(db: Session, order: Order) -> dict:
         "delivery_method": order.delivery_method,
         "delivery_date": order.delivery_date.date().isoformat() if order.delivery_date else None,
         "ship_to": json.loads(order.ship_to_json) if order.ship_to_json else None,
-        "payment": ({"brand": order.payment_brand, "last4": order.payment_last4,
-                     "display": f"{order.payment_brand} •••• {order.payment_last4}"}
-                    if order.payment_last4 else None),
+        "payment": _payment_view(order),
+        "payment_method_type": order.payment_method_type or "card",
+        "guest": bool(order.guest_email),
+        "guest_email": order.guest_email,
+        "shipment": shipping.view(order),
         "tracking_number": order.tracking_number,
         "created_at": order.created_at.isoformat() if order.created_at else None,
+    }
+
+
+def _payment_view(order: Order) -> Optional[dict]:
+    if order.payment_method_type == "wallet":
+        return {"brand": "ShopSphere Wallet", "last4": None, "display": "ShopSphere Wallet"}
+    if order.payment_last4:
+        return {"brand": order.payment_brand, "last4": order.payment_last4,
+                "display": f"{order.payment_brand} •••• {order.payment_last4}"}
+    return None
+
+
+NOT_FOUND = "We could not find an order matching the provided Order ID and email address."
+
+
+def find_for_tracking(db: Session, order_id: str, email: str) -> Optional[Order]:
+    """Order ID + the email used for it (guest checkout email, or the customer's
+    account email). Any mismatch looks the same as a missing order."""
+    order = db.query(Order).filter(Order.display_id == (order_id or "").strip().upper()).first()
+    given = (email or "").strip().lower()
+    expected = ""
+    if order is not None:
+        if order.guest_email:
+            expected = order.guest_email.lower()
+        else:
+            owner = db.query(User).filter_by(user_id=order.user_id).first()
+            expected = (owner.email or "").lower() if owner and not owner.is_guest else ""
+    ok = hmac.compare_digest(given.encode(), expected.encode()) if expected else False
+    return order if (order is not None and given and ok) else None
+
+
+def tracking_view(db: Session, order: Order) -> dict:
+    """What Track Order shows: no full address, no card details, no internal ids."""
+    d = order_dict(db, order)
+    ship_to = d["ship_to"] or {}
+    return {
+        "order_id": d["order_id"], "status": d["status"], "payment_status": d["payment_status"],
+        "lines": [{k: ln[k] for k in ("name", "size", "color", "quantity", "line_total", "image_url")}
+                  for ln in d["lines"]],
+        "subtotal": d["subtotal"], "tax": d["tax"], "shipping": d["shipping"], "total": d["total"],
+        "delivery_method": d["delivery_method"], "delivery_date": d["delivery_date"],
+        "ship_to": {"city": ship_to.get("city"), "state": ship_to.get("state")},
+        "payment": d["payment"], "guest": d["guest"], "shipment": d["shipment"],
+        "created_at": d["created_at"],
     }
 
 

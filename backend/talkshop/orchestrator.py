@@ -336,12 +336,12 @@ async def _confirm_variant(t: Turn, lead: str = "") -> None:
     t.stage(Stage.OFFER_CHECKOUT)
 
 
-async def _checkout(t: Turn) -> None:
+async def _checkout(t: Turn, guest: bool = False) -> None:
     s = t.s
-    if s.is_visitor:
-        # Browsing and the cart are open to everyone; checking out needs an
-        # account. The panel shows a sign-in card and resumes here afterwards.
-        t.say("To check out, please log in or create a ShopSphere account. Your cart comes with you.")
+    if s.is_visitor and not guest:
+        # Browsing and the cart are open to everyone. At checkout a visitor
+        # chooses: log in, create an account, or continue as a guest (Phase 10).
+        t.say("To check out, log in, create a ShopSphere account, or continue as a guest. Your cart comes with you.")
         t.emit("login_required", reason="checkout")
         t.stage(Stage.OFFER_CHECKOUT)
         return
@@ -366,8 +366,12 @@ async def _checkout(t: Turn) -> None:
 
 
 def _missing(co: dict) -> dict:
-    """What ShopSphere still needs before this order can be reviewed."""
-    need = {"address": not co.get("address"), "payment": not co.get("payment_method")}
+    """What ShopSphere still needs before this order can be reviewed. A guest
+    gives name, email and shipping address in one secure form."""
+    guest = co.get("guest")
+    need_guest = bool(guest) and not guest.get("email")
+    need = {"guest": need_guest, "address": not need_guest and not co.get("address"),
+            "payment": not co.get("payment_method")}
     return need if any(need.values()) else {}
 
 
@@ -376,14 +380,20 @@ def _ask_for_details(t: Turn, co: dict, lead: str = "") -> None:
     straight to ShopSphere (profile API / card tokenization) and hand Talkshop
     back only ids — the details never pass through the chat or the LLM."""
     need = _missing(co)
-    if need["address"]:
+    if need["guest"]:
+        t.say(f"{lead} You're checking out as a guest, so no account is created. Please add your name, email and "
+              "shipping address in the secure form below. They go straight to ShopSphere checkout, not into our "
+              "chat, and your confirmation will be emailed to you.".strip())
+    elif need["address"]:
         what = "a shipping address and a payment card" if need["payment"] else "a shipping address"
         t.say(f"{lead} Almost there: ShopSphere needs {what} for this order. Please add the address in the "
               "secure form below. It goes straight to ShopSphere checkout, not into our chat.".strip())
     else:
         t.say(f"{lead} Last step: please add a card in the Secure Payment form below. Card details go straight "
               "to ShopSphere's payment partner. I only ever see the card type and last 4 digits.".strip())
-    t.emit("checkout_details_needed", checkout_id=co["checkout_id"], needs=need)
+    wallet = co.get("wallet")
+    t.emit("checkout_details_needed", checkout_id=co["checkout_id"], needs=need, guest=bool(co.get("guest")),
+           wallet={"balance": wallet["balance"], "enough": wallet["enough"]} if wallet else None)
     t.stage(Stage.CHECKOUT_DETAILS)
 
 
@@ -391,15 +401,17 @@ async def _details_added(t: Turn, action: dict) -> None:
     """A secure form saved an address or card on ShopSphere: attach it by id,
     recalculate the order on the merchant side, and resume checkout."""
     s = t.s
-    changes = {k: str(action[k]) for k in ("address_id", "payment_method_id") if action.get(k)}
+    changes = {k: str(action[k]) for k in ("address_id", "payment_method_id", "pay_with") if action.get(k)}
     before = tools.get_checkout(s.user_id, s.checkout_id)
     try:
-        co = tools.update_checkout(s.user_id, s.checkout_id, **changes)   # ownership checked by ShopSphere
+        # ownership checked by ShopSphere; a guest's details were saved by the form itself
+        co = tools.update_checkout(s.user_id, s.checkout_id, **changes) if changes else before
     except CheckoutError as exc:
         t.say(exc.message)
         return _ask_for_details(t, before)
     if _missing(co):
-        return _ask_for_details(t, co, "✓ Address saved." if "address_id" in changes else "")
+        saved = "✓ Address saved." if "address_id" in changes else ("✓ Details saved." if co.get("guest") else "")
+        return _ask_for_details(t, co, saved)
     lead = "Thanks, ShopSphere has everything it needs."
     if co["total"] != before["total"]:
         lead += f" Your total was recalculated to ${co['total']:.2f}."
@@ -411,7 +423,8 @@ async def _details_added(t: Turn, action: dict) -> None:
 async def _update_checkout(t: Turn, changes: dict) -> None:
     s = t.s
     changes = {k: v for k, v in changes.items()
-               if k in ("delivery_method", "address_id", "payment_method_id", "quantities") and v is not None}
+               if k in ("delivery_method", "address_id", "payment_method_id", "pay_with", "quantities")
+               and v is not None}
     try:
         co = tools.update_checkout(s.user_id, s.checkout_id, **changes)
     except CheckoutError as exc:
@@ -427,6 +440,16 @@ async def _cancel_checkout(t: Turn) -> None:
     s.checkout_id = None
     t.say("No problem — nothing was charged. Your item is still in your ShopSphere cart.")
     t.stage(Stage.IN_CART)
+
+
+def _nice_date(iso) -> str:
+    """2026-10-11 → Sun, October 11 (falls back to the raw value)."""
+    from datetime import date
+    try:
+        d = date.fromisoformat(str(iso)[:10])
+        return f"{d:%a, %B} {d.day}"
+    except ValueError:
+        return str(iso)
 
 
 async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str]) -> None:
@@ -469,8 +492,11 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str]) -> N
     s.line_ids = [lid for lid in s.line_ids if lid not in bought]
     s.added_qty = {lid: q for lid, q in s.added_qty.items() if lid not in bought}
     s.checkout_id, s.order_id = None, order["order_id"]
-    t.say(f"Your order is confirmed! Order {order['order_id']} arrives {order['delivery_date']}.")
-    t.emit("order_confirmed", order=order)
+    email = result.get("confirmation_email")
+    sent = f" A confirmation email is on its way to {email}." if email else ""
+    track = " You can track it any time with your Order ID and email." if order.get("guest") else ""
+    t.say(f"Your order is confirmed! Order {order['order_id']} arrives {_nice_date(order['delivery_date'])}.{sent}{track}")
+    t.emit("order_confirmed", order=order, email=email)
     t.stage(Stage.ORDER_CONFIRMED)
 
 
@@ -557,7 +583,7 @@ async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
     elif kind == "choose_color" and s.product_id:
         await _choose_color(t, str(action.get("value")))
     elif kind == "checkout" and s.allows("checkout"):
-        await _checkout(t)
+        await _checkout(t, guest=bool(action.get("guest")))
     elif kind == "keep_shopping":
         t.say("No problem — it's saved in your ShopSphere cart. What else can I find for you?")
         t.stage(Stage.IN_CART)

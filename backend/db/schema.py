@@ -137,6 +137,8 @@ class PaymentMethod(Base):
     # Demo-only: how the mock processor treats this card ("approve" | "decline").
     behaviour = Column(String(10), nullable=False, default="approve")
     is_default = Column(Boolean, default=False)
+    # Phase 10: False = tokenized for one order only (not shown as a saved card)
+    saved = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, server_default=func.now())
 
 
@@ -155,6 +157,9 @@ class Checkout(Base):
     delivery_method = Column(String(20), default="standard")  # standard | express
     delivery_date = Column(DateTime)
     payment_method_id = Column(String(50))
+    pay_with = Column(String(10), nullable=False, default="card")   # card | wallet (Phase 10)
+    guest_email = Column(String(255))                  # guest checkout: no customer account (Phase 10)
+    guest_name = Column(String(100))
     subtotal = Column(Float, nullable=False, default=0.0)
     tax = Column(Float, nullable=False, default=0.0)
     shipping = Column(Float, nullable=False, default=0.0)
@@ -193,6 +198,26 @@ class Order(Base):
     payment_brand = Column(String(20))                  # masked payment shown to the customer
     payment_last4 = Column(String(4))
     payment_status = Column(String(20))                 # authorized | declined
+    payment_method_type = Column(String(10))            # card | wallet
+    # Guest orders (Phase 10): the checkout email/name; never linked to a customer account
+    guest_email = Column(String(255), index=True)
+    guest_name = Column(String(100))
+    # Simulated shipment (backend/shop/shipping.py); tracking_number is set when it ships
+    shipment_status = Column(String(30))
+    shipment_events_json = Column(Text)
+
+
+class EmailOutbox(Base):
+    """Demo stand-in for an email provider: every message ShopSphere would send."""
+    __tablename__ = "email_outbox"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    message_id = Column(String(50), unique=True, nullable=False)
+    to_email = Column(String(255), nullable=False, index=True)
+    subject = Column(String(200), nullable=False)
+    body = Column(Text, nullable=False)
+    order_id = Column(String(50), index=True)          # internal order id
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class OrderLine(Base):

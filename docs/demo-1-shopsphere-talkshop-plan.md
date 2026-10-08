@@ -16,7 +16,7 @@
 
 ### Progress
 
-**Phases approved: 7 / 10 · Steps done: 81 / 81** · Phases 7, 8 and 9 👀 ready for your review
+**Phases approved: 7 / 11 · Steps done: 91 / 91** · Phases 7, 8, 9 and 10 👀 ready for your review
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
@@ -30,6 +30,7 @@
 | 7 | Polish, quality and demo readiness | 6 / 6 | 👀 Ready for your review |
 | 8 | Shop without logging in (login only at checkout) | 9 / 9 | 👀 Ready for your review |
 | 9 | Secure checkout details in Talkshop | 8 / 8 | 👀 Ready for your review |
+| 10 | Every shopper can buy: guest checkout, wallet, email, Track Order | 10 / 10 | 👀 Ready for your review |
 
 Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review · ✅ Approved
 
@@ -152,6 +153,20 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 - [x] 9.7 Tests: 23 new; full suite 300
 - [x] 9.8 Browser check (light, dark, phone) + demo scripts A–D on a fresh database
 - [x] **Checkpoint:** a new customer checks out entirely in Talkshop. Address and card go only to ShopSphere, and the AI never sees them *(secure flow ×3 views passed; the raw card number reached only `/api/me/payment-methods`; A–D 4/4 on fresh data)*
+- [ ] **Approved, proceed to Phase 10**
+
+### Phase 10: Every shopper can buy (guest checkout, wallet, email, Track Order)
+- [x] 10.1 Data: guest fields on checkouts/orders (no account created), one-time vs saved cards, pay-with (card or wallet), shipment status, an email outbox
+- [x] 10.2 Guest checkout (backend): a visitor can create a **guest** checkout, add name, email and shipping address, pay with a one-time card, and get an order with no customer account
+- [x] 10.3 Saved-card choice: new cards are used once unless the shopper ticks **Save this card for next time** (guests: always one-time)
+- [x] 10.4 Wallet: customers can pay with their ShopSphere Wallet balance (the existing wallet path in the payment pipeline)
+- [x] 10.5 Confirmation email (demo outbox) for every order; viewable from the order's tracking page
+- [x] 10.6 Shipping and tracking (simulated, clearly labelled): Confirmed → Payment completed → Processing → Packed → Shipped (tracking ID `TRK…`) → Out for delivery → Delivered
+- [x] 10.7 Track Order: lookup by Order ID **and** email (one neutral error for any mismatch), linked from the footer, menus and confirmations; My Orders shows the same progress
+- [x] 10.8 Talkshop: the sign-in card gets **Continue as guest**; guest details + Secure Payment in the chat; wallet option; guest confirmation with tracking
+- [x] 10.9 Website: Log in / Sign up / **Continue as guest** at checkout; guest details on the checkout page; wallet option; save-card checkbox; guest confirmation; Track Order page
+- [x] 10.10 Tests: the 15 required cases + browser runs of demo flows A–D and guest tracking
+- [x] **Checkpoint:** an existing customer (saved card or wallet), a customer without a saved card, a new customer and a guest can all buy, in the chat and on the website; a guest can track the order with Order ID + email *(browser: guest website + chat, tracking, wallet, no-saved-card, light + dark; demo scripts A–D; 333 tests)*
 - [ ] **Approved: Demo 1 complete 🎉**
 
 ---
@@ -206,6 +221,11 @@ Talkshop must never make up a product, price, rating, stock level, cart, tax, de
 | D26 | Cart on login | **Merge**: what the visitor added moves into the account's cart, combined with anything already there (quantities add up, capped by stock) |
 | D27 | Talkshop login | **Sign-in card inside the chat.** After signing in, the conversation continues straight to Review Your Order |
 | D28 | Website login | **Login page, then straight to checkout** with the items the visitor selected |
+| D30 | Guest checkout (Phase 10, replaces D17's "no guest checkout") | **Log in / Sign up / Continue as guest** at checkout. A guest order stores the guest's name and email on the order and is **never linked to a customer account** (it lives under the anonymous visitor session, which can't log in). Guest orders never appear in anyone's My Orders |
+| D31 | Saving cards | A newly entered card is **used once** unless the shopper ticks **Save this card for next time**. Guests can't save cards |
+| D32 | Email | No real email provider: a **demo outbox** stores each confirmation email; it's shown from the order's tracking page (Order ID + email), not in a public inbox |
+| D33 | Shipping | **Simulated** shipping, clearly labelled (no fake carrier). A tracking ID is created when the order ships. A demo control on the tracking page moves the shipment to its next step |
+| D34 | Wallet | Customers can pay with their ShopSphere Wallet balance, reusing the payment pipeline's existing wallet path (balance check, then deduction) |
 | D29 | Chat after login | Logging in **from a visitor session keeps the conversation** (same shopper). Logging **out** still starts a fresh chat (earlier request) |
 | D24 | Colours follow photos | A product offers only colours it has a convincing photo for. Result: 26 products × 1 colour, 30 × 2, 3 × 3, 1 × 4 (99 photos, 400 SKUs). Fewer colours than D4's 2–4 target, but no wrong photos. Where possible the colours are **the same model** (e.g. FlexRun 5, Converse, men's tees) |
 
@@ -775,6 +795,68 @@ Each phase ends with a **checkpoint** and a **commit on the Demo 1 branch**. Pha
   3. For anything not on the list, the LLM checks in the recommendation call whether the results are the kind of thing asked for, so there's no extra wait. Only an explicit "doesn't fit" hides them, and it caught "garden hose", "yoga mat" and "cookware" in testing.
   4. A mixed request ("a laptop and some tomatoes") shows the laptops with a note.
 - **For a production build:** the card fields would sit in a payment provider's hosted iframe (e.g. Stripe Elements), so the store's own page couldn't read them. Here they are a local, ShopSphere-only React component that posts straight to the tokenization endpoint.
+
+---
+
+### Phase 10: Every shopper can buy (guest checkout, wallet, email, Track Order)
+**Goal:** the four shopper types can all complete a purchase, through the same secure payment boundary and the same order pipeline (D30–D34):
+- an existing customer (saved card or wallet);
+- an existing customer with no saved card;
+- a new customer;
+- a guest.
+
+After buying, anyone can follow the order: customers in My Orders, and guests with **Order ID + email**.
+
+**What already existed (analysis):**
+- Scenarios 1–3 worked: saved-card checkout, sign-up at checkout, and the Secure Payment fallback (Phases 8–9).
+- Order IDs (`SS-#####`) are created only after authorization.
+- Not yet: guest checkout (D17), email, Track Order, shipment steps and tracking IDs (TrackIt only had a time-based processing/shipped/delivered), the wallet at ShopSphere checkout (the wallet existed in the pipeline), and a choice not to save a card.
+
+**Combined checkout decision flow:**
+```
+Checkout → logged in?
+  yes → saved card? → yes: Review (card or wallet) → GO AHEAD
+                     → no:  Secure Payment (or wallet) → Review → GO AHEAD
+  no  → Log in   → customer flow (cart + chat carried over)
+      → Sign up  → new customer → Secure address + payment → Review → GO AHEAD
+      → Guest    → guest details (name, email, address) → Secure Payment (one-time) → Review → GO AHEAD
+All → payment pipeline (consent, token, 12 checks) → order SS-##### → email (outbox) → shipment → tracking
+```
+
+| Step | Work | How it works |
+|---|---|---|
+| 10.1 | **Data** | `checkouts`: `guest_email`, `guest_name`, `pay_with`. `orders`: `guest_email`, `guest_name`, `payment_method_type`, `shipment_status`, `shipment_events_json` (+ existing `tracking_number`). `payment_methods`: `saved`. New `email_outbox` table. Added at startup like earlier columns |
+| 10.2 | **Guest checkout API** | `POST /api/checkouts` with `guest: true` (visitors only). `POST /api/checkouts/{id}/guest-details` stores the address for this checkout and the guest's name and email (validated server-side). Confirm is allowed for a visitor only once guest details are in. The order keeps the guest email; no customer account is created |
+| 10.3 | **Saved-card choice** | `POST /api/me/payment-methods` takes `save`. Unsaved cards are tokenized for this order only and never listed as saved. Visitors can tokenize one-time cards only |
+| 10.4 | **Wallet** | `pay_with: wallet` on the checkout → the existing pipeline wallet path (balance check `INSUFFICIENT_BALANCE`, then deduction) |
+| 10.5 | **Email** | `notifications.send_order_confirmation` writes the outbox after the order is created. It contains the Order ID, items, total, ship-to city, status, the tracking ID when available, and how to track |
+| 10.6 | **Shipping** | `shipping.py`: a simulated carrier with the step list above. A `TRK` + 6-digit tracking ID is created on **Shipped**. A demo endpoint/button moves the shipment one step |
+| 10.7 | **Track Order** | `POST /api/orders/track {order_id, email}` → safe details (items, totals, masked card, ship-to city, steps, tracking ID, estimated delivery). Any mismatch returns the same message: "We could not find an order matching the provided Order ID and email address." |
+| 10.8 | **Talkshop** | Sign-in card: Log in / Create account / **Continue as guest**. Guest → Secure ShopSphere Checkout (name, email, address) → Secure Payment (one-time) → Review → GO AHEAD → confirmation with "email sent to …" and a Track Order link. Customers: wallet in the payment choice; save-card checkbox |
+| 10.9 | **Website** | Login page (from checkout) gets **Continue as guest**. The checkout page shows guest details for guests, plus the wallet option and save-card checkbox. Guest confirmation → Track Order page; Track Order linked in the footer, account menu and phone menu |
+| 10.10 | **Tests** | The 15 cases from the brief, plus browser runs of flows A–D and guest tracking |
+
+✅ **Checkpoint:** all four shopper types can buy (chat and website); guests can track with Order ID + email.
+
+**As built (Phase 10):**
+- **New backend modules:** `backend/shop/shipping.py` (simulated carrier, step list, `TRK` id at Shipped) and `backend/shop/notifications.py` (demo outbox; masked email in logs).
+- **New routes:** `POST /api/checkouts` (`guest`), `POST /api/checkouts/{id}/guest-details`, `POST /api/orders/track`, `…/track/email`, `…/track/advance` (demo).
+- **Relaxed routes:** checkout get/patch/cancel/confirm accept visitors on their own guest checkout. `POST /api/me/payment-methods` takes `save` (visitors: always one-time).
+- **Payment:** `payment.confirm` pays from the wallet when `pay_with=wallet` (existing pipeline wallet path, `INSUFFICIENT_BALANCE` → declined). It also sends the confirmation email after the order exists (an email failure never undoes a payment).
+- **Tracking ID:** the pipeline's placeholder tracking number is cleared at order start, so the real one appears at **Shipped**.
+- **Frontend:**
+  - New `pages/store/Track.tsx` and `components/shopsphere/ShipmentProgress.tsx`.
+  - `GuestDetailsForm`; `CardForm` gets the save choice.
+  - Checkout page: guest details, wallet and save choice.
+  - Login page: **Continue as guest**.
+  - Track order links in the footer, account menu and phone menu.
+  - Talkshop sign-in card: **Continue as guest**. Secure forms: guest step and wallet. Review: wallet choice and guest line. Confirmation: email and Track link.
+- **Security:**
+  - Card details still reach only the tokenization endpoint (checked in the browser).
+  - Guest orders are never in a customer's My Orders, even after the same browser signs up later.
+  - Tracking needs Order ID + email (constant-time compare) and shows the city only, a masked card and no internal ids.
+  - Any mismatch gets one neutral message.
+- **Not built (by design):** no real email provider, no real carrier, no phone number (not currently required).
 
 ---
 

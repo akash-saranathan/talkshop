@@ -72,6 +72,15 @@ def init_db(db_path: Path = DB_PATH):
     ]:
         _ensure_column(engine, "orders", col, ddl)
     _ensure_column(engine, "cart_items", "sku", "sku VARCHAR(60)")
+    # Phase 10: guest checkout, wallet at checkout, one-time cards, shipment tracking
+    for col, ddl in [("pay_with", "pay_with VARCHAR(10) NOT NULL DEFAULT 'card'"),
+                     ("guest_email", "guest_email VARCHAR(255)"), ("guest_name", "guest_name VARCHAR(100)")]:
+        _ensure_column(engine, "checkouts", col, ddl)
+    for col, ddl in [("payment_method_type", "payment_method_type VARCHAR(10)"),
+                     ("guest_email", "guest_email VARCHAR(255)"), ("guest_name", "guest_name VARCHAR(100)"),
+                     ("shipment_status", "shipment_status VARCHAR(30)"), ("shipment_events_json", "shipment_events_json TEXT")]:
+        _ensure_column(engine, "orders", col, ddl)
+    _ensure_column(engine, "payment_methods", "saved", "saved BOOLEAN NOT NULL DEFAULT 1")
     return engine
 
 

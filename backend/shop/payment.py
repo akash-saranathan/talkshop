@@ -27,6 +27,7 @@ MERCHANT_ID, MERCHANT_NAME = "SHOPSPHERE", "ShopSphere"
 log = logging.getLogger(__name__)
 
 DECLINE_MESSAGES = {
+    "INSUFFICIENT_BALANCE": "Your wallet balance isn't enough for this order. Choose a card instead.",
     "CARD_DECLINED": "Your card was declined. Try a different card.",
     "CARD_EXPIRED": "That card has expired. Try a different card.",
     "NO_ACTIVE_PAYMENT_METHOD": "That card isn't available. Choose another card.",
@@ -44,6 +45,9 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool) -> dict:
 
     with get_session() as db:
         co = checkout_service.get_checkout(db, user.user_id, checkout_id)
+        if user.is_visitor and not co.guest_email:      # guest checkout needs the guest's details first
+            raise checkout_service.CheckoutError(
+                "GUEST_DETAILS_REQUIRED", "Add your name, email and shipping address first.", 403)
         if co.status != "open":
             raise checkout_service.CheckoutError(
                 "CHECKOUT_CLOSED", f"This checkout is {co.status}.", 409)
@@ -60,7 +64,8 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool) -> dict:
         title = first["name"] if len(snap["lines"]) == 1 else f"{first['name']} + {len(snap['lines']) - 1} more"
         amounts = dict(total=co.total, subtotal=co.subtotal, tax=co.tax, shipping=co.shipping,
                        currency=co.currency, checkout_hash=co.checkout_hash)
-        payment_method_id = co.payment_method_id
+        pay_with = "wallet" if co.pay_with == "wallet" else "card"
+        payment_method_id = co.payment_method_id if pay_with == "card" else None
         co.status = "consented"
         db.commit()
 
@@ -88,7 +93,7 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool) -> dict:
     result = await execute_payment_endpoint(ExecutePaymentRequest(
         token_id=approval.token_id, checkout_id=payment_ref, merchant_id=MERCHANT_ID,
         merchant_name=MERCHANT_NAME, product_id=first["product_id"], product_title=title,
-        payment_method="card", payment_method_id=payment_method_id, **amounts,
+        payment_method=pay_with, payment_method_id=payment_method_id, **amounts,
     ), user)
 
     if result.status != "success":
@@ -102,8 +107,8 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool) -> dict:
         with get_session() as db:
             co = db.query(Checkout).filter_by(checkout_id=checkout_id).one()
             order = order_service.finalize(db, co, payment_ref)
-            return {"status": "authorized", "order": order_service.order_dict(db, order),
-                    "transaction_id": result.transaction_id}
+            outcome = {"status": "authorized", "order": order_service.order_dict(db, order),
+                       "transaction_id": result.transaction_id}
     except Exception:
         log.exception("order creation failed after authorization (%s); voiding", payment_ref)
         from backend.payment.mock_processor import void_authorization
@@ -111,3 +116,15 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool) -> dict:
         return reopen("order_failed", "ORDER_CREATION_FAILED",
                       "Your payment was approved, but ShopSphere couldn't create the order, so the payment "
                       "was released and you haven't been charged. Please try again.")
+
+    # 4. Confirmation email (demo outbox). The order already exists, so a
+    # problem here never undoes the payment.
+    try:
+        from backend.shop import notifications
+        with get_session() as db:
+            order = db.query(Order).filter_by(order_id=payment_ref).one()
+            outcome["confirmation_email"] = notifications.send_order_confirmation(db, order)
+    except Exception:
+        log.exception("confirmation email failed for %s", payment_ref)
+        outcome["confirmation_email"] = None
+    return outcome

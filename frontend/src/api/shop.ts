@@ -32,8 +32,10 @@ export interface Address {
 }
 export interface Card {
   payment_method_id: string; brand: string; last4: string; exp_month: number; exp_year: number;
-  cardholder_name: string; is_default: boolean; display: string;
+  cardholder_name: string; is_default: boolean; display: string; saved?: boolean;
 }
+/** The ShopSphere Wallet shown as a way to pay (customers only, Phase 10). */
+export interface WalletOption { payment_method_id: "wallet"; type: "wallet"; display: string; balance: number; enough: boolean }
 export interface CheckoutLine {
   line_id: string; sku: string; product_id: string; name: string; brand: string; size: string | null; color: string;
   option_label: string; quantity: number; unit_price: number; line_total: number; image_url: string | null; in_stock: boolean;
@@ -44,18 +46,36 @@ export interface Checkout {
   checkout_id: string; status: "open" | "consented" | "paid" | "cancelled"; lines: CheckoutLine[]; item_count: number;
   subtotal: number; tax: number; tax_rate: number; shipping: number; total: number; currency: string;
   delivery: { method: "standard" | "express"; date: string; options: DeliveryOption[] };
-  address: Address | null; payment_method: Card | null; saved_addresses: Address[]; saved_payment_methods: Card[];
+  address: Address | null; payment_method: (Card | WalletOption) | null; saved_addresses: Address[]; saved_payment_methods: Card[];
+  pay_with: "card" | "wallet"; wallet: WalletOption | null;
+  /** Guest checkout (no account): the email and name once given. */
+  guest: { email: string | null; name: string | null } | null;
   issues: CheckoutIssue[]; ready: boolean; checkout_hash: string;
 }
+export interface ShipmentStep { key: string; label: string; done: boolean; at: string | null }
+export interface Shipment {
+  status: string; status_label: string; steps: ShipmentStep[]; tracking_number: string | null;
+  carrier: string | null; estimated_delivery: string | null; simulated: boolean;
+}
+/** What Track Order shows: no full address, no card details, no internal ids. */
+export interface TrackedOrder {
+  order_id: string; status: string; payment_status: string | null; created_at: string | null;
+  lines: { name: string; size: string | null; color: string; quantity: number; line_total: number; image_url: string | null }[];
+  subtotal: number; tax: number; shipping: number; total: number; delivery_method: string | null; delivery_date: string | null;
+  ship_to: { city: string | null; state: string | null }; payment: { display: string } | null; guest: boolean; shipment: Shipment;
+}
+export interface ConfirmationEmail { to: string; subject: string; body: string; sent_at: string | null; demo_outbox: boolean }
+export interface GuestDetails { full_name: string; email: string; line1: string; line2?: string; city: string; state: string; postal_code: string }
 export interface OrderLine { sku: string; product_id: string; name: string; size: string | null; color: string; quantity: number; unit_price: number; line_total: number; image_url: string | null }
 export interface Order {
   order_id: string; internal_order_id: string; status: string; payment_status: string | null; lines: OrderLine[];
   subtotal: number; tax: number; shipping: number; total: number; currency: string;
   delivery_method: string | null; delivery_date: string | null; ship_to: Address | null;
-  payment: { brand: string; last4: string; display: string } | null; tracking_number: string | null; created_at: string | null;
+  payment: { brand: string; last4: string | null; display: string } | null; tracking_number: string | null; created_at: string | null;
+  payment_method_type?: "card" | "wallet"; guest?: boolean; guest_email?: string | null; shipment?: Shipment;
 }
 export type ConfirmResult =
-  | { status: "authorized"; order: Order; transaction_id: string }
+  | { status: "authorized"; order: Order; transaction_id: string; confirmation_email?: string | null }
   | { status: "declined" | "blocked" | "order_failed"; reason: string; message: string; checkout: Checkout };
 
 export class ShopError extends Error {
@@ -109,18 +129,26 @@ export const shop = {
   deleteAddress: (id: string) => call<{ deleted: string }>(`/api/me/addresses/${id}`, json("DELETE")),
   cards: () => call<Card[]>("/api/me/payment-methods"),
   deleteCard: (id: string) => call<{ deleted: string }>(`/api/me/payment-methods/${id}`, json("DELETE")),
-  addCard: (c: { number: string; exp_month: number; exp_year: number; cvc: string; cardholder_name: string; make_default?: boolean }) =>
+  /** Tokenize a card. save: false = this order only (guests are always one-time). */
+  addCard: (c: { number: string; exp_month: number; exp_year: number; cvc: string; cardholder_name: string; make_default?: boolean; save?: boolean }) =>
     call<Card>("/api/me/payment-methods", json("POST", c)),
 
-  createCheckout: (lineIds: string[]) => call<Checkout>("/api/checkouts", json("POST", { line_ids: lineIds })),
+  createCheckout: (lineIds: string[], guest = false) => call<Checkout>("/api/checkouts", json("POST", { line_ids: lineIds, guest })),
+  guestDetails: (id: string, details: GuestDetails) => call<Checkout>(`/api/checkouts/${id}/guest-details`, json("POST", details)),
   checkout: (id: string) => call<Checkout>(`/api/checkouts/${id}`),
-  updateCheckout: (id: string, changes: { delivery_method?: string; address_id?: string; payment_method_id?: string; quantities?: Record<string, number> }) =>
+  updateCheckout: (id: string, changes: { delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; quantities?: Record<string, number> }) =>
     call<Checkout>(`/api/checkouts/${id}`, json("PATCH", changes)),
   cancelCheckout: (id: string) => call<Checkout>(`/api/checkouts/${id}/cancel`, json("POST")),
   confirm: (id: string) => call<ConfirmResult>(`/api/checkouts/${id}/confirm`, json("POST", { consent: true })),
 
   orders: () => call<(Record<string, unknown> & { display_id?: string })[]>("/api/orders"),
   order: (id: string) => call<Record<string, unknown> & Partial<Order> & { display_id?: string; amount?: number }>(`/api/orders/${id}`),
+
+  // Track Order: Order ID + the email used for the order (guests and customers)
+  track: (order_id: string, email: string) => call<TrackedOrder>("/api/orders/track", json("POST", { order_id, email })),
+  trackEmail: (order_id: string, email: string) => call<ConfirmationEmail>("/api/orders/track/email", json("POST", { order_id, email })),
+  /** Demo control: move the simulated shipment one step. */
+  trackAdvance: (order_id: string, email: string) => call<TrackedOrder>("/api/orders/track/advance", json("POST", { order_id, email })),
 };
 
 export const DEPARTMENTS = [

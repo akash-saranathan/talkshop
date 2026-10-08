@@ -11,6 +11,7 @@ import ProductPage from "./pages/store/Product";
 import CartPage from "./pages/store/Cart";
 import CheckoutPage from "./pages/store/Checkout";
 import { OrderDetailPage, OrdersPage } from "./pages/store/Orders";
+import TrackOrderPage from "./pages/store/Track";
 
 /** Waits until the shopper has an identity (a visitor session at least). */
 function AuthReady({ children }: { children: ReactNode }) {
@@ -19,7 +20,8 @@ function AuthReady({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** Checkout and orders need an account: visitors log in, then come back. */
+/** My Orders needs an account: visitors log in, then come back. (Checkout is
+ *  open to guests since Phase 10; the server decides what each shopper may do.) */
 function RequireCustomer({ children }: { children: ReactNode }) {
   const { isCustomer } = useAuth();
   const location = useLocation();
@@ -42,7 +44,8 @@ export default function App() {
                 <Route path="/search" element={<Category />} />
                 <Route path="/p/:productId" element={<ProductPage />} />
                 <Route path="/cart" element={<CartPage />} />
-                <Route path="/checkout/:checkoutId" element={<RequireCustomer><CheckoutPage /></RequireCustomer>} />
+                <Route path="/checkout/:checkoutId" element={<CheckoutPage />} />
+                <Route path="/track" element={<TrackOrderPage />} />
                 <Route path="/orders" element={<RequireCustomer><OrdersPage /></RequireCustomer>} />
                 <Route path="/orders/:orderId" element={<RequireCustomer><OrderDetailPage /></RequireCustomer>} />
               </Route>

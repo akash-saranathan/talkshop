@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, LogOut, Menu, Moon, Package, Search, ShoppingBag, Sun, User as UserIcon, X } from "lucide-react";
+import { ChevronDown, LogOut, Menu, Moon, Package, Search, ShoppingBag, Sun, Truck, User as UserIcon, X } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCart } from "../../store/cart";
 import { DEPARTMENTS } from "../../api/shop";
@@ -107,6 +107,9 @@ export default function StoreHeader() {
                 <Link to="/orders" onClick={() => setAccountOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel">
                   <Package size={16} /> My orders
                 </Link>
+                <Link to="/track" onClick={() => setAccountOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel">
+                  <Truck size={16} /> Track order
+                </Link>
                 <button onClick={() => { setAccountOpen(false); navigate("/", { replace: true }); logout(); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm hover:bg-panel text-left">
                   <LogOut size={16} /> Log out
                 </button>
@@ -135,8 +138,9 @@ export default function StoreHeader() {
                 <button onClick={() => { setMenuOpen(false); navigate("/", { replace: true }); logout(); }} className="py-3 text-left text-[15px] text-ink-soft">Log out</button>
               </>
             ) : (
-              <Link to={loginHref} onClick={() => setMenuOpen(false)} className="py-3 text-[15px] font-medium">Log in or create an account</Link>
+              <Link to={loginHref} onClick={() => setMenuOpen(false)} className="py-3 border-b border-line text-[15px] font-medium">Log in or create an account</Link>
             )}
+            <Link to="/track" onClick={() => setMenuOpen(false)} className="py-3 text-[15px] text-ink-soft">Track order</Link>
           </nav>
         </div>
       )}

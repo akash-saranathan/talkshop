@@ -24,7 +24,7 @@ for the current chat UI until Demo 1 Phase 5 replaces it.
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -34,7 +34,10 @@ from backend.db.init_db import get_engine
 from backend.shop import cart as cart_service
 from backend.shop import checkout as checkout_service
 from backend.shop import payment as payment_service
+from backend.shop import notifications
+from backend.shop import orders as order_service
 from backend.shop import profile as profile_service
+from backend.shop import shipping
 
 router = APIRouter(tags=["shop"])
 
@@ -112,6 +115,7 @@ class CardRequest(BaseModel):
     cvc: str
     cardholder_name: str
     make_default: bool = False
+    save: Optional[bool] = None     # Phase 10: False = use for this order only (guests: always False)
 
 
 @router.get("/api/me/addresses")
@@ -134,9 +138,14 @@ def get_cards(user: CurrentUser = Depends(require_customer), db: Session = Depen
 
 
 @router.post("/api/me/payment-methods")
-def add_card(req: CardRequest, user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
+def add_card(req: CardRequest, user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Tokenize a card. Customers choose whether to save it; a guest's card is
+    always one-time (used for this order only, never listed)."""
+    fields = req.model_dump()
+    asked = fields.pop("save")
+    save = False if user.is_visitor else (True if asked is None else asked)
     try:
-        card = profile_service.add_card(db, user.user_id, **req.model_dump())
+        card = profile_service.add_card(db, user.user_id, save=save, **fields)
     except profile_service.ProfileError as exc:
         return _error(exc)
     return profile_service.card_dict(card)   # masked: brand, last 4, expiry
@@ -166,12 +175,29 @@ def delete_card(payment_method_id: str, user: CurrentUser = Depends(require_cust
 
 class CreateCheckoutRequest(BaseModel):
     line_ids: list[str] = Field(..., min_length=1)
+    guest: bool = False             # Phase 10: a visitor checking out as a guest
+
+
+class GuestDetailsRequest(BaseModel):
+    full_name: str
+    email: str
+    line1: str
+    line2: Optional[str] = None
+    city: str
+    state: str
+    postal_code: str
+
+
+class TrackRequest(BaseModel):
+    order_id: str
+    email: str
 
 
 class UpdateCheckoutRequest(BaseModel):
     delivery_method: Optional[str] = None
     address_id: Optional[str] = None
     payment_method_id: Optional[str] = None
+    pay_with: Optional[str] = None                # card | wallet (Phase 10)
     quantities: Optional[dict[str, int]] = None   # cart line id → quantity
 
 
@@ -180,8 +206,11 @@ class ConfirmRequest(BaseModel):
 
 
 @router.post("/api/checkouts")
-def create_checkout(req: CreateCheckoutRequest, user: CurrentUser = Depends(require_customer),
+def create_checkout(req: CreateCheckoutRequest, user: CurrentUser = Depends(get_current_user),
                     db: Session = Depends(get_db)):
+    if user.is_visitor and not req.guest:          # visitors: log in, sign up, or continue as guest
+        raise HTTPException(status_code=403, detail={
+            "code": "LOGIN_REQUIRED", "message": "Please log in, create an account, or continue as a guest."})
     try:
         co = checkout_service.create_checkout(db, user.user_id, req.line_ids)
     except checkout_service.CheckoutError as exc:
@@ -190,7 +219,7 @@ def create_checkout(req: CreateCheckoutRequest, user: CurrentUser = Depends(requ
 
 
 @router.get("/api/checkouts/{checkout_id}")
-def get_checkout(checkout_id: str, user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
+def get_checkout(checkout_id: str, user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         return checkout_service.snapshot(db, checkout_service.get_checkout(db, user.user_id, checkout_id))
     except checkout_service.CheckoutError as exc:
@@ -198,7 +227,7 @@ def get_checkout(checkout_id: str, user: CurrentUser = Depends(require_customer)
 
 
 @router.patch("/api/checkouts/{checkout_id}")
-def update_checkout(checkout_id: str, req: UpdateCheckoutRequest, user: CurrentUser = Depends(require_customer),
+def update_checkout(checkout_id: str, req: UpdateCheckoutRequest, user: CurrentUser = Depends(get_current_user),
                     db: Session = Depends(get_db)):
     try:
         co = checkout_service.update_checkout(db, user.user_id, checkout_id, **req.model_dump())
@@ -208,7 +237,7 @@ def update_checkout(checkout_id: str, req: UpdateCheckoutRequest, user: CurrentU
 
 
 @router.post("/api/checkouts/{checkout_id}/cancel")
-def cancel_checkout(checkout_id: str, user: CurrentUser = Depends(require_customer), db: Session = Depends(get_db)):
+def cancel_checkout(checkout_id: str, user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         co = checkout_service.cancel_checkout(db, user.user_id, checkout_id)
     except checkout_service.CheckoutError as exc:
@@ -217,8 +246,56 @@ def cancel_checkout(checkout_id: str, user: CurrentUser = Depends(require_custom
 
 
 @router.post("/api/checkouts/{checkout_id}/confirm")
-async def confirm_checkout(checkout_id: str, req: ConfirmRequest, user: CurrentUser = Depends(require_customer)):
+async def confirm_checkout(checkout_id: str, req: ConfirmRequest, user: CurrentUser = Depends(get_current_user)):
+    """Customers, and guests once their details are in (checked in payment.confirm)."""
     try:
         return await payment_service.confirm(user, checkout_id, req.consent)
     except checkout_service.CheckoutError as exc:
         return _error(exc)
+
+
+@router.post("/api/checkouts/{checkout_id}/guest-details")
+def guest_details(checkout_id: str, req: GuestDetailsRequest, user: CurrentUser = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    """Guest checkout: name, email and shipping address, straight to ShopSphere."""
+    try:
+        co = checkout_service.set_guest_details(db, user.user_id, checkout_id, **req.model_dump())
+    except checkout_service.CheckoutError as exc:
+        return _error(exc)
+    return checkout_service.snapshot(db, co)
+
+
+# ── Track Order (Phase 10): Order ID + email, for guests and customers ─────────
+
+def _tracked(db: Session, req: TrackRequest):
+    order = order_service.find_for_tracking(db, req.order_id, req.email)
+    if order is None:
+        return None, JSONResponse(status_code=404, content={"detail": {
+            "code": "ORDER_NOT_FOUND", "message": order_service.NOT_FOUND}})
+    return order, None
+
+
+@router.post("/api/orders/track")
+def track_order(req: TrackRequest, db: Session = Depends(get_db)):
+    order, err = _tracked(db, req)
+    return err or order_service.tracking_view(db, order)
+
+
+@router.post("/api/orders/track/email")
+def track_order_email(req: TrackRequest, db: Session = Depends(get_db)):
+    """The order's confirmation email from the demo outbox (same Order ID + email check)."""
+    order, err = _tracked(db, req)
+    if err:
+        return err
+    return notifications.confirmation_for(db, order) or JSONResponse(status_code=404, content={"detail": {
+        "code": "NO_EMAIL", "message": "No confirmation email was sent for this order."}})
+
+
+@router.post("/api/orders/track/advance")
+def track_order_advance(req: TrackRequest, db: Session = Depends(get_db)):
+    """Demo control: move the simulated shipment to its next step."""
+    order, err = _tracked(db, req)
+    if err:
+        return err
+    shipping.advance(db, order)
+    return order_service.tracking_view(db, order)

@@ -8,6 +8,7 @@ delivery, address, card) but never sends amounts; confirm() charges exactly
 what this module last calculated and hashed.
 """
 import hashlib
+import re
 import json
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -15,7 +16,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from backend.db.schema import Address, CartItem, Checkout, PaymentMethod, Product, ProductVariant
+from backend.db.schema import Address, CartItem, Checkout, PaymentMethod, Product, ProductVariant, User, Wallet
 from backend.payment.policy import TAX_RATE
 from backend.shop.profile import address_dict, card_dict, list_addresses, list_cards
 
@@ -49,7 +50,8 @@ def _hash(co: Checkout, lines: list[dict]) -> str:
         "checkout_id": co.checkout_id, "user_id": co.user_id,
         "lines": [[ln["sku"], ln["quantity"], ln["unit_price"]] for ln in lines],
         "address_id": co.address_id, "delivery_method": co.delivery_method,
-        "payment_method_id": co.payment_method_id,
+        "payment_method_id": co.payment_method_id, "pay_with": co.pay_with or "card",
+        "guest_email": co.guest_email,
         "subtotal": co.subtotal, "tax": co.tax, "shipping": co.shipping, "total": co.total, "currency": co.currency,
     }
     return hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
@@ -79,6 +81,12 @@ def _recalculate(db: Session, co: Checkout) -> list[dict]:
     co.delivery_date = datetime.combine(delivery_dates(std_days)[co.delivery_method], datetime.min.time())
     co.checkout_hash = _hash(co, lines)
     return issues
+
+
+def is_guest_owner(db: Session, user_id: str) -> bool:
+    """A checkout owned by an anonymous visitor session is a guest checkout."""
+    u = db.query(User).filter_by(user_id=user_id).first()
+    return bool(u and u.is_guest)
 
 
 def create_checkout(db: Session, user_id: str, line_ids: list[str],
@@ -114,7 +122,7 @@ def create_checkout(db: Session, user_id: str, line_ids: list[str],
         lines_json=json.dumps(lines), cart_item_ids=",".join(it.cart_item_id for it in items),
         address_id=addresses[0].address_id if addresses else None,
         payment_method_id=cards[0].payment_method_id if cards else None,
-        delivery_method="standard", currency="USD",
+        delivery_method="standard", currency="USD", pay_with="card",
     )
     _recalculate(db, co)
     db.add(co)
@@ -131,6 +139,7 @@ def get_checkout(db: Session, user_id: str, checkout_id: str) -> Checkout:
 
 def update_checkout(db: Session, user_id: str, checkout_id: str, *, delivery_method: Optional[str] = None,
                     address_id: Optional[str] = None, payment_method_id: Optional[str] = None,
+                    pay_with: Optional[str] = None,
                     quantities: Optional[dict[str, int]] = None) -> Checkout:
     """Changes made on the review screen. Only an open checkout can change."""
     co = get_checkout(db, user_id, checkout_id)
@@ -148,6 +157,14 @@ def update_checkout(db: Session, user_id: str, checkout_id: str, *, delivery_met
         if not db.query(PaymentMethod).filter_by(payment_method_id=payment_method_id, user_id=user_id).first():
             raise CheckoutError("UNKNOWN_CARD", "That card isn't saved on your account.", 404)
         co.payment_method_id = payment_method_id
+        co.pay_with = "card"
+    if pay_with is not None:
+        if pay_with not in ("card", "wallet"):
+            raise CheckoutError("INVALID_PAYMENT", "Pay with a card or your ShopSphere Wallet.")
+        if pay_with == "wallet" and (is_guest_owner(db, user_id)
+                                     or not db.query(Wallet).filter_by(user_id=user_id).first()):
+            raise CheckoutError("WALLET_UNAVAILABLE", "The ShopSphere Wallet is for customers with an account.", 403)
+        co.pay_with = pay_with
     if quantities:
         lines = _lines(co)
         by_id = {ln["line_id"]: ln for ln in lines}
@@ -172,6 +189,33 @@ def reassign(db: Session, user_id: str, field: str, old_id: str, new_id: Optiona
     db.commit()
 
 
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}$")
+
+
+def set_guest_details(db: Session, user_id: str, checkout_id: str, *, full_name: str, email: str, line1: str,
+                      city: str, state: str, postal_code: str, line2: Optional[str] = None) -> Checkout:
+    """Guest checkout: who to ship to and where to send the confirmation. The
+    address is kept for this order only; no customer account is created."""
+    from backend.shop import profile
+    co = get_checkout(db, user_id, checkout_id)
+    if co.status != "open":
+        raise CheckoutError("CHECKOUT_CLOSED", f"This checkout is {co.status} and can't be changed.", 409)
+    if not is_guest_owner(db, user_id):
+        raise CheckoutError("NOT_GUEST", "You're logged in, so this order uses your account details.", 400)
+    email = (email or "").strip().lower()
+    if not _EMAIL.match(email) or len(email) > 255:
+        raise CheckoutError("INVALID_EMAIL", "Please enter a valid email address, like you@example.com.")
+    try:
+        address = profile.add_address(db, user_id, full_name=full_name, line1=line1, line2=line2, city=city,
+                                      state=state, postal_code=postal_code, label="Shipping", make_default=True)
+    except profile.ProfileError as exc:
+        raise CheckoutError(exc.code, exc.message, exc.status)
+    co.address_id, co.guest_email, co.guest_name = address.address_id, email, address.full_name
+    _recalculate(db, co)
+    db.commit()
+    return co
+
+
 def cancel_checkout(db: Session, user_id: str, checkout_id: str) -> Checkout:
     co = get_checkout(db, user_id, checkout_id)
     if co.status in ("open", "consented"):
@@ -194,11 +238,21 @@ def snapshot(db: Session, co: Checkout, issues: Optional[list[dict]] = None) -> 
                   for ln in lines if ln.get("stock", 0) < ln["quantity"]]
     address = db.query(Address).filter_by(address_id=co.address_id).first() if co.address_id else None
     card = db.query(PaymentMethod).filter_by(payment_method_id=co.payment_method_id).first() if co.payment_method_id else None
+    guest = is_guest_owner(db, co.user_id)
+    wallet = None if guest else db.query(Wallet).filter_by(user_id=co.user_id).first()
+    on_wallet = (co.pay_with == "wallet") and wallet is not None
     problems = list(issues)
+    if guest and not co.guest_email:
+        problems.append({"code": "NO_GUEST_DETAILS", "message": "Add your name, email and shipping address."})
     if not address:
         problems.append({"code": "NO_ADDRESS", "message": "Add a shipping address."})
-    if not card:
+    if on_wallet:
+        if wallet.balance < co.total:
+            problems.append({"code": "INSUFFICIENT_WALLET", "message": "Your wallet balance doesn't cover this order."})
+    elif not card:
         problems.append({"code": "NO_PAYMENT_METHOD", "message": "Add a payment card."})
+    wallet_view = ({"payment_method_id": "wallet", "type": "wallet", "display": "ShopSphere Wallet",
+                    "balance": round(wallet.balance, 2), "enough": wallet.balance >= co.total} if wallet else None)
     std_days = max((ln.get("delivery_days") or 5) for ln in lines)
     dates = delivery_dates(std_days)
     return {
@@ -218,9 +272,12 @@ def snapshot(db: Session, co: Checkout, issues: Optional[list[dict]] = None) -> 
             ],
         },
         "address": address_dict(address) if address else None,
-        "payment_method": card_dict(card) if card else None,
-        "saved_addresses": [address_dict(a) for a in list_addresses(db, co.user_id)],
-        "saved_payment_methods": [card_dict(c) for c in list_cards(db, co.user_id)],
+        "payment_method": wallet_view if on_wallet else (card_dict(card) if card else None),
+        "pay_with": "wallet" if on_wallet else "card",
+        "wallet": wallet_view,
+        "guest": {"email": co.guest_email, "name": co.guest_name} if guest else None,
+        "saved_addresses": [] if guest else [address_dict(a) for a in list_addresses(db, co.user_id)],
+        "saved_payment_methods": [] if guest else [card_dict(c) for c in list_cards(db, co.user_id)],
         "issues": problems,
         "ready": not problems,
         "checkout_hash": co.checkout_hash,

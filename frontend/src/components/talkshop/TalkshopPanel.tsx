@@ -206,12 +206,13 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
             return <QuickReplies key={i} choices={ev.choices} active={live && !settled} onPick={pick} />;
           }
           case "order_confirmed":
-            return <OrderConfirmedCard key={i} order={ev.order} />;
+            return <OrderConfirmedCard key={i} order={ev.order} email={ev.email} />;
           case "checkout_details_needed":
-            return <SecureDetailsCard key={i} needs={ev.needs} onAct={act}
+            return <SecureDetailsCard key={i} checkoutId={ev.checkout_id} needs={ev.needs} guest={ev.guest} wallet={ev.wallet} onAct={act}
               active={it.index === lastDetails && stage === "CHECKOUT_DETAILS" && !busy} />;
           case "login_required":
-            return <SignInCard key={i} active={it.index === lastLogin && lastReview < it.index} />;
+            return <SignInCard key={i} active={it.index === lastLogin && lastReview < it.index && lastDetails < it.index}
+              onGuest={() => act({ type: "checkout", guest: true, label: "Continue as guest" })} />;
           default:
             return null;
         }

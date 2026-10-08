@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CreditCard, Lock, MapPin, ShieldCheck, Trash2, Truck } from "lucide-react";
-import { money, niceDate, shop, ShopError, type Checkout } from "../../api/shop";
-import { AddressForm, CardForm } from "../../components/shopsphere/CheckoutForms";
+import { CreditCard, Lock, MapPin, ShieldCheck, Trash2, Truck, UserRound, Wallet } from "lucide-react";
+import { money, niceDate, shop, ShopError, type Card, type Checkout } from "../../api/shop";
+import { AddressForm, CardForm, GuestDetailsForm } from "../../components/shopsphere/CheckoutForms";
 import { Button, Empty, Notice, Spinner, Stepper, cx } from "../../components/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useCart } from "../../store/cart";
@@ -62,6 +62,7 @@ export default function CheckoutPage() {
   const [co, setCo] = useState<Checkout | null | undefined>(undefined);
   const [editing, setEditing] = useState<"address" | "card" | null>(null);
   const [adding, setAdding] = useState<"address" | "card" | null>(null);
+  const [editingGuest, setEditingGuest] = useState(false);
   const [busy, setBusy] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +94,12 @@ export default function CheckoutPage() {
       const res = await shop.confirm(checkoutId);   // consent: this click IS the customer's go-ahead
       if (res.status === "authorized") {
         await refresh();
-        navigate(`/orders/${res.order.order_id}?placed=1`);
+        if (co?.guest) {
+          // A guest has no account and no My Orders: confirmation + tracking by Order ID and email.
+          navigate("/track", { state: { orderId: res.order.order_id, email: res.confirmation_email ?? co.guest.email, placed: true } });
+        } else {
+          navigate(`/orders/${res.order.order_id}?placed=1`);
+        }
         return;
       }
       setCo(res.checkout);
@@ -118,7 +124,13 @@ export default function CheckoutPage() {
     </Empty>
   );
 
-  const missing = co.issues.filter((i) => i.code === "NO_ADDRESS" || i.code === "NO_PAYMENT_METHOD").map((i) => i.message);
+  const missing = co.issues.filter((i) => ["NO_GUEST_DETAILS", "NO_ADDRESS", "NO_PAYMENT_METHOD", "INSUFFICIENT_WALLET"].includes(i.code))
+    .map((i) => i.message);
+  const guest = co.guest;
+  const onWallet = co.pay_with === "wallet";
+  const card = onWallet ? null : (co.payment_method as Card | null);
+  const canChangePayment = co.saved_payment_methods.length > 0 || !!co.wallet;
+  const expiry = (c: Card) => `Expires ${String(c.exp_month).padStart(2, "0")}/${String(c.exp_year).slice(-2)}`;
   const stock = co.issues.filter((i) => i.code === "OUT_OF_STOCK");
 
   return (
@@ -130,6 +142,24 @@ export default function CheckoutPage() {
 
       <div className="mt-8 grid lg:grid-cols-[1fr_380px] gap-8 items-start">
         <div className="flex flex-col gap-5">
+          {guest ? (
+            <Section n={1} title="Your details" icon={<UserRound size={16} />}
+              action={guest.email && !editingGuest && (
+                <button onClick={() => setEditingGuest(true)} className="text-sm font-medium underline">Edit</button>)}>
+              <p className="text-sm text-muted -mt-1 mb-4">
+                Checking out as a guest. No account is created; your confirmation goes to this email.
+              </p>
+              {!guest.email || editingGuest ? (
+                <GuestDetailsForm checkoutId={co.checkout_id} initial={guest}
+                  onCancel={guest.email ? () => setEditingGuest(false) : undefined}
+                  onSaved={(fresh) => { setCo(fresh); setEditingGuest(false); }} />
+              ) : (
+                <p className="text-sm"><span className="font-medium">{guest.name}</span>
+                  <span className="block text-muted">{guest.email}</span>
+                  <span className="block text-muted">{co.address?.display}</span></p>
+              )}
+            </Section>
+          ) : (
           <Section n={1} title="Shipping address" icon={<MapPin size={16} />}
             action={co.saved_addresses.length > 0 && !adding && (
               <button onClick={() => setEditing(editing === "address" ? null : "address")} className="text-sm font-medium underline">
@@ -156,6 +186,7 @@ export default function CheckoutPage() {
               <AddressForm defaultName={user?.name} onSaved={(a) => change({ address_id: a.address_id })} />
             )}
           </Section>
+          )}
 
           <Section n={2} title="Delivery" icon={<Truck size={16} />}>
             <div className="grid sm:grid-cols-2 gap-2">
@@ -169,32 +200,51 @@ export default function CheckoutPage() {
           </Section>
 
           <Section n={3} title="Payment" icon={<CreditCard size={16} />}
-            action={co.saved_payment_methods.length > 0 && !adding && (
-              <button onClick={() => setEditing(editing === "card" ? null : "card")} className="text-sm font-medium underline">
+            action={canChangePayment && (co.payment_method || adding === "card") && (
+              <button onClick={() => { setAdding(null); setEditing(editing === "card" ? null : "card"); }} className="text-sm font-medium underline">
                 {editing === "card" ? "Done" : "Change"}
               </button>)}>
             {adding === "card" ? (
-              <CardForm onCancel={co.saved_payment_methods.length ? () => setAdding(null) : undefined}
+              <CardForm allowSave={!guest} onCancel={() => setAdding(null)}
                 onSaved={(c) => { setAdding(null); change({ payment_method_id: c.payment_method_id }); }} />
             ) : editing === "card" ? (
               <div className="flex flex-col gap-2">
+                {co.wallet && (
+                  <Radio checked={onWallet} onClick={() => change({ pay_with: "wallet" })}>
+                    <span className="flex items-center gap-2 text-sm font-medium"><Wallet size={15} /> ShopSphere Wallet</span>
+                    <span className={cx("block text-sm", co.wallet.enough ? "text-muted" : "text-bad")}>
+                      Balance {money(co.wallet.balance)}{co.wallet.enough ? "" : " · not enough for this order"}
+                    </span>
+                  </Radio>
+                )}
                 {co.saved_payment_methods.map((c) => (
                   <div key={c.payment_method_id} className="flex items-center gap-1">
-                    <Radio checked={c.payment_method_id === co.payment_method?.payment_method_id}
+                    <Radio checked={!onWallet && c.payment_method_id === co.payment_method?.payment_method_id}
                       onClick={() => change({ payment_method_id: c.payment_method_id })}>
                       <span className="text-sm font-medium">{c.display}</span>
-                      <span className="block text-sm text-muted">Expires {String(c.exp_month).padStart(2, "0")}/{String(c.exp_year).slice(-2)}</span>
+                      <span className="block text-sm text-muted">{expiry(c)}</span>
                     </Radio>
                     <RemoveSaved what={`card ${c.display}`} onRemove={() => removeSaved("card", c.payment_method_id)} />
                   </div>
                 ))}
                 <button onClick={() => setAdding("card")} className="self-start text-sm font-medium mt-1 hover:underline">+ Add a new card</button>
               </div>
-            ) : co.payment_method ? (
-              <p className="text-sm"><span className="font-medium">{co.payment_method.display}</span>
-                <span className="block text-muted">Expires {String(co.payment_method.exp_month).padStart(2, "0")}/{String(co.payment_method.exp_year).slice(-2)}</span></p>
+            ) : onWallet && co.wallet ? (
+              <p className="text-sm"><span className="flex items-center gap-2 font-medium"><Wallet size={15} /> ShopSphere Wallet</span>
+                <span className="block text-muted">Balance {money(co.wallet.balance)}</span></p>
+            ) : card ? (
+              <p className="text-sm"><span className="font-medium">{card.display}</span>
+                <span className="block text-muted">{expiry(card)}</span></p>
             ) : (
-              <CardForm onSaved={(c) => change({ payment_method_id: c.payment_method_id })} />
+              <div className="flex flex-col gap-4">
+                <CardForm allowSave={!guest} onSaved={(c) => change({ payment_method_id: c.payment_method_id })} />
+                {co.wallet && (
+                  <button type="button" onClick={() => change({ pay_with: "wallet" })} disabled={!co.wallet.enough}
+                    className="self-start inline-flex items-center gap-2 text-sm font-medium hover:underline disabled:opacity-50 disabled:no-underline">
+                    <Wallet size={15} /> Or pay with your ShopSphere Wallet ({money(co.wallet.balance)} available)
+                  </button>
+                )}
+              </div>
             )}
           </Section>
 
@@ -238,7 +288,7 @@ export default function CheckoutPage() {
             <Lock size={15} /> Place order · {money(co.total)}
           </Button>
           <p className="flex items-start gap-2 text-xs text-muted">
-            <ShieldCheck size={14} className="shrink-0 mt-px" /> Your card is charged only when you place the order, after ShopSphere's payment security checks.
+            <ShieldCheck size={14} className="shrink-0 mt-px" /> You're charged only when you place the order, after ShopSphere's payment security checks.
           </p>
         </aside>
       </div>

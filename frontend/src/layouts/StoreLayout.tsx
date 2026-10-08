@@ -57,6 +57,7 @@ function StoreFooter() {
           <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted mb-3">Account</h4>
           <ul className="flex flex-col gap-2 text-sm">
             <li><Link to="/orders" className="hover:underline">My orders</Link></li>
+            <li><Link to="/track" className="hover:underline">Track order</Link></li>
             <li><Link to="/cart" className="hover:underline">Cart</Link></li>
           </ul>
         </div>

@@ -289,6 +289,18 @@ def _delivery_fields(order: Order, product: Optional[Product], cart_fallback: Op
     """Product info + time-based delivery simulation, shared by both order endpoints.
     cart_fallback is a CartItem snapshot used when the Product row is missing (e.g. external product IDs)."""
     fb = cart_fallback
+    if order.display_id:                       # ShopSphere order: the (simulated) shipment is the source
+        from backend.shop import shipping
+        confirmed = order.status == "confirmed"
+        return {
+            "product_title": product.name if product else None,
+            "product_category": product.category if product else None,
+            "product_image_url": product.image_url if product else None,
+            "tracking_number": order.tracking_number,
+            "delivery_status": shipping.summary(order) if confirmed else None,
+            "estimated_delivery": order.delivery_date.isoformat() if confirmed and order.delivery_date else None,
+            "shipment": shipping.view(order) if confirmed else None,
+        }
     delivery = trackit.compute_delivery_status(
         order.created_at,
         product.delivery_days if product else (fb.delivery_days if fb else None),

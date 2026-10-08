@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CheckCircle2, ChevronRight, CreditCard, MapPin, Package, Truck } from "lucide-react";
-import { money, niceDate, shop, type Address, type OrderLine } from "../../api/shop";
+import { money, niceDate, shop, type Address, type OrderLine, type Shipment } from "../../api/shop";
+import { ShipmentProgress } from "../../components/shopsphere/ShipmentProgress";
 import { Badge, Empty, Spinner } from "../../components/ui";
 import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 
 interface OrderView {
   id: string; created_at: string | null; total: number; delivery_date: string | null; delivery_method: string | null;
   lines: OrderLine[]; ship_to: Address | null; payment: { display: string } | null; tracking_number: string | null;
-  subtotal: number; tax: number; shipping: number; delivery_status: string | null;
+  subtotal: number; tax: number; shipping: number; delivery_status: string | null; shipment: Shipment | null;
 }
 
 function toView(o: Record<string, unknown>): OrderView | null {
@@ -20,6 +21,7 @@ function toView(o: Record<string, unknown>): OrderView | null {
     payment: (o.payment as { display: string }) ?? null, tracking_number: (o.tracking_number as string) ?? null,
     subtotal: Number(o.subtotal ?? 0), tax: Number(o.tax ?? 0), shipping: Number(o.shipping ?? 0),
     delivery_status: (o.delivery_status as string) ?? null,
+    shipment: (o.shipment as Shipment) ?? null,
   };
 }
 
@@ -121,6 +123,13 @@ export function OrderDetailPage() {
           <p>{order.payment?.display ?? "—"}</p><p className="text-good mt-1">Authorized</p>
         </div>
       </div>
+
+      {order.shipment && (
+        <div className="mt-6 rounded-3xl border border-line p-6">
+          <h2 className="font-semibold mb-4">Shipping progress</h2>
+          <ShipmentProgress shipment={order.shipment} />
+        </div>
+      )}
 
       <div className="mt-6 rounded-3xl border border-line p-6">
         <ul className="divide-y divide-line">

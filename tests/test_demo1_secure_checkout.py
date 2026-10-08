@@ -85,7 +85,7 @@ def assert_no_raw_card(*blobs):
 
 def test_new_customer_gets_secure_forms_not_the_review(client, auth_headers):
     sid, ev = to_checkout(client, auth_headers)
-    assert of(ev, "checkout_details_needed")[0]["needs"] == {"address": True, "payment": True}
+    assert of(ev, "checkout_details_needed")[0]["needs"] == {"guest": False, "address": True, "payment": True}
     assert not of(ev, "checkout_ready") and stage(ev) == "CHECKOUT_DETAILS"
     co_id = of(ev, "checkout_details_needed")[0]["checkout_id"]
     ev = turn(client, auth_headers, sid, action={"type": "go_ahead", "checkout_id": co_id})
@@ -97,7 +97,7 @@ def test_address_then_card_resume_to_review_and_pay(client, auth_headers, llm):
     addr = client.post("/api/me/addresses", json=HOME, headers=auth_headers).json()
     ev = turn(client, auth_headers, sid, action={"type": "details_added", "address_id": addr["address_id"],
                                                  "label": "Shipping address added"})
-    assert of(ev, "checkout_details_needed")[0]["needs"] == {"address": False, "payment": True}
+    assert of(ev, "checkout_details_needed")[0]["needs"] == {"guest": False, "address": False, "payment": True}
     assert "Address saved" in of(ev, "message")[0]["text"] and stage(ev) == "CHECKOUT_DETAILS"
 
     card = client.post("/api/me/payment-methods", json=VISA, headers=auth_headers).json()
@@ -117,7 +117,7 @@ def test_address_then_card_resume_to_review_and_pay(client, auth_headers, llm):
 def test_only_the_card_missing(client, auth_headers):
     client.post("/api/me/addresses", json=HOME, headers=auth_headers)
     _, ev = to_checkout(client, auth_headers)
-    assert of(ev, "checkout_details_needed")[0]["needs"] == {"address": False, "payment": True}
+    assert of(ev, "checkout_details_needed")[0]["needs"] == {"guest": False, "address": False, "payment": True}
     assert "Secure Payment" in of(ev, "message")[0]["text"]
 
 

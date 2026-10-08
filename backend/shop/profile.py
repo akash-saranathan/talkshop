@@ -35,6 +35,7 @@ def card_dict(c: PaymentMethod) -> dict:
         "payment_method_id": c.payment_method_id, "brand": c.brand, "last4": c.last4,
         "exp_month": c.exp_month, "exp_year": c.exp_year, "cardholder_name": c.cardholder_name,
         "is_default": bool(c.is_default), "display": f"{c.brand} •••• {c.last4}",
+        "saved": c.saved is not False,
     }
 
 
@@ -44,7 +45,8 @@ def list_addresses(db: Session, user_id: str) -> list[Address]:
 
 
 def list_cards(db: Session, user_id: str) -> list[PaymentMethod]:
-    return (db.query(PaymentMethod).filter_by(user_id=user_id)
+    """Saved cards only — a card tokenized for one order isn't listed (Phase 10)."""
+    return (db.query(PaymentMethod).filter_by(user_id=user_id).filter(PaymentMethod.saved.isnot(False))
             .order_by(PaymentMethod.is_default.desc(), PaymentMethod.id.asc()).all())
 
 
@@ -54,7 +56,10 @@ def _delete_saved(db: Session, model, id_field: str, user_id: str, item_id: str,
         raise missing
     db.delete(item)
     db.flush()
-    rest = db.query(model).filter_by(user_id=user_id).order_by(model.is_default.desc(), model.id.asc()).all()
+    rest = db.query(model).filter_by(user_id=user_id)
+    if model is PaymentMethod:
+        rest = rest.filter(PaymentMethod.saved.isnot(False))     # one-time cards never become the default
+    rest = rest.order_by(model.is_default.desc(), model.id.asc()).all()
     if rest and not any(r.is_default for r in rest):
         rest[0].is_default = True                     # the next saved one becomes the default
     db.commit()
@@ -123,7 +128,9 @@ def _brand(number: str) -> str:
 
 
 def add_card(db: Session, user_id: str, *, number: str, exp_month: int, exp_year: int, cvc: str,
-             cardholder_name: str, make_default: bool = False) -> PaymentMethod:
+             cardholder_name: str, make_default: bool = False, save: bool = True) -> PaymentMethod:
+    """Tokenize a card. save=False: used for one order only, never listed as a
+    saved card (guests, or a customer who didn't tick "Save this card")."""
     digits = re.sub(r"\D", "", number or "")
     if not 13 <= len(digits) <= 19 or not _luhn_ok(digits):
         raise ProfileError("INVALID_CARD_NUMBER", "That card number doesn't look right.")
@@ -136,15 +143,16 @@ def add_card(db: Session, user_id: str, *, number: str, exp_month: int, exp_year
         raise ProfileError("INVALID_CVC", "CVC should be 3 or 4 digits.")
     if not (cardholder_name or "").strip():
         raise ProfileError("MISSING_FIELD", "Please enter the name on the card.")
-    first = not list_cards(db, user_id)
-    if make_default or first:
+    first = save and not list_cards(db, user_id)
+    make_default = save and (make_default or first)
+    if make_default:
         db.query(PaymentMethod).filter_by(user_id=user_id).update({"is_default": False})
     card = PaymentMethod(
         payment_method_id=f"PM_{uuid.uuid4().hex[:10].upper()}", user_id=user_id,
         brand=_brand(digits), last4=digits[-4:], exp_month=exp_month, exp_year=exp_year,
         cardholder_name=cardholder_name.strip(),
         token_ref=f"tok_{uuid.uuid4().hex}",    # stand-in for the processor's vault token
-        behaviour="approve", is_default=make_default or first,
+        behaviour="approve", is_default=make_default, saved=save,
     )
     db.add(card)
     db.commit()
