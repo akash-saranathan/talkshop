@@ -414,7 +414,9 @@ function SetupCard() {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
       className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card px-5 py-4 flex items-center gap-3 max-w-sm">
-      <Loader size={18} className="animate-spin text-[var(--color-primary)] shrink-0" />
+      <span className="w-9 h-9 rounded-full bg-[var(--color-primary)]/10 grid place-items-center shrink-0">
+        <Loader size={16} className="animate-spin text-[var(--color-primary)]" />
+      </span>
       <span className="text-sm text-[var(--color-text-muted)]">Asking the merchant for a checkout…</span>
     </motion.div>
   );

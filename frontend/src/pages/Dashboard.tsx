@@ -272,8 +272,11 @@ export default function Dashboard() {
 
         {/* Orders table */}
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-sm text-[var(--color-text-muted)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-            <Loader size={16} className="animate-spin" /> Loading orders...
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-[var(--color-text-muted)] rounded-2xl border border-[var(--color-border)] shadow-card bg-[var(--color-surface)]">
+            <span className="w-7 h-7 rounded-full bg-[var(--color-primary)]/10 grid place-items-center">
+              <Loader size={14} className="animate-spin text-[var(--color-primary)]" />
+            </span>
+            Loading orders...
           </div>
         ) : error ? (
           <div className="py-16 text-center text-sm text-rose-500 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">

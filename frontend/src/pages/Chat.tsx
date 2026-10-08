@@ -1809,9 +1809,9 @@ export default function Chat() {
                     {/* Typing indicator — shown until the first step event arrives */}
                     {isActiveTurn && turn.steps.length === 0 && (
                       <div className="flex items-center gap-1.5 h-5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-muted)] animate-bounce [animation-delay:-0.3s]" />
-                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-muted)] animate-bounce [animation-delay:-0.15s]" />
-                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-muted)] animate-bounce" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-accent)] animate-bounce [animation-delay:-0.3s]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-accent)] animate-bounce [animation-delay:-0.15s]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-accent)] animate-bounce" />
                       </div>
                     )}
 

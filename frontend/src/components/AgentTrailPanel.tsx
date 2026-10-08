@@ -215,7 +215,7 @@ function PipelineNode({
       className={`flex flex-col items-center gap-1 group cursor-pointer outline-none transition-transform hover:scale-105 ${selected ? "scale-105" : ""}`}
       style={{ minWidth: 52 }}
     >
-      <div className={`relative w-10 h-10 rounded-xl ring-2 flex items-center justify-center transition-all ${ringColor} ${bgColor} ${selected ? "shadow-lg" : ""}`}>
+      <div className={`relative w-10 h-10 rounded-xl ring-2 flex items-center justify-center transition-all ${ringColor} ${bgColor} ${selected ? "shadow-raised" : "shadow-card"}`}>
         {isRunning && (
           <span className="absolute inset-0 rounded-xl ring-2 ring-amber-400/50 animate-ping" />
         )}
@@ -423,7 +423,7 @@ export default function AgentTrailPanel({
 
               {/* Key-value output */}
               {outputRows.length > 0 && (
-                <div className="flex flex-col gap-0 mb-3 rounded-lg overflow-hidden border border-[var(--color-border)]">
+                <div className="flex flex-col gap-0 mb-3 rounded-lg overflow-hidden border border-[var(--color-primary)]/15 shadow-card">
                   {outputRows.map((row, i) => (
                     <div key={i} className={`flex items-center gap-2 px-3 py-1.5 ${i % 2 === 0 ? "bg-[var(--color-bg)]" : "bg-[var(--color-surface)]"}`}>
                       <span className="text-[10px] font-semibold text-[var(--color-text-muted)] w-20 shrink-0">{row.label}</span>

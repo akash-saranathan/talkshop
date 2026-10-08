@@ -79,7 +79,10 @@ export default function OrdersPanel({ collapsed, onToggleCollapse, width }: Prop
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-8 text-xs text-[var(--color-text-muted)]">
-          <Loader size={14} className="animate-spin" /> Loading...
+          <span className="w-6 h-6 rounded-full bg-[var(--color-primary)]/10 grid place-items-center">
+            <Loader size={13} className="animate-spin text-[var(--color-primary)]" />
+          </span>
+          Loading...
         </div>
       ) : orders.length === 0 ? (
         <p className="text-xs text-[var(--color-text-muted)] py-4 text-center">
@@ -93,7 +96,7 @@ export default function OrdersPanel({ collapsed, onToggleCollapse, width }: Prop
             <button
               key={order.order_id}
               onClick={() => navigate(`/payment-result/${order.order_id}`)}
-              className="flex items-center gap-2.5 text-left rounded-xl border border-[var(--color-border)] p-2.5 hover:bg-[var(--color-bg)] transition-colors"
+              className="flex items-center gap-2.5 text-left rounded-xl border border-[var(--color-border)] shadow-card hover:shadow-card-hover hover:border-[var(--color-primary)]/30 p-2.5 transition-all"
             >
               {order.product_image_url && !imageErrors.has(order.order_id) ? (
                 <img
@@ -116,7 +119,9 @@ export default function OrdersPanel({ collapsed, onToggleCollapse, width }: Prop
                 </p>
               </div>
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${
-                order.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                order.status === "paid"
+                  ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
+                  : "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300"
               }`}>
                 {order.status === "paid" ? "✓" : "⛔"}
               </span>
