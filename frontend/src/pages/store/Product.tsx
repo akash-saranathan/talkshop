@@ -102,6 +102,15 @@ export default function ProductPage() {
               <span className="text-2xl font-semibold tabular-nums">{money(product.price)}</span>
               <Rating value={product.rating} count={product.review_count} size={15} />
             </div>
+            {product.member && (
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                {product.member.offers.map((o) => (
+                  <span key={o.offer_id} className="rounded-full bg-accent-soft text-accent px-2.5 py-1 text-xs font-semibold">
+                    Member offer: {o.title}</span>
+                ))}
+                <span className="text-xs text-muted">Earn {product.member.points.toLocaleString()} points · offers apply at checkout</span>
+              </div>
+            )}
           </div>
           <p className="text-ink-soft leading-relaxed">{product.description}</p>
 

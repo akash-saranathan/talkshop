@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CreditCard, Lock, MapPin, ShieldCheck, Trash2, Truck, UserRound, Wallet } from "lucide-react";
+import { BadgePercent, Bot, CreditCard, Fingerprint, Lock, MapPin, ShieldCheck, Trash2, Truck, UserRound, Wallet } from "lucide-react";
 import { money, niceDate, shop, ShopError, type Card, type Checkout } from "../../api/shop";
 import { AddressForm, CardForm, GuestDetailsForm } from "../../components/shopsphere/CheckoutForms";
 import { Button, Empty, Notice, Spinner, Stepper, cx } from "../../components/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useCart } from "../../store/cart";
+import { PasskeyCancelled, usePasskey } from "../../member/PasskeyContext";
+import { useMember } from "../../member/MemberContext";
 
 function Section({ n, title, icon, action, children }: { n: number; title: string; icon: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
@@ -58,6 +60,8 @@ export default function CheckoutPage() {
   const { checkoutId = "" } = useParams();
   const { user } = useAuth();
   const { refresh } = useCart();
+  const { approveAgentPayment, enrollAgentPay } = usePasskey();
+  const member = useMember();
   const navigate = useNavigate();
   const [co, setCo] = useState<Checkout | null | undefined>(undefined);
   const [editing, setEditing] = useState<"address" | "card" | null>(null);
@@ -91,7 +95,20 @@ export default function CheckoutPage() {
   const place = async () => {
     setPlacing(true); setError(null);
     try {
-      const res = await shop.confirm(checkoutId);   // consent: this click IS the customer's go-ahead
+      const path = co?.payment_path?.path;
+      if (path === "vic_setup_required") {
+        // Persona E: set up the agent token first (simulated passkey), then review again.
+        await enrollAgentPay(co!.payment_path!.card_account_id!, `Visa •••• ${co!.payment_path!.card?.last4}`);
+        setCo(await shop.checkout(checkoutId));
+        void member.refresh();
+        return;
+      }
+      // Visa path: this click creates the payment instruction for this exact order; the member
+      // then confirms it with the (simulated) passkey. Standard path: this click is the go-ahead.
+      const instructionId = path === "vic"
+        ? await approveAgentPayment(checkoutId, { amount: co!.total, card: (co!.payment_method as Card | null)?.display })
+        : undefined;
+      const res = await shop.confirm(checkoutId, instructionId);
       if (res.status === "authorized") {
         await refresh();
         if (co?.guest) {
@@ -105,9 +122,11 @@ export default function CheckoutPage() {
       setCo(res.checkout);
       setError(res.status === "order_failed" ? res.message : `Payment wasn't authorized: ${res.message} No order was created.`);
     } catch (e) {
-      setError(e instanceof ShopError ? e.message : "Couldn't place your order. Please try again.");
+      setError(e instanceof PasskeyCancelled || e instanceof ShopError ? e.message : "Couldn't place your order. Please try again.");
+      if (e instanceof ShopError) shop.checkout(checkoutId).then(setCo).catch(() => {});
     } finally {
       setPlacing(false);
+      void member.refresh();
     }
   };
 
@@ -233,8 +252,11 @@ export default function CheckoutPage() {
               <p className="text-sm"><span className="flex items-center gap-2 font-medium"><Wallet size={15} /> ShopSphere Wallet</span>
                 <span className="block text-muted">Balance {money(co.wallet.balance)}</span></p>
             ) : card ? (
-              <p className="text-sm"><span className="font-medium">{card.display}</span>
-                <span className="block text-muted">{expiry(card)}</span></p>
+              <div className="flex flex-col gap-3">
+                <p className="text-sm"><span className="font-medium">{card.display}</span>
+                  <span className="block text-muted">{expiry(card)}</span></p>
+                <PaymentPathNote co={co} />
+              </div>
             ) : (
               <div className="flex flex-col gap-4">
                 <CardForm allowSave={!guest} onSaved={(c) => change({ payment_method_id: c.payment_method_id })} />
@@ -277,6 +299,11 @@ export default function CheckoutPage() {
             <div className="flex justify-between"><span className="text-muted">Items</span><span className="tabular-nums">{money(co.subtotal)}</span></div>
             <div className="flex justify-between"><span className="text-muted">Delivery ({co.delivery.method === "express" ? "Express" : "Standard"})</span>
               <span className="tabular-nums">{co.shipping ? money(co.shipping) : "Free"}</span></div>
+            {co.offer && (
+              <div className="flex justify-between gap-3"><span className="text-muted flex items-center gap-1.5"><BadgePercent size={14} className="text-accent" />
+                Member offer · {co.offer.title}</span>
+                <span className="tabular-nums text-accent shrink-0">−{money(co.offer.discount)}</span></div>
+            )}
             {co.points_discount > 0 && (
               <div className="flex justify-between"><span className="text-muted">Points ({co.points?.used.toLocaleString()})</span>
                 <span className="tabular-nums text-good">−{money(co.points_discount)}</span></div>
@@ -293,7 +320,11 @@ export default function CheckoutPage() {
                 <button type="button" disabled={busy} onClick={() => change({ points_used: co.points!.max_usable })}
                   className="self-start font-medium underline">Use {co.points.max_usable.toLocaleString()} points (−{money(co.points.max_usable * co.points.value_per_point)})</button>
               ) : <p className="text-muted">100 points = $1 off. Keep shopping to earn more.</p>}
-              <p className="text-muted">You'll earn {co.earn_points.toLocaleString()} points with this order.</p>
+              <p className="text-muted">You'll earn {co.earn_points.toLocaleString()} points with this order
+                {co.bonus_points?.length ? ` (incl. ${co.bonus_points.reduce((n, b) => n + b.points, 0).toLocaleString()} bonus)` : ""}.</p>
+              {co.cashback?.map((c) => (
+                <p key={c.offer_id} className="text-good">+{money(c.amount)} cashback after payment (simulated statement credit)</p>
+              ))}
             </div>
           ) : guest && (
             <p className="text-sm text-muted">Create a ShopSphere account to earn {co.earn_points.toLocaleString()} points on orders like this.</p>
@@ -304,13 +335,33 @@ export default function CheckoutPage() {
           {stock.length > 0 && <Notice>{stock.map((s) => `${s.name}: only ${s.available} left.`).join(" ")}</Notice>}
           {error && <Notice>{error}</Notice>}
           <Button size="lg" onClick={place} loading={placing} disabled={!co.ready || busy}>
-            <Lock size={15} /> Place order · {money(co.total)}
+            {co.payment_path?.path === "vic" ? <><Fingerprint size={16} /> Approve and pay · {money(co.total)}</>
+              : co.payment_path?.path === "vic_setup_required" ? <><Bot size={16} /> Set up Visa agent payments</>
+              : <><Lock size={15} /> Place order · {money(co.total)}</>}
           </Button>
           <p className="flex items-start gap-2 text-xs text-muted">
-            <ShieldCheck size={14} className="shrink-0 mt-px" /> You're charged only when you place the order, after ShopSphere's payment security checks.
+            <ShieldCheck size={14} className="shrink-0 mt-px" />
+            {co.payment_path?.path === "vic"
+              ? "You'll confirm this exact order with a simulated passkey. Nothing is charged until you do."
+              : "You're charged only when you place the order, after ShopSphere's payment security checks."}
           </p>
         </aside>
       </div>
     </div>
   );
 }
+
+
+/** Which payment path the server chose for this card (Part 2), in plain words. */
+function PaymentPathNote({ co }: { co: Checkout }) {
+  const p = co.payment_path;
+  if (!p || p.path === "none" || p.path === "wallet") return null;
+  const text = p.path === "vic" ? "Visa agent payment: you approve with a passkey (simulated), then a one-time payment credential is used for this order only."
+    : p.path === "vic_setup_required" ? "To pay with this Visa through agent payments, set it up once with a simulated passkey, or choose another card."
+    : `Standard card payment through ShopSphere's payment gateway (${p.issuer ?? "simulated issuer"}).`;
+  return (
+    <p className={cx("rounded-xl px-3 py-2 text-xs leading-relaxed", p.path === "vic" ? "bg-good-soft text-good"
+      : p.path === "vic_setup_required" ? "bg-gold-soft text-gold" : "bg-panel text-muted")}>{text}</p>
+  );
+}
+

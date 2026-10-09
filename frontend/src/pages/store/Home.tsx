@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, RotateCcw, ShieldCheck, Truck } from "lucide-react";
+import { ArrowRight, BadgePercent, Bot, Gift, ShieldCheck, Sparkles } from "lucide-react";
 import { shop, type Product } from "../../api/shop";
+import { member as memberApi, type Offer } from "../../api/member";
 import ProductTile from "../../components/shopsphere/ProductTile";
 import TalkshopPicks from "../../components/talkshop/TalkshopPicks";
 import { useTalkshopShared } from "../../talkshop/TalkshopContext";
+import { useMember } from "../../member/MemberContext";
 import { Skeleton } from "../../components/ui";
+import { MemberCard, OfferCard } from "./Member";
 
 const DEPT_TILES = [
   { slug: "shoes", label: "Shoes", blurb: "Runners, sneakers & boots", query: { department: "shoes" } },
@@ -14,105 +17,137 @@ const DEPT_TILES = [
   { slug: "electronics", label: "Electronics", blurb: "Audio, phones & laptops", query: { department: "electronics" } },
 ];
 
+/** The member landing page (Part 2): every price, offer and point comes from the server. */
 export default function StoreHome() {
+  const { info } = useMember();
+  const m = info?.member;
+  const [offers, setOffers] = useState<Offer[] | null>(null);
+  const [recommended, setRecommended] = useState<Product[] | null>(null);
   const [arrivals, setArrivals] = useState<Product[] | null>(null);
-  const [hero, setHero] = useState<Product[]>([]);
   const [tiles, setTiles] = useState<Record<string, Product | undefined>>({});
   const { picks, selectedId } = useTalkshopShared();
   const pickIds = new Set(picks.map((p) => p.product_id));
 
   useEffect(() => {
+    memberApi.offers().then(setOffers).catch(() => setOffers([]));
+    shop.products({ category: "running_shoes", sort: "rating", limit: 4 }).then(setRecommended).catch(() => setRecommended([]));
     shop.products({ new: true, sort: "rating", limit: 8 }).then(setArrivals).catch(() => setArrivals([]));
-    shop.products({ category: "running_shoes", sort: "rating", limit: 3 }).then(setHero).catch(() => {});
     Promise.all(DEPT_TILES.map((t) => shop.products({ ...t.query, sort: "rating", limit: 1 })))
       .then((res) => setTiles(Object.fromEntries(DEPT_TILES.map((t, i) => [t.slug, res[i][0]]))))
       .catch(() => {});
   }, []);
 
+  const firstName = m?.name.split(" ")[0] ?? "there";
   return (
     <div>
       {/* Hero */}
       <section className="mx-auto max-w-[1400px] px-4 sm:px-6 pt-6">
-        <div className="relative overflow-hidden rounded-3xl bg-panel">
-          <div className="grid lg:grid-cols-2 items-center gap-8 p-8 sm:p-12 lg:p-16">
-            <div className="flex flex-col gap-5 max-w-lg">
-              <p className="text-xs font-semibold tracking-[0.25em] text-accent">SHOP NEW ARRIVALS</p>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
-                Fresh styles for every day.
+        <div className="relative overflow-hidden rounded-3xl bg-navy text-white">
+          <div className="absolute -right-24 -top-24 w-[460px] h-[460px] rounded-full bg-navy-2 opacity-70" aria-hidden />
+          <div className="relative grid lg:grid-cols-[1.25fr_1fr] items-center gap-10 p-7 sm:p-12 lg:p-14">
+            <div className="flex flex-col gap-5 max-w-xl">
+              <p className="text-[11px] font-semibold tracking-[0.24em] text-gold uppercase">Your cardmember marketplace</p>
+              <h1 className="text-[34px] sm:text-5xl font-semibold tracking-tight leading-[1.06]">
+                Welcome back, {firstName}. Member pricing is on.
               </h1>
-              <p className="text-muted text-[17px] leading-relaxed">
-                New running shoes, easy layers and everyday tech. Picked, priced and ready to ship.
+              <p className="text-white/75 text-[16px] sm:text-[17px] leading-relaxed">
+                Exclusive offers, rewards on every order, and Talkshop AI to find it for you. You approve every payment.
               </p>
-              <div className="flex flex-wrap gap-3 pt-2">
-                <Link to="/c/new" className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-btn text-btn-ink text-[15px] font-medium hover:opacity-90">
-                  Shop new arrivals <ArrowRight size={16} />
+              <div className="flex flex-wrap gap-3 pt-1">
+                <Link to="/offers" className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-white text-navy text-[15px] font-semibold hover:opacity-90">
+                  See your offers <ArrowRight size={16} />
                 </Link>
-                <Link to="/c/shoes" className="inline-flex items-center h-12 px-6 rounded-full border border-line-strong text-[15px] font-medium hover:border-ink">
-                  Explore shoes
+                <Link to="/c/shoes" className="inline-flex items-center h-12 px-6 rounded-full border border-white/30 text-[15px] font-medium hover:border-white">
+                  Shop the marketplace
                 </Link>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 h-[340px] sm:h-[420px]">
-              {hero.length ? hero.slice(0, 3).map((p, i) => (
-                <Link key={p.product_id} to={`/p/${p.product_id}`}
-                  className={`relative overflow-hidden rounded-2xl bg-photo ${i === 0 ? "row-span-2" : ""}`}>
-                  <img src={p.image_url ?? ""} alt={p.name} className="h-full w-full object-cover hover:scale-[1.03] transition-transform duration-500" />
-                  <span className="absolute left-3 bottom-3 rounded-full bg-canvas/90 backdrop-blur px-3 py-1 text-xs font-medium text-ink">{p.name}</span>
-                </Link>
-              )) : <><Skeleton className="row-span-2" /><Skeleton /><Skeleton /></>}
-            </div>
+            {m && <MemberCard info={info!} />}
           </div>
         </div>
       </section>
 
-      {/* Reassurance strip */}
+      {/* Member value strip */}
       <section className="mx-auto max-w-[1400px] px-4 sm:px-6 mt-6 grid sm:grid-cols-3 gap-3">
         {[
-          { icon: <Truck size={18} />, title: "Free standard delivery", text: "Express available for $9.99" },
-          { icon: <RotateCcw size={18} />, title: "30-day returns", text: "Easy, no-questions returns" },
-          { icon: <ShieldCheck size={18} />, title: "Secure checkout", text: "Every payment security-checked" },
+          { icon: <BadgePercent size={18} />, title: "Member offers", text: "Discounts applied automatically at checkout" },
+          { icon: <Gift size={18} />, title: `${(m?.rewards_balance ?? 0).toLocaleString()} points`, text: "100 points = $1 off products (demo points)" },
+          { icon: <ShieldCheck size={18} />, title: "You approve every payment", text: "Visa agent payments with passkey step-up (simulated)" },
         ].map((b) => (
           <div key={b.title} className="flex items-center gap-3 rounded-2xl border border-line px-5 py-4">
-            <span className="w-9 h-9 rounded-full bg-panel grid place-items-center text-ink">{b.icon}</span>
-            <div><p className="text-sm font-medium">{b.title}</p><p className="text-xs text-muted">{b.text}</p></div>
+            <span className="w-9 h-9 rounded-full bg-accent-soft text-accent grid place-items-center shrink-0">{b.icon}</span>
+            <div><p className="text-sm font-semibold">{b.title}</p><p className="text-xs text-muted">{b.text}</p></div>
           </div>
         ))}
       </section>
 
-      <TalkshopPicks />
-
-      {/* New arrivals */}
-      <section className="mx-auto max-w-[1400px] px-4 sm:px-6 mt-16">
-        <div className="flex items-end justify-between mb-6">
+      {/* Exclusive offers */}
+      <section className="mx-auto max-w-[1400px] px-4 sm:px-6 mt-14">
+        <div className="flex items-end justify-between mb-5">
           <div>
-            <p className="text-xs font-semibold tracking-[0.2em] text-muted">JUST IN</p>
-            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1">New arrivals</h2>
+            <p className="text-xs font-semibold tracking-[0.2em] text-gold uppercase">Exclusive to you</p>
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1">Member offers</h2>
           </div>
-          <Link to="/c/new" className="text-sm font-medium inline-flex items-center gap-1 hover:underline">View all <ArrowRight size={14} /></Link>
+          <Link to="/offers" className="text-sm font-medium inline-flex items-center gap-1 hover:underline">All offers <ArrowRight size={14} /></Link>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-10">
-          {arrivals ? arrivals.map((p, i) => <ProductTile key={p.product_id} product={p} priority={i < 4}
-              picked={pickIds.has(p.product_id)} selected={p.product_id === selectedId} />)
-            : Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="aspect-square" />)}
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {offers ? offers.map((o) => <OfferCard key={o.offer_id} offer={o} compact />)
+            : Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36" />)}
         </div>
       </section>
 
-      {/* Departments */}
+      <TalkshopPicks />
+
+      {/* Recommended */}
+      <section className="mx-auto max-w-[1400px] px-4 sm:px-6 mt-16">
+        <div className="flex items-end justify-between mb-6">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.2em] text-muted uppercase">Recommended for you</p>
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1">Top-rated runners, now 15% off</h2>
+          </div>
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-sm text-talk"><Bot size={15} /> Or just ask Talkshop AI</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-10">
+          {recommended ? recommended.map((p, i) => <ProductTile key={p.product_id} product={p} priority={i < 4}
+              picked={pickIds.has(p.product_id)} selected={p.product_id === selectedId} />)
+            : Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="aspect-square" />)}
+        </div>
+      </section>
+
+      {/* Categories */}
       <section className="mx-auto max-w-[1400px] px-4 sm:px-6 mt-20">
-        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-6">Shop by department</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-6">Shop by category</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
           {DEPT_TILES.map((t) => (
             <Link key={t.slug} to={`/c/${t.slug}`} className="group relative overflow-hidden rounded-2xl bg-photo aspect-[4/5]">
               {tiles[t.slug]?.image_url && (
                 <img src={tiles[t.slug]!.image_url!} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
               )}
-              <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/55 to-transparent text-white">
+              <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 bg-gradient-to-t from-navy/80 to-transparent text-white">
                 <p className="text-lg font-semibold">{t.label}</p>
                 <p className="text-sm text-white/80">{t.blurb}</p>
               </div>
             </Link>
           ))}
         </div>
+      </section>
+
+      {/* Featured */}
+      <section className="mx-auto max-w-[1400px] px-4 sm:px-6 mt-20">
+        <div className="flex items-end justify-between mb-6">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.2em] text-muted uppercase">Featured</p>
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1">New in the marketplace</h2>
+          </div>
+          <Link to="/c/new" className="text-sm font-medium inline-flex items-center gap-1 hover:underline">View all <ArrowRight size={14} /></Link>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-10">
+          {arrivals ? arrivals.map((p) => <ProductTile key={p.product_id} product={p}
+              picked={pickIds.has(p.product_id)} selected={p.product_id === selectedId} />)
+            : Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="aspect-square" />)}
+        </div>
+        <p className="mt-10 text-xs text-faint flex items-center gap-1.5"><Sparkles size={12} />
+          Offers and points shown on products are calculated by ShopSphere's servers for your membership.</p>
       </section>
     </div>
   );

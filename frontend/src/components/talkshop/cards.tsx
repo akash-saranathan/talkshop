@@ -3,7 +3,7 @@
  *  computed here. Only the latest card of a kind is interactive. */
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Check, CheckCircle2, CreditCard, Loader2, Lock, MapPin, ShieldCheck, ShoppingBag, Truck, UserRound, XCircle } from "lucide-react";
+import { ArrowUpRight, Bot, Check, CheckCircle2, CreditCard, Fingerprint, Loader2, Lock, MapPin, ShieldCheck, ShoppingBag, Truck, UserRound, XCircle } from "lucide-react";
 import type { OptionChoice, TalkAction, TalkEvent } from "../../api/talkshop";
 import { money, niceDate, type Cart, type Checkout, type Order, type Product, type TrackedOrder } from "../../api/shop";
 import { ShipmentProgress } from "../shopsphere/ShipmentProgress";
@@ -188,7 +188,7 @@ export function CheckoutCountdown({ onPick }: { onPick: (c: { value: string; lab
         </div>
       )}
       <p className="text-xs text-muted leading-snug">
-        {paused ? "Check out whenever you're ready." : "Want to keep shopping? Tap Keep shopping."} Nothing is charged until you tap GO AHEAD.
+        {paused ? "Check out whenever you're ready." : "Want to keep shopping? Tap Keep shopping."} Nothing is charged until you approve the order.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="talk" onClick={() => pick({ value: "checkout", label: "Checkout now" })}>Checkout now</Button>
@@ -200,7 +200,7 @@ export function CheckoutCountdown({ onPick }: { onPick: (c: { value: string; lab
 
 /** "Placing your order in 3s": fires once, then GO AHEAD is sent with
  *  consent "auto_countdown". Stop (or clicking into the chat box) cancels it. */
-function PayCountdown({ onFire, onStop }: { onFire: () => void; onStop: () => void }) {
+function PayCountdown({ onFire, onStop, vic }: { onFire: () => void; onStop: () => void; vic?: boolean }) {
   const [left, setLeft] = useState(AUTO_PAY_SECONDS);
   const fired = useRef(false);
   const [draining, setDraining] = useState(false);
@@ -223,9 +223,10 @@ function PayCountdown({ onFire, onStop }: { onFire: () => void; onStop: () => vo
   }, [onStop]);
   return (
     <div className="rounded-xl bg-talk-soft/40 border border-talk/30 p-3 flex flex-col gap-2">
-      <p className="sr-only" role="status">Placing your order automatically in {AUTO_PAY_SECONDS} seconds. Tap Stop to review first.</p>
+      <p className="sr-only" role="status">{vic ? "Opening your passkey approval" : "Placing your order automatically"} in {AUTO_PAY_SECONDS} seconds. Tap Stop to review first.</p>
       <div className="flex items-center justify-between gap-3">
-        <p aria-hidden="true" className="text-sm font-medium tabular-nums">Placing your order in {Math.max(left, 0)}s</p>
+        <p aria-hidden="true" className="text-sm font-medium tabular-nums">
+          {vic ? `Opening passkey approval in ${Math.max(left, 0)}s` : `Placing your order in ${Math.max(left, 0)}s`}</p>
         <Button size="sm" variant="secondary" onClick={onStop}>Stop</Button>
       </div>
       <div aria-hidden="true" className="h-1 rounded-full bg-line overflow-hidden">
@@ -256,9 +257,25 @@ function PointsLine({ co, live, busy, onUse }: { co: Checkout; live: boolean; bu
             Use {pts.max_usable.toLocaleString()} (−{money(pts.max_usable * pts.value_per_point)})</button>}
         </p>
       ) : null}
-      <p className="text-muted">You'll earn {co.earn_points.toLocaleString()} points with this order.</p>
+      <p className="text-muted">You'll earn {co.earn_points.toLocaleString()} points with this order
+        {co.bonus_points?.length ? ` (incl. ${co.bonus_points.reduce((n, b) => n + b.points, 0).toLocaleString()} bonus)` : ""}.</p>
+      {co.cashback?.map((c) => (
+        <p key={c.offer_id} className="text-good">+{money(c.amount)} cashback after payment (simulated statement credit)</p>
+      ))}
     </div>
   );
+}
+
+/** Which payment path the server chose, in one line (Part 2). */
+function PathNote({ co }: { co: Checkout }) {
+  const p = co.payment_path?.path;
+  if (p === "vic") return <p className="text-[11px] rounded-lg bg-good-soft text-good px-2.5 py-1.5 leading-snug">
+    Visa agent payment: you'll confirm with a simulated passkey; a one-time credential pays for this order only.</p>;
+  if (p === "vic_setup_required") return <p className="text-[11px] rounded-lg bg-gold-soft text-gold px-2.5 py-1.5 leading-snug">
+    Set up Visa agent payments first (simulated passkey), or choose another card.</p>;
+  if (p === "standard") return <p className="text-[11px] rounded-lg bg-panel text-muted px-2.5 py-1.5 leading-snug">
+    Standard card payment through ShopSphere's gateway (no Visa agent token).</p>;
+  return null;
 }
 
 /* ── Review your order (the consent gate) ──────────────────────────────── */
@@ -300,6 +317,7 @@ export function ReviewOrderCard({ checkout: co, active, busy, onAct, autoPay = f
 
         <div className="border-t border-line pt-3 flex flex-col gap-1 text-sm">
           <Row label="Product" value={money(co.subtotal)} />
+          {co.offer && <Row label={`Member offer · ${co.offer.title}`} value={`−${money(co.offer.discount)}`} />}
           {co.points_discount > 0 && <Row label={`Points (${co.points?.used.toLocaleString()})`} value={`−${money(co.points_discount)}`} />}
           <Row label={`Tax`} value={money(co.tax)} />
           {co.shipping > 0 && <Row label="Express delivery" value={money(co.shipping)} />}
@@ -339,6 +357,7 @@ export function ReviewOrderCard({ checkout: co, active, busy, onAct, autoPay = f
 
         <Detail icon={<CreditCard size={13} />} label="Payment" value={co.payment_method?.display}
           canChange={live && (co.saved_payment_methods.length > 0 || !!co.wallet)} onChange={() => { setStopped(true); setChanging(changing === "card" ? null : "card"); setAdding(null); }} />
+        {co.payment_method && <PathNote co={co} />}
         {live && changing === "card" && (
           <Choices items={[
               ...(co.wallet ? [{ id: "wallet", label: `ShopSphere Wallet · ${money(co.wallet.balance)}`, on: co.pay_with === "wallet" }] : []),
@@ -360,20 +379,23 @@ export function ReviewOrderCard({ checkout: co, active, busy, onAct, autoPay = f
         {live && (
           <>
             {counting && (
-              <PayCountdown onStop={() => setStopped(true)} onFire={() => {
+              <PayCountdown vic={co.payment_path?.path === "vic"} onStop={() => setStopped(true)} onFire={() => {
                 onAutoPay?.(co.checkout_id);
                 onAct({ type: "go_ahead", checkout_id: co.checkout_id, consent: "auto_countdown", label: "Placing order automatically" });
               }} />
             )}
             <Button size="lg" variant="talk" className="w-full tracking-wide" disabled={!co.ready || busy}
-              onClick={() => { onAutoPay?.(co.checkout_id); onAct({ type: "go_ahead", checkout_id: co.checkout_id, label: "GO AHEAD" }); }}>
-              <Lock size={15} /> GO AHEAD · {money(co.total)}
+              onClick={() => { onAutoPay?.(co.checkout_id); onAct({ type: "go_ahead", checkout_id: co.checkout_id, label: "Approve and pay" }); }}>
+              {co.payment_path?.path === "vic" ? <Fingerprint size={16} /> : <Lock size={15} />}
+              {co.payment_path?.path === "vic_setup_required" ? "Set up agent payments" : `Approve and pay · ${money(co.total)}`}
             </Button>
             <button type="button" disabled={busy} onClick={() => onAct({ type: "cancel_checkout", label: "Cancel order" })}
               className="text-xs text-muted hover:text-ink -mt-1">Cancel</button>
             <p className="flex items-start gap-1.5 text-[11px] text-muted leading-snug">
               <ShieldCheck size={13} className="shrink-0" />
-              {counting ? "Your order is placed automatically when the countdown ends. Tap Stop to review first." : "Nothing is charged until you tap GO AHEAD."} Talkshop never sees your card number.
+              {counting ? (co.payment_path?.path === "vic" ? "When the countdown ends your passkey approval opens; nothing is paid until you confirm. Tap Stop to review first."
+                : "Your order is placed automatically when the countdown ends. Tap Stop to review first.")
+                : co.payment_path?.path === "vic" ? "Nothing is charged until you approve and confirm with your passkey." : "Nothing is charged until you tap Approve and pay."} Talkshop never sees your card number.
             </p>
           </>
         )}
@@ -458,11 +480,13 @@ export function OrderConfirmedCard({ order, email }: { order: Order; email?: str
           </div>
         ))}
         <div className="flex flex-col gap-1 border-t border-line pt-3">
+          {order.offer && <Row label={`Member offer · ${order.offer.title}`} value={`−${money(order.offer.discount)}`} />}
           {!!order.points?.used && <Row label={`Points used (${order.points.used.toLocaleString()})`} value={`−${money(order.points.discount)}`} />}
           <Row label="Total" value={money(order.total)} />
-          <Row label="Paid with" value={order.payment?.display ?? "—"} />
+          <Row label="Paid with" value={`${order.payment?.display ?? "—"}${order.payment_path === "vic" ? " · Visa agent payment" : ""}`} />
           <Row label="Expected delivery" value={niceDate(order.delivery_date)} />
           {!!order.points?.earned && <Row label="Points earned" value={`+${order.points.earned.toLocaleString()}`} />}
+          {!!order.cashback && <Row label="Cashback (simulated credit)" value={`+${money(order.cashback)}`} />}
         </div>
         {email && <p className="text-xs text-muted">Confirmation emailed to <span className="text-ink break-all">{email}</span></p>}
         {order.guest ? (
@@ -667,3 +691,41 @@ export function OrderTrackingCard({ order }: { order: TrackedOrder }) {
     </Shell>
   );
 }
+
+/* ── Visa agent payments (Part 2) ──────────────────────────────────────── */
+
+/** The member confirms this exact order with a simulated passkey. The prompt is
+ *  ShopSphere's (PasskeyContext → /api/vic/*); Talkshop only gets the resulting
+ *  instruction id. Opens by itself once when it arrives live. */
+export function ApprovalCard({ amount, payment, active, autoStart, onApprove }:
+  { amount: number; payment: string | null; active: boolean; autoStart: boolean; onApprove: () => void }) {
+  const started = useRef(false);
+  useEffect(() => {
+    if (active && autoStart && !started.current) { started.current = true; onApprove(); }
+  }, [active, autoStart, onApprove]);
+  return (
+    <Shell className={cx("p-4 flex flex-col gap-2.5", active && "border-talk/50")}>
+      <p className="flex items-center gap-2 text-sm font-semibold"><Fingerprint size={17} className="text-talk" /> Confirm with your passkey</p>
+      <p className="text-xs text-muted leading-snug">
+        Approve {money(amount)} at ShopSphere with {payment ?? "your Visa"}. This approval covers this exact order only.
+        <span className="block mt-1 text-faint">Simulated passkey authentication (demo, not a real Visa passkey).</span>
+      </p>
+      {active && <Button size="sm" variant="talk" onClick={onApprove}><Fingerprint size={14} /> Approve with passkey</Button>}
+    </Shell>
+  );
+}
+
+/** Persona E: set up Visa agent payments (simulated agent token + passkey) before paying. */
+export function AgentPaySetupCard({ active, onSetup }: { active: boolean; onSetup: () => void }) {
+  return (
+    <Shell className={cx("p-4 flex flex-col gap-2.5", active && "border-gold/60")}>
+      <p className="flex items-center gap-2 text-sm font-semibold"><Bot size={17} className="text-gold" /> Set up Visa agent payments</p>
+      <p className="text-xs text-muted leading-snug">
+        A one-time setup links your Visa to Talkshop AI for purchases you approve. No card number is shared.
+        <span className="block mt-1 text-faint">Simulated agent token, not a Visa Token Service token.</span>
+      </p>
+      {active && <Button size="sm" onClick={onSetup}><Fingerprint size={14} /> Set up with passkey</Button>}
+    </Shell>
+  );
+}
+

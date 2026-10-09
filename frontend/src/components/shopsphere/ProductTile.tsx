@@ -47,6 +47,15 @@ export default function ProductTile({ product, picked, selected, reason, priorit
           <p className="text-[15px] font-semibold tabular-nums shrink-0">{money(product.price)}</p>
         </div>
         <Rating value={product.rating} count={product.review_count} />
+        {product.member && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {product.member.offers.map((o) => (
+              <span key={o.offer_id} title={o.title}
+                className="rounded-full bg-accent-soft text-accent px-2 py-0.5 text-[11px] font-semibold">Member {o.short}</span>
+            ))}
+            <span className="text-[11px] text-muted">Earn {product.member.points.toLocaleString()} pts</span>
+          </div>
+        )}
         {reason && <p className="text-[13px] text-talk mt-1 leading-snug">{reason}</p>}
       </div>
     </Link>

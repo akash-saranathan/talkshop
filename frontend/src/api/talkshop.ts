@@ -32,7 +32,13 @@ export type TalkEvent =
   | { type: "stage"; stage: Stage; step: string }
   | { type: "status"; agent: string; message: string }
   /** One guardrail decision for the live trace (info view). */
-  | { type: "guardrail"; agent: string; check: string; result: "pass" | "blocked" | "info"; detail: string; protocol: string }
+  | { type: "guardrail"; agent: string; check: string; result: "pass" | "blocked" | "info"; detail: string; protocol: string;
+      layer?: "local" | "simulated" }
+  /** Visa agent-payment path: the member must confirm this exact order with a simulated passkey (Part 2). */
+  | { type: "approval_required"; checkout_id: string; consent_mode: "button" | "typed" | "auto_countdown";
+      amount: number; currency: string; merchant: string; payment: string | null }
+  /** Persona E: agent payments must be set up for this Visa before paying through Talkshop. */
+  | { type: "agent_pay_setup"; checkout_id: string; card_account_id: string }
   | { type: "done"; stage: Stage; step: string };
 
 export type TalkAction =
@@ -42,7 +48,9 @@ export type TalkAction =
   | { type: "checkout"; guest?: boolean } | { type: "keep_shopping" } | { type: "cancel_checkout" }
   | { type: "update_checkout"; delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; points_used?: number; quantities?: Record<string, number> }
   // consent "auto_countdown": the review card's countdown ran out (no Stop pressed)
-  | { type: "go_ahead"; checkout_id: string; consent?: "auto_countdown" }
+  | { type: "go_ahead"; checkout_id: string; consent?: "auto_countdown" | "typed"; instruction_id?: string }
+  // Part 2: the member closed the passkey prompt (nothing approved); agent payments were just set up
+  | { type: "approval_cancelled" } | { type: "agent_pay_ready" }
   // Order ID + email typed into the secure lookup card (not chat text)
   | { type: "track_order"; order_id: string; email: string }
   // A secure form saved the detail on ShopSphere; Talkshop gets only the id.

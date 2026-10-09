@@ -17,6 +17,10 @@
   --color-faint: var(--ss-faint);
   --color-accent: var(--ss-accent);
   --color-accent-soft: var(--ss-accent-soft);
+  --color-navy: var(--ss-navy);
+  --color-navy-2: var(--ss-navy-2);
+  --color-gold: var(--ss-gold);
+  --color-gold-soft: var(--ss-gold-soft);
   --color-talk: var(--ss-talk);
   --color-talk-soft: var(--ss-talk-soft);
   --color-good: var(--ss-good);

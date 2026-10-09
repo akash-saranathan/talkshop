@@ -12,6 +12,10 @@ import CartPage from "./pages/store/Cart";
 import CheckoutPage from "./pages/store/Checkout";
 import { OrderDetailPage, OrdersPage } from "./pages/store/Orders";
 import TrackOrderPage from "./pages/store/Track";
+import { OffersPage, RewardsPage } from "./pages/store/Member";
+import AccountPage from "./pages/store/Account";
+import { MemberProvider } from "./member/MemberContext";
+import { PasskeyProvider } from "./member/PasskeyContext";
 
 /** Waits until the shopper has an identity (a visitor session at least). */
 function AuthReady({ children }: { children: ReactNode }) {
@@ -20,8 +24,9 @@ function AuthReady({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** My Orders needs an account: visitors log in, then come back. (Checkout is
- *  open to guests since Phase 10; the server decides what each shopper may do.) */
+/** My Orders needs an account: visitors log in, then come back. (Part 2: the
+ *  whole marketplace is for eligible cardmembers; StoreLayout shows the gate
+ *  page otherwise, and the server refuses every marketplace API.) */
 function RequireCustomer({ children }: { children: ReactNode }) {
   const { isCustomer } = useAuth();
   const location = useLocation();
@@ -33,11 +38,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <MemberProvider>
+        <PasskeyProvider>
         <CartProvider>
           <AuthReady>
             <Routes>
               <Route path="/login" element={<Login />} />
-              {/* The store is open to everyone; one layout keeps Talkshop mounted across pages */}
+              {/* One layout keeps Talkshop mounted across pages; it shows the member gate to non-members */}
               <Route element={<StoreLayout />}>
                 <Route path="/" element={<StoreHome />} />
                 <Route path="/c/:slug" element={<Category />} />
@@ -46,6 +53,9 @@ export default function App() {
                 <Route path="/cart" element={<CartPage />} />
                 <Route path="/checkout/:checkoutId" element={<CheckoutPage />} />
                 <Route path="/track" element={<TrackOrderPage />} />
+                <Route path="/offers" element={<OffersPage />} />
+                <Route path="/rewards" element={<RewardsPage />} />
+                <Route path="/account" element={<RequireCustomer><AccountPage /></RequireCustomer>} />
                 <Route path="/orders" element={<RequireCustomer><OrdersPage /></RequireCustomer>} />
                 <Route path="/orders/:orderId" element={<RequireCustomer><OrderDetailPage /></RequireCustomer>} />
               </Route>
@@ -55,6 +65,8 @@ export default function App() {
             </Routes>
           </AuthReady>
         </CartProvider>
+        </PasskeyProvider>
+        </MemberProvider>
       </AuthProvider>
     </BrowserRouter>
   );

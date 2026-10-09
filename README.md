@@ -8,7 +8,83 @@ It's a working prototype of the same problem Stripe's [Agentic Commerce Protocol
 
 ---
 
-## Demo 1 — ShopSphere × Talkshop (branch: `demo-1-merchant-chat-assistant`)
+## Demo 1, Part 2 — ShopSphere cardmember marketplace + Visa Intelligent Commerce-inspired payments (branch: `demo-1-cardmember-vic`)
+
+> **Concept demo.** ShopSphere is an original concept marketplace and is not affiliated with JPMorgan Chase or Visa.
+> Every identity, account, card, reward, token and payment here is a **local simulation**. No Visa or Chase API is
+> called, nothing is "VIC compliant", and the agent tokens are not Visa Token Service tokens.
+
+ShopSphere is now a **restricted marketplace for eligible Chase credit-card members** (simulated). Guests and
+checking-only customers can't browse the catalog or call any marketplace API: the server checks eligibility on every
+request (`require_cardmember`), not just the UI. **Talkshop AI** stays docked on the right. An eligible Visa member pays
+through a **VIC-inspired flow**: approve the exact order → simulated passkey → GreenLight DPAT + PayIt's 12 checks →
+12 VIC-inspired controls → one-time purchase credential → mock gateway → simulated Visa network → simulated Chase
+issuer → commerce signal → order. Mastercard members use the standard card path through the same gateway.
+
+Plan and phases (13–19): [`docs/demo-1-shopsphere-talkshop-plan.md`](docs/demo-1-shopsphere-talkshop-plan.md) · how
+it all fits together: [`docs/demo-1-system-workflow.md`](docs/demo-1-system-workflow.md) §16.
+
+### Run it (three services)
+
+```powershell
+pip install -r requirements.txt; cd frontend; npm install; cd ..     # once
+
+# 1. Mock payment gateway / PSP (simulated network + issuer), its own HTTP service
+$env:COMMERCE_DB_PATH = "backend/db/demo1.db"
+python -m uvicorn backend.gateway.app:app --port 8100
+
+# 2. ShopSphere backend (second terminal) — calls the gateway over HTTP
+$env:COMMERCE_DB_PATH = "backend/db/demo1.db"; $env:MOCK_GATEWAY_URL = "http://127.0.0.1:8100"
+python -m uvicorn backend.main:app --port 8000
+
+# 3. Frontend (third terminal)
+cd frontend; npm run dev                                              # http://localhost:5173
+```
+
+Without `MOCK_GATEWAY_URL` the backend calls the same gateway app in-process through the same HTTP client (the tests
+do this). `python -m backend.db.reset_demo --yes` (backend stopped) gives a fresh database with all personas.
+
+### Demo personas (password `demo1234`; one click on the sign-in page)
+
+| | Persona | Simulated accounts | What happens |
+|---|---|---|---|
+| **A** | Kaajal · `kaajal@shopsphere.demo` | Chase Visa credit •••• 4821 (agent token **ACTIVE**), Chase Mastercard •••• 0019 (issuer declines) | Full marketplace; Visa agent payments with passkey; 12,500 welcome points |
+| **B** | Marcus · `marcus@shopsphere.demo` | Chase Mastercard credit •••• 5510 | Marketplace; **standard** card path (no VIC token services) |
+| **C** | Priya · `priya@shopsphere.demo` | Chase checking •••• 7702 only | **Denied**: "not eligible" page; every marketplace API returns 403 `NO_ELIGIBLE_CARD` |
+| **D** | Guest (not signed in) | — | **Denied**: public gate page; APIs return 403 `LOGIN_REQUIRED` |
+| **E** | Elena · `elena@shopsphere.demo` | Chase Visa credit •••• 4002 (agent token **NOT_ENROLLED**) | Can browse; must set up agent payments (simulated passkey) before a Visa agent payment |
+
+### Walkthrough (Persona A)
+
+1. Sign in → pick **A · Kaajal**. The landing shows the member card (•••• 4821, points, agent pay on), member offers and
+   offer badges/points on every product (all computed by the server).
+2. In Talkshop AI: *"I need running shoes under $150 for everyday running."* → **Select** FlexRun 5 → **9** → **Orange**.
+3. The review card shows the **15% member offer**, points to earn, **$10 simulated cashback** (Visa agent-pay offer)
+   and "Visa agent payment: you'll confirm with a simulated passkey".
+4. **Approve and pay** (or type *"go ahead"*) → the **Simulated passkey authentication** dialog (clearly labelled) →
+   **Verify** → ORDER CONFIRMED.
+5. ⓘ **Developer trace → Payment**: the 12-step lifecycle from real backend calls — eligibility, agent token,
+   checkout, instruction authenticated, DPAT 12/12, VIC controls 12/12, credential issued, gateway request (over HTTP to
+   :8100), simulated Visa network, simulated Chase issuer (approved), commerce signal, order confirmed. **Live trace**
+   labels each step *Local* or *Simulated*.
+
+Negative paths to show: **Account → Demo controls** (issuer declines / network timeout / duplicate submission) ·
+change delivery after approving (instruction cancelled) · **Cancel** or **Simulate a failed check** in the passkey
+dialog · **Revoke** the agent token on the Account page · sign in as **C** or open the site signed out.
+
+### Implemented vs simulated
+
+| Real, local code | Simulated (stand-ins) | Would need Visa / Chase access |
+|---|---|---|
+| Eligibility gate on every marketplace API; offers, rewards ledger, totals, checkout hash; GreenLight DPAT + PayIt 12 checks; payment instructions, controls, credential binding, idempotency, lifecycle, order-once; HTTP call to a separate gateway service | Chase accounts, cards and eligibility (fixtures); passkey (not WebAuthn); agent tokens (not VTS); purchase credential + cryptogram; gateway/PSP, Visa/Mastercard networks, Chase issuer; commerce signals; cashback | Real cardholder authentication, VIC/VTS APIs and credentials, real network tokens and passkeys, real PSP/acquirer, real commerce-signal API, real Chase eligibility data |
+
+---
+
+## Demo 1, Part 1 — ShopSphere × Talkshop (snapshot: `DEMO-1-Shopsphere-3ways`)
+
+> Part 2 replaces Part 1's open store and guest checkout with the cardmember gate. The section below describes Part 1.
+
+### Part 1 overview
 
 > **Real confirmation emails (optional).** Add your mail account to `.env`, restart the backend, and every order's confirmation is emailed for real. Without these settings, emails stay in the demo outbox, viewable on the Track Order page.
 > ```

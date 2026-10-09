@@ -16,7 +16,7 @@
 
 ### Progress
 
-**Phases approved: 7 / 20 · Steps done: 101 / 149** · Phases 7–12 👀 ready for your review · Part 2 (Phases 13–19) 🔨 in progress
+**Phases approved: 7 / 20 · Steps done: 149 / 149** · Phases 7–19 👀 ready for your review (Part 2 built and verified)
 
 | Phase | Name | Steps | Status |
 |---|---|---|---|
@@ -33,13 +33,13 @@
 | 10 | Every shopper can buy: guest checkout, wallet, email, Track Order | 10 / 10 | 👀 Ready for your review |
 | 11 | Real confirmation emails + Track Order everywhere (website button, Talkshop) | 5 / 5 | 👀 Ready for your review |
 | 12 | Loyalty points: earn, see and redeem (customers) | 5 / 5 | 👀 Ready for your review |
-| **13** | **Part 2:** Cardmember identity, personas and server-side eligibility | 0 / 7 | ⬜ Not started |
-| 14 | Member offers and rewards ledger (backend-authoritative) | 0 / 6 | ⬜ Not started |
-| 15 | VIC-inspired simulator: agent-token enrollment, simulated passkey, payment instructions | 0 / 7 | ⬜ Not started |
-| 16 | Payment controls, scoped credential, gateway → network → issuer, commerce signals | 0 / 8 | ⬜ Not started |
-| 17 | Premium cardmember marketplace UI (navy/blue/white) | 0 / 7 | ⬜ Not started |
-| 18 | Talkshop AI: progress, approval + passkey, enrollment, VIC trace | 0 / 6 | ⬜ Not started |
-| 19 | Tests, Demo 2 regression, browser QA, docs and final report | 0 / 7 | ⬜ Not started |
+| **13** | **Part 2:** Cardmember identity, personas and server-side eligibility | 7 / 7 | 👀 Ready for your review |
+| 14 | Member offers and rewards ledger (backend-authoritative) | 6 / 6 | 👀 Ready for your review |
+| 15 | VIC-inspired simulator: agent-token enrollment, simulated passkey, payment instructions | 7 / 7 | 👀 Ready for your review |
+| 16 | Payment controls, scoped credential, gateway → network → issuer, commerce signals | 8 / 8 | 👀 Ready for your review |
+| 17 | Premium cardmember marketplace UI (navy/blue/white) | 7 / 7 | 👀 Ready for your review |
+| 18 | Talkshop AI: progress, approval + passkey, enrollment, VIC trace | 6 / 6 | 👀 Ready for your review |
+| 19 | Tests, Demo 2 regression, browser QA, docs and final report | 7 / 7 | 👀 Ready for your review |
 
 Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review · ✅ Approved
 
@@ -204,73 +204,86 @@ Status key: ⬜ Not started · 🔨 In progress · 👀 Ready for your review ·
 Source: the *Master implementation prompt* (Oct 2026). Details, personas and the payment lifecycle are in §17.
 
 ### Phase 13: Cardmember identity, personas and server-side eligibility
-- [ ] 13.1 Checkpoint: Phases 0–12 pushed as `DEMO-1-Shopsphere-3ways`; work continues on local branch `demo-1-cardmember-vic`
-- [ ] 13.2 Data: `card_accounts` (simulated issuer accounts: credit card / checking, network, masked last 4, status) linked to saved cards
-- [ ] 13.3 Seed personas A–E (§17.2) with fixtures only; Kaajal becomes Persona A
-- [ ] 13.4 `CardmemberEligibilityService` + `require_cardmember` dependency (codes `LOGIN_REQUIRED`, `NO_ELIGIBLE_CARD`)
-- [ ] 13.5 Enforce on every Demo 1 marketplace API: catalog, cart, offers, rewards, profile, checkout, Talkshop; Demo 2 APIs unchanged
-- [ ] 13.6 `GET /api/member` (status, masked eligible cards, rewards, agent-pay status); guest checkout and "Continue as guest" retired
-- [ ] 13.7 Tests: A, B, E enter; C and guest denied on every protected API
-- [ ] **Checkpoint:** only eligible cardmembers reach the marketplace, enforced by the server
+- [x] 13.1 Checkpoint: Phases 0–12 pushed as `DEMO-1-Shopsphere-3ways`; work continues on local branch `demo-1-cardmember-vic`
+- [x] 13.2 Data: `card_accounts` (simulated issuer accounts: credit card / checking, network, masked last 4, status) linked to saved cards
+- [x] 13.3 Seed personas A–E (§17.2) with fixtures only; Kaajal becomes Persona A
+- [x] 13.4 `CardmemberEligibilityService` + `require_cardmember` dependency (codes `LOGIN_REQUIRED`, `NO_ELIGIBLE_CARD`)
+- [x] 13.5 Enforce on every Demo 1 marketplace API: catalog, cart, offers, rewards, profile, checkout, Talkshop; Demo 2 APIs unchanged
+- [x] 13.6 `GET /api/member` (status, masked eligible cards, rewards, agent-pay status); guest checkout and "Continue as guest" retired
+- [x] 13.7 Tests: A, B, E enter; C and guest denied on every protected API
+- [x] **Checkpoint:** only eligible cardmembers reach the marketplace, enforced by the server
 
 ### Phase 14: Member offers and rewards ledger
-- [ ] 14.1 `member_offers` + `offer_redemptions`; offers seeded (discount, bonus points, cashback), audience rules (all cardmembers / Visa agent pay)
-- [ ] 14.2 `MemberOffersService`: entitled offers per member, best discount per checkout, once-per-member limits
-- [ ] 14.3 Checkout: offer discount before tax; offer id + discount inside the checkout hash; totals still server-only
-- [ ] 14.4 `RewardsLedgerService`: earn (base + bonus), redeem, cashback credit; idempotent per order (no double redemption)
-- [ ] 14.5 APIs: `GET /api/offers`, `GET /api/rewards` (balance + ledger); offers shown on product cards from the server
-- [ ] 14.6 Tests: entitlements, client can't change totals, no double redemption, decline keeps points
-- [ ] **Checkpoint:** offers and rewards come only from the backend and survive retries without double counting
+- [x] 14.1 `member_offers` + `offer_redemptions`; offers seeded (discount, bonus points, cashback), audience rules (all cardmembers / Visa agent pay)
+- [x] 14.2 `MemberOffersService`: entitled offers per member, best discount per checkout, once-per-member limits
+- [x] 14.3 Checkout: offer discount before tax; offer id + discount inside the checkout hash; totals still server-only
+- [x] 14.4 `RewardsLedgerService`: earn (base + bonus), redeem, cashback credit; idempotent per order (no double redemption)
+- [x] 14.5 APIs: `GET /api/offers`, `GET /api/rewards` (balance + ledger); offers shown on product cards from the server
+- [x] 14.6 Tests: entitlements, client can't change totals, no double redemption, decline keeps points
+- [x] **Checkpoint:** offers and rewards come only from the backend and survive retries without double counting
 
 ### Phase 15: VIC-inspired simulator: enrollment, simulated passkey, payment instruction
-- [ ] 15.1 Data: `agent_tokens`, `passkey_challenges`, `payment_instructions`, `vic_lifecycle_events`
-- [ ] 15.2 `AgentTokenEnrollmentService`: NOT_ENROLLED → PENDING_AUTHENTICATION → ACTIVE (+ SUSPENDED, REVOKED); opaque random refs bound to member + agent + Visa card fixture
-- [ ] 15.3 Simulated passkey: server challenge, single use, 2-minute expiry, bound to member + purpose; clearly labelled "Simulated passkey authentication"
-- [ ] 15.4 `PaymentInstructionService`: exact checkout → instruction (member, agent token, merchant, checkout hash, amount, currency, expiry, max 1 transaction)
-- [ ] 15.5 Instructions invalidated when checkout terms change, or cancelled
-- [ ] 15.6 APIs under `/api/vic/*` (enrollment, passkey, instructions, demo controls)
-- [ ] 15.7 Tests: enrollment, failed/expired authentication, invalidation on change
-- [ ] **Checkpoint:** a Visa cardmember can enroll and authenticate an instruction for one exact checkout
+- [x] 15.1 Data: `agent_tokens`, `passkey_challenges`, `payment_instructions`, `vic_lifecycle_events`
+- [x] 15.2 `AgentTokenEnrollmentService`: NOT_ENROLLED → PENDING_AUTHENTICATION → ACTIVE (+ SUSPENDED, REVOKED); opaque random refs bound to member + agent + Visa card fixture
+- [x] 15.3 Simulated passkey: server challenge, single use, 2-minute expiry, bound to member + purpose; clearly labelled "Simulated passkey authentication"
+- [x] 15.4 `PaymentInstructionService`: exact checkout → instruction (member, agent token, merchant, checkout hash, amount, currency, expiry, max 1 transaction)
+- [x] 15.5 Instructions invalidated when checkout terms change, or cancelled
+- [x] 15.6 APIs under `/api/vic/*` (enrollment, passkey, instructions, demo controls)
+- [x] 15.7 Tests: enrollment, failed/expired authentication, invalidation on change
+- [x] **Checkpoint:** a Visa cardmember can enroll and authenticate an instruction for one exact checkout
 
 ### Phase 16: Controls, scoped credential, gateway → network → issuer, commerce signals
-- [ ] 16.1 VIC controls (member, card, token, instruction, merchant, checkout, amount, currency, expiry, count, cancel/consume, duplicate, stock) after GreenLight's DPAT 12 checks
-- [ ] 16.2 `PaymentCredentialService`: short-lived opaque purchase credential reference, single use, bound to member/merchant/checkout/amount
-- [ ] 16.3 `PaymentGatewayAdapter` + separate mock gateway HTTP service (port 8100) with an in-process fallback for tests
-- [ ] 16.4 Simulated Visa network controls + simulated Mastercard network (Persona B) + simulated Chase issuer (approve / decline / timeout)
-- [ ] 16.5 Idempotency keys: a retry returns the first result, never a second authorization
-- [ ] 16.6 `CommerceSignalsService`: outcome recorded against the original instruction
-- [ ] 16.7 Explicit lifecycle (CARD_LINKED → … → ORDER_CONFIRMED + failure states), validated transitions; order created once
-- [ ] 16.8 Tests: every VIC failure case in the brief + duplicate + decline + Mastercard fallback
-- [ ] **Checkpoint:** the full Visa path runs end to end through real local service calls, with every failure blocked
+- [x] 16.1 VIC controls (member, card, token, instruction, merchant, checkout, amount, currency, expiry, count, cancel/consume, duplicate, stock) after GreenLight's DPAT 12 checks
+- [x] 16.2 `PaymentCredentialService`: short-lived opaque purchase credential reference, single use, bound to member/merchant/checkout/amount
+- [x] 16.3 `PaymentGatewayAdapter` + separate mock gateway HTTP service (port 8100) with an in-process fallback for tests
+- [x] 16.4 Simulated Visa network controls + simulated Mastercard network (Persona B) + simulated Chase issuer (approve / decline / timeout)
+- [x] 16.5 Idempotency keys: a retry returns the first result, never a second authorization
+- [x] 16.6 `CommerceSignalsService`: outcome recorded against the original instruction
+- [x] 16.7 Explicit lifecycle (CARD_LINKED → … → ORDER_CONFIRMED + failure states), validated transitions; order created once
+- [x] 16.8 Tests: every VIC failure case in the brief + duplicate + decline + Mastercard fallback
+- [x] **Checkpoint:** the full Visa path runs end to end through real local service calls, with every failure blocked
 
 ### Phase 17: Premium cardmember marketplace UI
-- [ ] 17.1 Navy / blue / white theme (light + dark); original ShopSphere mark; "Concept demo" labelling
-- [ ] 17.2 Public gate page + persona sign-in; ineligible and guest screens
-- [ ] 17.3 Header: Marketplace, Exclusive Offers, Rewards, Orders, Account; member status, masked card, points, cart
-- [ ] 17.4 Member landing: hero, exclusive offers, categories, recommended, featured; offer badges and points on product cards
-- [ ] 17.5 Offers page and Rewards page (balance, ledger: earned / redeemed / cashback)
-- [ ] 17.6 Account page: profile, eligibility, masked cards, agent-pay enrollment (enroll / suspend / revoke), orders
-- [ ] 17.7 Website checkout: offer line, Visa agent-pay approval with simulated passkey; responsive checks
-- [ ] **Checkpoint:** the marketplace looks premium, works on desktop and phone, and shows only server data
+- [x] 17.1 Navy / blue / white theme (light + dark); original ShopSphere mark; "Concept demo" labelling
+- [x] 17.2 Public gate page + persona sign-in; ineligible and guest screens
+- [x] 17.3 Header: Marketplace, Exclusive Offers, Rewards, Orders, Account; member status, masked card, points, cart
+- [x] 17.4 Member landing: hero, exclusive offers, categories, recommended, featured; offer badges and points on product cards
+- [x] 17.5 Offers page and Rewards page (balance, ledger: earned / redeemed / cashback)
+- [x] 17.6 Account page: profile, eligibility, masked cards, agent-pay enrollment (enroll / suspend / revoke), orders
+- [x] 17.7 Website checkout: offer line, Visa agent-pay approval with simulated passkey; responsive checks
+- [x] **Checkpoint:** the marketplace looks premium, works on desktop and phone, and shows only server data
 
 ### Phase 18: Talkshop AI in the cardmember marketplace
-- [ ] 18.1 Customer-friendly progress bar (Find → Choose → Review → Approve → Done)
-- [ ] 18.2 Review card: offer, points, cashback, masked card; "Approve and pay"
-- [ ] 18.3 Simulated passkey card for the Visa path; standard approval for Mastercard
-- [ ] 18.4 Persona E: enrollment card inside the chat before VIC payment
-- [ ] 18.5 Technical trace: the 12-step VIC lifecycle from real backend calls, labelled local / simulated / protocol-inspired
-- [ ] 18.6 Orchestrator tests for the new paths
-- [ ] **Checkpoint:** Persona A buys through Talkshop with the VIC-style flow; the trace shows every step
+- [x] 18.1 Customer-friendly progress bar (Find → Choose → Review → Approve → Done)
+- [x] 18.2 Review card: offer, points, cashback, masked card; "Approve and pay"
+- [x] 18.3 Simulated passkey card for the Visa path; standard approval for Mastercard
+- [x] 18.4 Persona E: enrollment card inside the chat before VIC payment
+- [x] 18.5 Technical trace: the 12-step VIC lifecycle from real backend calls, labelled local / simulated / protocol-inspired
+- [x] 18.6 Orchestrator tests for the new paths
+- [x] **Checkpoint:** Persona A buys through Talkshop with the VIC-style flow; the trace shows every step
 
 ### Phase 19: Tests, regression, QA, docs
-- [ ] 19.1 Full pytest suite (Demo 1 + Demo 2) green
-- [ ] 19.2 Security checks: no PAN/CVV, no secrets in chat, traces or logs, unpredictable tokens
-- [ ] 19.3 Browser QA: personas A–E, desktop + phone widths
-- [ ] 19.4 Demo 2 regression (chat, compare, authorizations, payments)
-- [ ] 19.5 README: startup commands (3 services), persona logins, walkthrough
-- [ ] 19.6 Workflow doc + protocol story (VIC, VTS, MCP, UCP, AP2, ACP, A2A, Trusted Agent Protocol)
-- [ ] 19.7 Final report: architecture, files, results, real vs simulated, gaps
-- [ ] **Checkpoint:** everything verified and documented
+- [x] 19.1 Full pytest suite (Demo 1 + Demo 2) green
+- [x] 19.2 Security checks: no PAN/CVV, no secrets in chat, traces or logs, unpredictable tokens
+- [x] 19.3 Browser QA: personas A–E, desktop + phone widths
+- [x] 19.4 Demo 2 regression (chat, compare, authorizations, payments)
+- [x] 19.5 README: startup commands (3 services), persona logins, walkthrough
+- [x] 19.6 Workflow doc + protocol story (VIC, VTS, MCP, UCP, AP2, ACP, A2A, Trusted Agent Protocol)
+- [x] 19.7 Final report: architecture, files, results, real vs simulated, gaps
+- [x] **Checkpoint:** everything verified and documented
+
+**As built (Part 2):**
+- **Backend:** `backend/shop/eligibility.py`, `offers.py`, `rewards.py`, `vic.py`; `backend/vic/` (common, passkey,
+  enrollment, instructions, credentials, signals); `backend/gateway/` (adapter, app, network, issuer);
+  `backend/payment/processor_route.py`; routers `member.py`, `vic.py`. Schema: `card_accounts`, `member_offers`,
+  `offer_redemptions`, `agent_tokens`, `passkey_challenges`, `payment_instructions`, `payment_credentials`,
+  `commerce_signals`, `vic_lifecycle_events`, `gateway_authorizations`, `sim_scenarios`.
+- **Frontend:** `member/MemberContext.tsx`, `member/PasskeyContext.tsx`, `api/member.ts`; pages `MemberGate`,
+  `Member` (offers, rewards), `Account`; new `Login`, `Home`, `StoreHeader`, `StoreLayout`; checkout + Talkshop
+  approval/enrollment cards; developer trace with a Payment tab.
+- **Verified:** 368 pytest tests (Demo 1 + Demo 2, incl. 27 new Part 2 tests); browser QA of personas A–E on desktop
+  and a 390 px phone with the gateway as a separate HTTP service.
+- **Not built:** real WebAuthn, any real Visa/Chase integration, A2A, MCP for Demo 1.
 
 ---
 

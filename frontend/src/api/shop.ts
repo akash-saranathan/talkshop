@@ -11,6 +11,15 @@ export interface Product {
   description: string; tags: string[]; price: number; currency: string; rating: number; review_count: number;
   is_new: boolean; delivery_days: number; option_label: string; image_url: string | null;
   colors: ColorOption[]; sizes: string[]; in_stock: boolean;
+  /** Cardmember extras computed by the server (Part 2): offers that apply and points at list price. */
+  member?: { offers: OfferBadge[]; points: number };
+}
+export interface OfferBadge { offer_id: string; kind: string; title: string; short: string }
+/** Which payment path the server chose for this checkout (Part 2, D38). */
+export interface PaymentPath {
+  path: "vic" | "vic_setup_required" | "standard" | "wallet" | "none"; label?: string;
+  card?: { brand: string; last4: string }; card_account_id?: string; agent_token?: string;
+  agent_token_status?: string; issuer?: string;
 }
 export interface Variant { sku: string; size: string | null; color: string; color_hex: string; stock: number; in_stock: boolean; image_url: string | null }
 export interface ProductDetail extends Product { variants: Variant[] }
@@ -56,6 +65,12 @@ export interface Checkout {
   /** Guest checkout (no account): the email and name once given. */
   guest: { email: string | null; name: string | null } | null;
   issues: CheckoutIssue[]; ready: boolean; checkout_hash: string;
+  /** Part 2: member offer (one discount, server-chosen), bonus points, simulated cashback, payment path */
+  offer?: { offer_id: string; title: string; kind: string; discount: number } | null;
+  offer_discount?: number; base_points?: number;
+  bonus_points?: { offer_id: string; title: string; points: number }[];
+  cashback?: { offer_id: string; title: string; amount: number }[];
+  payment_path?: PaymentPath;
 }
 export interface ShipmentStep { key: string; label: string; done: boolean; at: string | null }
 export interface Shipment {
@@ -82,11 +97,18 @@ export interface Order {
   delivery_method: string | null; delivery_date: string | null; ship_to: Address | null;
   payment: { brand: string; last4: string | null; display: string } | null; tracking_number: string | null; created_at: string | null;
   payment_method_type?: "card" | "wallet"; guest?: boolean; guest_email?: string | null; shipment?: Shipment;
-  points?: { used: number; discount: number; earned: number };
+  points?: { used: number; discount: number; earned: number; bonus?: number };
+  offer?: { offer_id: string; title: string; discount: number } | null; cashback?: number;
+  payment_path?: "vic" | "standard" | "wallet" | null;
 }
 export type ConfirmResult =
-  | { status: "authorized"; order: Order; transaction_id: string; confirmation_email?: string | null }
-  | { status: "declined" | "blocked" | "order_failed"; reason: string; message: string; checkout: Checkout };
+  | { status: "authorized"; order: Order; transaction_id: string; confirmation_email?: string | null; trace?: TraceEntry[] }
+  | { status: "declined" | "blocked" | "order_failed"; reason: string; message: string; checkout: Checkout; trace?: TraceEntry[] };
+/** One backend step of a payment, as it ran (safe: shortened refs, no card data). */
+export interface TraceEntry {
+  agent: string; check: string; result: "pass" | "blocked" | "info"; detail?: string | null; protocol?: string;
+  layer?: "local" | "simulated";
+}
 
 export class ShopError extends Error {
   code: string; status: number; detail: Record<string, unknown>;
@@ -96,7 +118,7 @@ export class ShopError extends Error {
   }
 }
 
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
+export async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await authFetch(url, init);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -106,7 +128,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
+export const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
 export interface ProductQuery {
   q?: string; department?: string; category?: string; subcategory?: string; gender?: string; brand?: string;
@@ -150,7 +172,9 @@ export const shop = {
     call<Checkout>(`/api/checkouts/${id}`, json("PATCH", changes)),
   loyalty: () => call<{ balance: number; lifetime_points: number }>("/api/loyalty"),
   cancelCheckout: (id: string) => call<Checkout>(`/api/checkouts/${id}/cancel`, json("POST")),
-  confirm: (id: string) => call<ConfirmResult>(`/api/checkouts/${id}/confirm`, json("POST", { consent: true })),
+  /** Visa agent-payment path: pass the member's AUTHENTICATED instruction (simulated passkey). */
+  confirm: (id: string, instructionId?: string) =>
+    call<ConfirmResult>(`/api/checkouts/${id}/confirm`, json("POST", { consent: true, instruction_id: instructionId })),
 
   orders: () => call<(Record<string, unknown> & { display_id?: string })[]>("/api/orders"),
   order: (id: string) => call<Record<string, unknown> & Partial<Order> & { display_id?: string; amount?: number }>(`/api/orders/${id}`),

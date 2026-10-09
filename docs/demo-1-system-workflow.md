@@ -454,3 +454,99 @@ Demo data: about 60 products, plus the demo customer Kaajal (`kaajal@shopsphere.
 | Merchant-owned checkout: create / update / complete; card → token | **ACP** |
 | Consent record, signed single-use token, 12 checks, audit log | **AP2** |
 | Agents from different companies talking | **A2A**: not implemented (the agents hand off inside one app) |
+
+---
+
+## 16. Part 2: cardmember marketplace + VIC-inspired payments
+
+Branch `demo-1-cardmember-vic`. Everything Visa / Chase below is a **local simulation**: no Visa or Chase API is
+called, nothing is VIC compliant, agent tokens are not Visa Token Service tokens.
+
+### 16.1 Who can enter
+
+| Who | Server answer on every marketplace API |
+|---|---|
+| Signed-in member with an active, eligible Chase **credit card** (Visa or Mastercard fixture) | ✅ allowed |
+| Signed in, checking/savings only | 403 `NO_ELIGIBLE_CARD` |
+| Not signed in (visitor session) | 403 `LOGIN_REQUIRED` |
+
+`require_cardmember` (`backend/shop/eligibility.py`) guards the catalog, cart, profile, checkout, Talkshop, offers,
+rewards and `/api/vic/*` routers. `GET /api/member` is open so the gate page can say *why*. Demo 2's APIs
+(`/api/chat`, `/api/authorizations`, `/api/payments`, `/api/cart`, `/api/orders`) are unchanged.
+
+### 16.2 Offers and rewards (server-authoritative)
+
+- **One discount offer** per checkout, the best one (`offers.best_discount`); applied before points and tax; offer id
+  and amount are inside the checkout hash.
+- **Bonus points** add up; **cashback** is a simulated statement credit, only after an approved **Visa agent payment**.
+- Ledger rows have one id per order (`EARN-`, `BONUS-`, `RDM-`) and `offer_redemptions` is unique per (offer, order):
+  a retry can't earn, redeem or credit twice. `orders.finalize` returns an already-finalized order unchanged.
+
+### 16.3 Payment paths (decided by the server from the card on the checkout)
+
+| Path | When | Steps |
+|---|---|---|
+| `vic` | Chase Visa credit card with an ACTIVE agent token | instruction + simulated passkey → GreenLight DPAT → PayIt 12 checks → 12 VIC controls → purchase credential → gateway → simulated Visa network → simulated Chase issuer → commerce signal → order |
+| `vic_setup_required` | Chase Visa, agent payments not active | enrollment first (simulated passkey) |
+| `standard` | Any other card (e.g. Chase Mastercard) | GreenLight DPAT → PayIt 12 checks → gateway (card-on-file token) → simulated card network → simulated issuer → order |
+| `wallet` | ShopSphere Wallet | internal balance (no gateway) |
+
+### 16.4 The Visa path, step by step
+
+```
+Approve and pay (tap / typed GO AHEAD / countdown)
+ → POST /api/vic/instructions            instruction pin_… PENDING_AUTHENTICATION + passkey challenge chl_…
+ → simulated passkey dialog (browser)    POST /api/vic/instructions/{id}/authenticate → AUTHENTICATED
+ → POST /api/checkouts/{id}/confirm {instruction_id}
+     GreenLight: consent audit + DPAT (HMAC, single use, 15 min)
+     PayIt: 12 DPAT checks
+     processor route (ContextVar) → ShopSphere gateway route:
+        12 VIC controls → credential pcr_… (single use, 5 min, bound to member/merchant/checkout/amount)
+        PaymentGatewayAdapter ──HTTP (Idempotency-Key)──► mock gateway :8100
+            simulated Visa network: redeem credential once, check bindings, agent token active
+            simulated Chase issuer: account status, available credit, demo decline/timeout
+        commerce signal (APPROVED / DECLINED / TIMEOUT) linked to the instruction
+     TrackIt: order once → instruction CONSUMED → ORDER_CONFIRMED
+```
+
+Lifecycle (`vic_lifecycle_events`): CARD_LINKED → AGENT_TOKEN_ACTIVE → CHECKOUT_CREATED → INSTRUCTION_AUTHENTICATED →
+CREDENTIAL_ISSUED → PAYMENT_AUTHORIZED → SIGNAL_RECORDED → ORDER_CONFIRMED; failures: INSTRUCTION_CANCELLED,
+INSTRUCTION_EXPIRED, AUTHENTICATION_FAILED, CONTROLS_FAILED, PAYMENT_DECLINED, PAYMENT_TIMEOUT, ORDER_FAILED. Any
+other transition is refused.
+
+**Six things kept separate:** consent evidence (audit event) · authenticated instruction (`pin_`) · DPAT (`DPAT_`) ·
+agent token (`vat_`) · purchase credential (`pcr_`) · gateway authorization (`gw_` + auth code).
+
+### 16.5 The 12 VIC-inspired controls
+
+1 member session + eligibility · 2 active Visa card fixture · 3 active agent token (same one as the instruction) ·
+4 instruction authenticated · 5 merchant matches · 6 checkout id + hash match · 7 amount + currency match ·
+8 instruction not expired · 9 transaction count + spending scope · 10 not cancelled/consumed · 11 no duplicate attempt
+(no other credential, no paid order) · 12 inventory + final checkout state.
+
+### 16.6 What blocks a payment
+
+| Situation | Result |
+|---|---|
+| Visa card, no approval yet | 409 `INSTRUCTION_REQUIRED` |
+| Agent payments not set up / token revoked | 409 `AGENT_PAY_NOT_ENROLLED` (open instructions cancelled) |
+| Passkey cancelled / failed | nothing approved; instruction FAILED; confirm blocked |
+| Order changed after approval | instruction CANCELLED (`CHECKOUT_CHANGED`) |
+| Tampered merchant / amount, expired instruction | VIC control fails → blocked, no credential |
+| Credential replayed / other merchant / other amount / other member / expired | simulated network refuses |
+| Issuer decline / network timeout | no order, points kept, signal DECLINED / TIMEOUT, credential revoked on timeout |
+| Same request sent twice | gateway returns the original result (`duplicate=true`), one authorization |
+
+### 16.7 Protocol story (accurate)
+
+| | Demo 1 |
+|---|---|
+| **VIC** | Inspired by its lifecycle; local simulation only |
+| **VTS** | Not used; agent tokens are random local values |
+| **AP2** | AP2-style consent + DPAT; local HMAC, not production-compliant |
+| **ACP** | ACP-style merchant-owned checkout; separate from the PSP credential |
+| **UCP** | UCP-inspired discovery/identity/orders over local REST; not full UCP |
+| **MCP** | Not used in Demo 1 (fixed in-process tool list) |
+| **A2A** | Not needed between Demo 1's six internal agents |
+| **Visa Trusted Agent Protocol** | Not used; relevant to an independent external agent (Demo 2) |
+

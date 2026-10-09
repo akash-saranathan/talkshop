@@ -26,6 +26,8 @@ export interface TraceStep {
   agent: string; message: string; at: number;
   /** guardrail entries: the check, its result and the protocol it mirrors */
   check?: string; result?: "pass" | "blocked" | "info"; protocol?: string;
+  /** local: code that ran in ShopSphere · simulated: a stand-in for an external service (gateway, network, issuer, VIC) */
+  layer?: "local" | "simulated";
 }
 export type Page = Record<string, unknown>;
 
@@ -53,8 +55,8 @@ export function useTalkshop(getPage: () => Page) {
       const safe = input.text ? { ...input, text: maskPaymentData(input.text) } : input;   // card details never leave as chat
       await streamTurn(sid.current, { page: pageRef.current(), ...safe }, (ev) => {
         if (ev.type === "guardrail") {
-          setTrace((t) => [...t.slice(-120), { agent: ev.agent, message: ev.detail, check: ev.check, result: ev.result,
-            protocol: ev.protocol, at: Date.now() }]);
+          setTrace((t) => [...t.slice(-300), { agent: ev.agent, message: ev.detail, check: ev.check, result: ev.result,
+            protocol: ev.protocol, layer: ev.layer, at: Date.now() }]);
         } else if (ev.type === "status") {
           setStatus(ev.message);
           setTrace((t) => [...t.slice(-60), { agent: ev.agent, message: ev.message, at: Date.now() }]);
@@ -82,7 +84,8 @@ export function useTalkshop(getPage: () => Page) {
         const restored = s.transcript.filter((e) => e.type !== "stage" && e.type !== "guardrail");
         // After a reload the trace is rebuilt from the guardrail decisions in the transcript.
         setTrace(s.transcript.flatMap((e) => e.type === "guardrail"
-          ? [{ agent: e.agent, message: e.detail, check: e.check, result: e.result, protocol: e.protocol, at: Date.now() }] : []).slice(-120));
+          ? [{ agent: e.agent, message: e.detail, check: e.check, result: e.result, protocol: e.protocol, layer: e.layer,
+               at: Date.now() }] : []).slice(-300));
         setEvents(restored);
         setRestoredCount(restored.length);
         setReady(true);
