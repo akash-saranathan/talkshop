@@ -193,9 +193,6 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
   };
   // Each auto-checkout countdown fires at most once, whatever re-renders after it.
   const countdownsFired = useRef(new Set<number>());
-  // Each checkout is paid automatically at most once: after a decline (or any
-  // GO AHEAD) the shopper decides, so a declined card is never retried on its own.
-  const autoPaid = useRef(new Set<string>());
 
   return (
     <div ref={scroller} className="absolute inset-0 overflow-y-auto ss-scroll px-4 py-4 flex flex-col gap-3 [&>*]:shrink-0">
@@ -211,10 +208,7 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
         if (it.kind === "payment") return <PaymentStatusCard key={i} state={it.ev.state} payment={it.ev.payment} message={it.ev.message} />;
         if (it.kind === "review") return (
           <ReviewOrderCard key={i} checkout={it.checkout} busy={busy} onAct={act}
-            active={it.index === lastReview && stage === "AWAITING_CONSENT"}
-            autoPay={it.index >= ts.restoredCount && !autoPaid.current.has(it.checkout.checkout_id)
-              && !events.slice(it.index).some((e) => e.type === "payment_status")}
-            onAutoPay={(id) => autoPaid.current.add(id)} />
+            active={it.index === lastReview && stage === "AWAITING_CONSENT"} />
         );
         const ev = it.ev;
         switch (ev.type) {
@@ -297,7 +291,7 @@ const GUARDRAILS: { agent: string; checks: string[] }[] = [
     "AI relevance check (no unrelated cards)"] },
   { agent: "CartUp", checks: ["Exact size/colour stock check", "Server picks the member offer; totals + SHA-256 fingerprint are server-only",
     "Secure forms: details go to ShopSphere, the AI gets IDs", "Changing the order cancels any open Visa instruction"] },
-  { agent: "GreenLight", checks: ["Approve and pay (tap, typed GO AHEAD or countdown) + simulated passkey on the Visa path",
+  { agent: "GreenLight", checks: ["Approve and pay (tap, or typed GO AHEAD) + simulated passkey on the Visa path; no automatic payment",
     "Live stock and price refresh", "Spending policy: approved merchant, USD, up to $2,500",
     "DPAT: HMAC-SHA256 signed, 15 minutes, single use"] },
   { agent: "PayIt", checks: ["12 DPAT checks: exists · active · not expired · not used · agent · merchant · order · currency · limit · total · fingerprint · consent",

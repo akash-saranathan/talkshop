@@ -494,7 +494,7 @@ rewards and `/api/vic/*` routers. `GET /api/member` is open so the gate page can
 ### 16.4 The Visa path, step by step
 
 ```
-Approve and pay (tap / typed GO AHEAD / countdown)
+Approve and pay (tap, or typed GO AHEAD; no automatic payment timer)
  → POST /api/vic/instructions            instruction pin_… PENDING_AUTHENTICATION + passkey challenge chl_…
  → simulated passkey dialog (browser)    POST /api/vic/instructions/{id}/authenticate → AUTHENTICATED
  → POST /api/checkouts/{id}/confirm {instruction_id}

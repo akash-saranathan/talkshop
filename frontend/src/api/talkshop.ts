@@ -47,8 +47,8 @@ export type TalkAction =
   | { type: "choose_size" | "choose_color"; value: string }
   | { type: "checkout"; guest?: boolean } | { type: "keep_shopping" } | { type: "cancel_checkout" }
   | { type: "update_checkout"; delivery_method?: string; address_id?: string; payment_method_id?: string; pay_with?: "card" | "wallet"; points_used?: number; quantities?: Record<string, number> }
-  // consent "auto_countdown": the review card's countdown ran out (no Stop pressed)
-  | { type: "go_ahead"; checkout_id: string; consent?: "auto_countdown" | "typed"; instruction_id?: string }
+  // Only from the member's Approve and pay tap (consent "typed": GO AHEAD typed on the Visa path, still needs the passkey)
+  | { type: "go_ahead"; checkout_id: string; consent?: "typed"; instruction_id?: string }
   // Part 2: the member closed the passkey prompt (nothing approved); agent payments were just set up
   | { type: "approval_cancelled" } | { type: "agent_pay_ready" }
   // Order ID + email typed into the secure lookup card (not chat text)
