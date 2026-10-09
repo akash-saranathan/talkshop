@@ -193,7 +193,7 @@ sequenceDiagram
 **Technical details**
 - **Sold out:** sold-out sizes and colours are shown crossed out and can't be chosen. A single in-stock option is picked automatically.
 - **Cart lines:** Talkshop records which cart lines it added (`line_ids`, `added_qty`). Checkout from the chat then covers only those, even if the cart holds other items.
-- **Countdown:** after 3 seconds the panel sends the `checkout` action by itself.
+- **Countdown:** after 6 seconds the panel sends the `checkout` action by itself.
   - It pauses if the shopper clicks into the chat box.
   - It never runs while the panel is minimised, or for a conversation restored after a reload.
   - Moving to checkout never pays.
@@ -231,13 +231,10 @@ flowchart TD
 
 ## 7. Step 5: GO AHEAD → payment → order
 
-Payment starts only from the GO AHEAD action (`{type: "go_ahead", checkout_id}`):
-- **Tapped:** the shopper presses GO AHEAD.
-- **Automatic:** the Review card's 3-second countdown runs out without **Stop** being pressed (`consent: "auto_countdown"`).
-  - At most once per checkout, and never retried after a decline.
-  - Touching the card or the chat box stops it.
+Payment starts only from the GO AHEAD / **Approve and pay** action (`{type: "go_ahead", checkout_id}`), tapped by
+the shopper. (The Review card's 3-second auto-pay countdown was removed on Oct 9; paying always needs a tap.)
 
-The audit log records which of the two it was (`CHECKOUT_CONSENT`). Typed text such as "pay now" never pays, and the LLM's list of actions doesn't include payment.
+The audit log records how consent was given (`CHECKOUT_CONSENT`). Typed text such as "pay now" never pays, and the LLM's list of actions doesn't include payment.
 
 ```mermaid
 sequenceDiagram
@@ -340,7 +337,7 @@ stateDiagram-v2
 | `ask_option` | Size or colour chips (sold out = crossed out) |
 | `variant_confirmed` | (internal) the exact SKU |
 | `cart_updated` | "Added to your ShopSphere cart" card; header cart badge refreshes |
-| `offer_checkout` | 3-second countdown card (Checkout now / Keep shopping) |
+| `offer_checkout` | 6-second countdown card (Checkout now / Keep shopping) |
 | `login_required` | Sign-in card (visitors) |
 | `checkout_details_needed` | Secure ShopSphere Checkout / Secure Payment form |
 | `checkout_ready` / `checkout_updated` | Review Your Order card with GO AHEAD |
@@ -440,7 +437,7 @@ Demo data: about 60 products, plus the demo customer Kaajal (`kaajal@shopsphere.
 | **Shipping and tracking** | Simulated carrier (`shipping.py`). Steps: confirmed → payment completed → processing → packed → shipped (`TRK######`) → out for delivery → delivered |
 | **Track order** | Header button. Logged-in customers see their own orders. Guests use **Order ID + email** (`POST /api/orders/track`); any mismatch gets one neutral error |
 | **Tracking in Talkshop** | "Where is my order?" / "I placed an order of nike shoes". Logged in: matched against the customer's own orders. Guest: a secure lookup card (Order ID + email). Answered by code, never the AI |
-| **Automatic payment** | The Review card places the order after **3 s** unless **Stop** is pressed. Consent is recorded as `auto_countdown` |
+| **Automatic payment** | ~~The Review card placed the order after 3 s unless Stop was pressed~~. Removed on Oct 9: paying always needs a tap on Approve and pay |
 | **Loyalty points** | Customers only: 1 point per $1. **100 points = $1 off** the products before tax, with at least $1 payable. Points are spent only when the payment is authorized. Shown in the account menu, at checkout, on the confirmation and in the email; Talkshop answers "how many points do I have?" |
 | **"We don't sell that"** | A list of product types ShopSphere doesn't sell, plus an AI relevance check. No unrelated cards are shown |
 | **Live guardrail trace** | Every guardrail decision streams as a `guardrail` event (agent, check, pass/blocked/info, protocol). It's shown in Talkshop's info view (ⓘ) along with the Guardrails, Protocols and Email tabs. No card data or emails appear in the trace |

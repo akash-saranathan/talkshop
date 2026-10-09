@@ -1102,7 +1102,7 @@ Demo 1 becomes a **restricted cardmember marketplace**. ShopSphere is a concept 
 | D37 | **Branding:** keep ShopSphere and Talkshop AI. Navy / blue / white, original mark, no Chase or Visa logos, "Concept demo, not affiliated with JPMorgan Chase or Visa" |
 | D38 | **Payment paths:** an enrolled Visa card → **VIC-inspired path**. Mastercard → **standard path** (GreenLight DPAT + 12 checks + gateway). Both go through the same `PaymentGatewayAdapter` |
 | D39 | **Everything Visa / Chase is simulated locally.** No Visa or Chase API is called; nothing is "VIC compliant"; agent tokens are not VTS tokens |
-| D40 | **Approval:** "Approve and pay" (or typing GO AHEAD) creates a payment instruction; the Visa path then needs a **simulated passkey** tap. The 3-second auto-pay countdown on the review card was **removed** (Oct 9, at your request): paying always needs a tap on Approve and pay. The 3-second auto-*checkout* countdown after adding an item stays |
+| D40 | **Approval:** "Approve and pay" (or typing GO AHEAD) creates a payment instruction; the Visa path then needs a **simulated passkey** tap. The 3-second auto-pay countdown on the review card was **removed** (Oct 9, at your request): paying always needs a tap on Approve and pay. The auto-*checkout* countdown after adding an item stays, now **6 seconds** (was 3) |
 | D41 | **Points:** ShopSphere demo points (100 = $1, not a real Chase programme). One discount offer per checkout (the best), bonus-points offers add up, cashback is a simulated statement credit after an approved Visa agent payment |
 | D42 | **Mock gateway** is a separate local HTTP service (port 8100) when `MOCK_GATEWAY_URL` is set; otherwise the same app runs in-process through the same HTTP client (tests) |
 

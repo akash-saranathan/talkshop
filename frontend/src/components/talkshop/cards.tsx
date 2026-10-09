@@ -140,9 +140,9 @@ export function QuickReplies({ choices, active, onPick }:
 
 /* ── Auto-checkout countdown ───────────────────────────────────────────── */
 
-export const AUTO_CHECKOUT_SECONDS = 3;
+export const AUTO_CHECKOUT_SECONDS = 6;
 
-/** After an item is added: move to checkout automatically in 3 seconds unless
+/** After an item is added: move to checkout automatically in 6 seconds unless
  *  the shopper taps Keep shopping. Checkout only opens the review card; paying
  *  still needs GO AHEAD. Pauses if the shopper starts typing to Talkshop. */
 export function CheckoutCountdown({ onPick }: { onPick: (c: { value: string; label: string }) => void }) {
