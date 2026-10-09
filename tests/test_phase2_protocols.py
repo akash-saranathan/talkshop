@@ -9,6 +9,7 @@ import time
 from backend.ucp.adapter import UCPAdapter
 from backend.acp.adapter import ACPAdapter
 from backend.acp.token import issue_spt, verify_spt
+from backend.acp import delegated
 from backend.ap2.adapter import AP2Adapter
 from backend.agents.generic_shopping_agent import parse_intent, route_merchants
 
@@ -243,6 +244,42 @@ class TestAP2:
         assert m.proof.verificationMethod is not None
         assert m.proof.jws is not None
         assert m.proof.created is not None
+
+
+# ── ACP delegated token (the live purchase flow's ACP, backend/acp/delegated.py) ──
+
+class TestACPDelegated:
+    def _issue(self, **overrides):
+        kwargs = dict(
+            merchant_id="nike", checkout_id="chk_1", checkout_hash="hash_1", total=42.50,
+            currency="USD", payment_method={"payment_method_id": "pm_demo_nike", "brand": "Visa", "last4": "4001"},
+            consent_id="cns_1", ap2_payment_mandate_id="urn:ap2:mandate:payment:x",
+        )
+        kwargs.update(overrides)
+        return delegated.issue(**kwargs)
+
+    def test_valid_token_signature_verifies(self):
+        token = self._issue()
+        ok, reason, checks = delegated.verify(token, merchant_id="nike", checkout_id="chk_1",
+                                              checkout_hash="hash_1", amount_cents=4250, currency="USD")
+        assert ok and reason is None
+        assert all(c["status"] == "pass" for c in checks)
+
+    def test_tampered_signature_fails_verification(self):
+        token = self._issue()
+        token["signature"] = token["signature"][:-1] + ("A" if token["signature"][-1] != "A" else "B")
+        ok, reason, checks = delegated.verify(token, merchant_id="nike", checkout_id="chk_1",
+                                              checkout_hash="hash_1", amount_cents=4250, currency="USD")
+        assert not ok and reason == "TOKEN_SIGNATURE_INVALID"
+
+    def test_tampered_bound_field_invalidates_the_signature(self):
+        # Changing a bound field after signing (e.g. a different amount) must
+        # invalidate the signature even though the signature string itself is untouched.
+        token = self._issue()
+        token["max_amount_cents"] = 999_999
+        ok, reason, _ = delegated.verify(token, merchant_id="nike", checkout_id="chk_1",
+                                         checkout_hash="hash_1", amount_cents=999_999, currency="USD")
+        assert not ok and reason == "TOKEN_SIGNATURE_INVALID"
 
 
 # ── Intent parsing + routing ──────────────────────────────────────────────────

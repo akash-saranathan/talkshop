@@ -306,7 +306,7 @@ export default function AgentTrailPanel({
     <>
       {!embedMode && (
         <div className="flex items-center justify-between px-4 py-3 shrink-0"
-          style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)" }}>
+          style={{ background: "linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%)" }}>
           <div className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded-lg bg-white/10 grid place-items-center">
               <Activity size={13} className="text-white" />

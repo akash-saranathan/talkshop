@@ -205,7 +205,7 @@ export default function CompareModal({ products, onClose, cartItemByProduct, onA
               key="verdict"
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mx-5 my-4 rounded-xl border border-[var(--color-primary)]/30 bg-gradient-to-br from-[var(--color-primary)]/8 to-violet-500/5 px-4 py-4 flex flex-col gap-2"
+              className="mx-5 my-4 rounded-xl border border-[var(--color-primary)]/30 bg-gradient-to-br from-[var(--color-primary)]/8 to-[var(--color-accent)]/5 px-4 py-4 flex flex-col gap-2"
             >
               <div className="flex items-center gap-2">
                 <Sparkles size={15} className="text-[var(--color-primary)] shrink-0" />

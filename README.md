@@ -37,6 +37,37 @@ phased plan and what's done vs. still open; summary of what changed:
   several chat auto-scroll gaps, clearer demo-scenario/error wording, a
   guardrail fix for false-blocking short follow-up replies, and Dashboard
   filters (merchant, Order ID/tracking search) plus a mock carrier.
+- **"GO AHEAD" renamed to "Authorize Payment"** everywhere a customer sees
+  it, and it's now the *only* thing that ever executes a charge — the old
+  silent 3s auto-authorize for payment was removed (the cart→checkout
+  auto-advance to the proposal is unchanged, since it doesn't touch money).
+- **Customer-controlled loyalty redemption.** A points slider (all / partial
+  / card-only) on the order proposal replaces the old fully-automatic
+  policy, backed by `POST /api/purchase/loyalty`, which re-binds the
+  checkout hash + AP2 Cart Mandate live as you drag it.
+- **Real ECDSA signing.** AP2, ACP, and the trust layer's credential check
+  now sign/verify with real ECDSA (P-256/SHA-256, via Python's
+  `cryptography` package) instead of a shared-secret HMAC — see
+  [`info.md`](info.md) for the full, plain-English protocol/security guide.
+- **VIC-inspired agent spending guardrail** — not a real Visa integration —
+  a $700 per-checkout cap on what the shopping agent is authorized to
+  spend, checked both as a live preview on the proposal and authoritatively
+  the instant Authorize Payment is clicked. Surfaced live in the existing
+  Live Trace panel's Story view (new **Loyalty** and **Security** rows) and
+  in the Live tab's per-event descriptions — no new tab added.
+- A handful of correctness fixes found via live testing: cart quantity set
+  via the product card's +/- stepper now actually reaches checkout; a
+  purchased item is removed from the cart on success; the PayPal "balance"
+  funding option validates against the order total; a debounce race that
+  could desync the checkout hash (`CONSENT_DOES_NOT_MATCH_CHECKOUT`) when
+  Authorize Payment was clicked right after the points slider was fixed.
+- A Chase-inspired visual pass across the whole app (color tokens, an 8px
+  corner-radius cap, 1px borders instead of heavy shadows) — styling only,
+  no behavior changed.
+
+See [`info.md`](info.md) for a narrated, protocol-by-protocol walkthrough of
+exactly what's real vs. simulated in the checkout/payment flow — written for
+demo narration.
 
 ---
 
@@ -239,7 +270,7 @@ This is a proof of concept, not a production payment system:
 
 - **Payment is simulated** — no real card network or bank connection; no real money moves
 - **Merchant search is a seeded local catalog** — the Shopify/DummyJSON adapters exist but have no live credentials
-- **The MCP tool layer** is structured correctly but called in-process, not over a real MCP transport
+- **Signing keypairs are demo-generated** — AP2/ACP/trust use real ECDSA, but the keypair is generated in memory per process run, not issued by a real CA/HSM
 - **Multi-item checkout** processes each item as its own order rather than one combined order
 
 See [`docs/product.md`](docs/product.md) for the full product document, [`status.md`](status.md) for the detailed build log, and [`plan.md`](plan.md) for the v2 task tracker.

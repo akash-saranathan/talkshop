@@ -9,20 +9,32 @@ It is bound to: merchant, checkout_id, checkout_hash, exact amount, currency,
 expiry and single use. The signature covers every bound field, so changing any
 of them invalidates the token. Single use is enforced by the database row.
 
+Signed with real ECDSA (P-256/SHA-256, via the `cryptography` package) — the
+issuing agent's private key signs, the merchant verifies with the matching
+public key. Demo-only in that the keypair is generated in memory per process
+rather than issued by a real CA/HSM.
+
 This is an ACP-style token, not Stripe's Shared Payment Token wire format.
 """
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
 import json
-import os
 import time
 import uuid
 from typing import Optional
 
-_KEY = os.getenv("SIGNING_KEY", "demo-signing-key-replace-in-production").encode()
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
+
+# The issuing agent's ECDSA keypair for ACP tokens — generated once for this
+# process, held only in memory. Independent of AP2's keypair (backend/ap2/adapter.py),
+# matching how each signing surface already held its own key before this swap.
+_SIGNING_PRIVATE_KEY: EllipticCurvePrivateKey = ec.generate_private_key(ec.SECP256R1())
+_SIGNING_PUBLIC_KEY = _SIGNING_PRIVATE_KEY.public_key()
+
 TOKEN_TTL_SECONDS = 900  # 15 minutes
 
 _BOUND_FIELDS = ("token_id", "merchant_id", "checkout_id", "checkout_hash", "max_amount_cents",
@@ -32,7 +44,18 @@ _BOUND_FIELDS = ("token_id", "merchant_id", "checkout_id", "checkout_hash", "max
 
 def _sign(token: dict) -> str:
     payload = json.dumps({k: token[k] for k in _BOUND_FIELDS}, sort_keys=True, separators=(",", ":")).encode()
-    return base64.urlsafe_b64encode(hmac.new(_KEY, payload, hashlib.sha256).digest()).decode().rstrip("=")
+    signature = _SIGNING_PRIVATE_KEY.sign(payload, ec.ECDSA(hashes.SHA256()))
+    return base64.urlsafe_b64encode(signature).decode().rstrip("=")
+
+
+def _verify_signature(token: dict, signature_b64: str) -> bool:
+    try:
+        payload = json.dumps({k: token[k] for k in _BOUND_FIELDS}, sort_keys=True, separators=(",", ":")).encode()
+        raw = base64.urlsafe_b64decode(signature_b64 + "=" * (-len(signature_b64) % 4))
+        _SIGNING_PUBLIC_KEY.verify(raw, payload, ec.ECDSA(hashes.SHA256()))
+        return True
+    except (InvalidSignature, ValueError, KeyError):
+        return False
 
 
 def issue(
@@ -75,7 +98,7 @@ def verify(
     def add(name: str, ok: bool, code: str) -> None:
         checks.append({"check": name, "status": "pass" if ok else "fail", "reason_code": None if ok else code})
 
-    add("token_signature_valid", hmac.compare_digest(_sign(token), token.get("signature", "")), "TOKEN_SIGNATURE_INVALID")
+    add("token_signature_valid", _verify_signature(token, token.get("signature", "")), "TOKEN_SIGNATURE_INVALID")
     add("merchant_matches", token["merchant_id"] == merchant_id, "MERCHANT_MISMATCH")
     add("checkout_bound", token["checkout_id"] == checkout_id, "ORDER_ID_MISMATCH")
     add("checkout_hash_bound", token["checkout_hash"] == checkout_hash, "CHECKOUT_HASH_MISMATCH")

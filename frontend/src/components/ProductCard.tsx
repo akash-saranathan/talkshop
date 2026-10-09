@@ -30,7 +30,7 @@ function getDeliveryLabel(days: number): string {
 
 const MERCHANT_COLORS: Record<string, string> = {
   MERCHANT_A: "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300",
-  MERCHANT_B: "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300",
+  MERCHANT_B: "bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300",
   MERCHANT_C: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300",
 };
 

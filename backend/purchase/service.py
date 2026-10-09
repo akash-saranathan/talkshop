@@ -31,8 +31,7 @@ from sqlalchemy import update
 from backend.acp import delegated
 from backend.agents import payit
 from backend.agents.cartup import build_checkout, checkout_hash_for
-from backend.config.demo_profile import REWARD_PREFERENCE
-from backend.payment.loyalty_policy import decide_redemption
+from backend.payment.loyalty_policy import decide_redemption, max_redeemable
 from backend.ap2.adapter import AP2Adapter
 from backend.ap2.models import AP2CartMandate, AP2PaymentMandate
 from backend.config.agents import PAYIT
@@ -48,7 +47,9 @@ from backend.payment.authorization_adapter import authorization_adapter
 from backend.payment.token_lookup import load_token_context
 from backend.routers.authorizations import _issue_checkout_mandates, _load_mandate, _store_mandate, _verify_cart
 from backend.trust import sessions as trust_sessions
+from backend.trust.credentials import AGENT_SPENDING_LIMIT, customer_ref
 from backend.trust.models import SCOPE_CHECKOUT, SCOPE_PAYMENT
+from backend.trust.verifier import merchant_relationship
 
 _ap2 = AP2Adapter()
 
@@ -114,6 +115,53 @@ def _reject(trace: Trace, reason: str, message: str, **fields) -> dict:
     return _result("rejected", trace, reason=reason, message=message, **fields)
 
 
+def _trust_failure_message(merchant_id: str, decision, fallback: str) -> str:
+    """The generic 'could not verify this shopping agent' sentence hides which
+    of the delegation's checks actually failed. Surface the two a customer can
+    act on — an expired credential (re-run checkout) or a charge over the
+    agent's delegated spending limit — and fall back to the generic message
+    for anything else (a real trust/signature failure)."""
+    name = merchant_catalog_name(merchant_id)
+    if decision.failed_check == "credential_not_expired":
+        return (f"Your shopping agent's authorization with {name} expired while this checkout was open. "
+                "Nothing was charged — please start the checkout again.")
+    if decision.failed_check == "amount_within_scope":
+        return (f"This order's total is above the amount your shopping agent is currently authorized to spend "
+                f"at {name}. Nothing was charged — try a smaller quantity, or re-authorize for a higher amount.")
+    return fallback
+
+
+def _signature_check(decision) -> Optional[bool]:
+    """Whether the trust decision's underlying ECDSA credential-signature check
+    passed — None if that check never ran (e.g. no trusted session at all)."""
+    check = next((c for c in decision.checks if c.check == "credential_signature_valid"), None)
+    return (check.status == "pass") if check else None
+
+
+def _spending_check(payable: float) -> str:
+    """Agent spending guardrail: whether the amount actually due (after any
+    loyalty redemption) is within the agent's delegated limit."""
+    return "blocked" if payable > AGENT_SPENDING_LIMIT else "passed"
+
+
+def _payment_credential_status(pm: Optional[dict], fully_covered: bool) -> str:
+    if fully_covered:
+        return "points"
+    return "tokenized" if pm else "pending"
+
+
+def _trace_spending_check(trace: Trace, checkout: CheckoutObject, pm: Optional[dict], fully_covered: bool) -> None:
+    """Always-emitted (pass or block) so the live trace can show the agent's
+    spending guardrail and payment-credential state for every proposal, not
+    only the moment it blocks."""
+    trace.add("CustomerAgent", "Customer", "SECURITY", "agent_spending_check", {
+        "checkout_amount": checkout.payable, "agent_spending_limit": AGENT_SPENDING_LIMIT,
+        "status": _spending_check(checkout.payable),
+        "payment_credential": _payment_credential_status(pm, fully_covered),
+        "payment_method_display": pm["display"] if pm else None,
+    })
+
+
 # ── 1. Checkout + order proposal ─────────────────────────────────────────────
 
 async def create_proposal(
@@ -132,13 +180,16 @@ async def create_proposal(
                                                trusted_session_id=trusted_session_id)
     if trusted is None:
         trace.add(agent, "CustomerAgent", "TRUST", "trusted_session_rejected",
-                  {"action": SCOPE_CHECKOUT, "failed_check": decision.failed_check, "reason": decision.reason},
+                  {"action": SCOPE_CHECKOUT, "failed_check": decision.failed_check, "reason": decision.reason,
+                   "credential_signature_valid": _signature_check(decision)},
                   direction="in")
-        return _reject(trace, "TRUST_VALIDATION_FAILED",
-                       f"{merchant_catalog_name(product.merchant_id)} could not verify this shopping agent's credentials, so the checkout was not authorized. Nothing was charged.")
+        return _reject(trace, "TRUST_VALIDATION_FAILED", _trust_failure_message(
+            product.merchant_id, decision,
+            f"{merchant_catalog_name(product.merchant_id)} could not verify this shopping agent's credentials, so the checkout was not authorized. Nothing was charged."))
     trace.add(agent, "CustomerAgent", "TRUST", "trusted_session_verified",
               {"action": SCOPE_CHECKOUT, "trusted_session_id": trusted.session_id,
-               "merchant_relationship": trusted.merchant_relationship}, direction="in")
+               "merchant_relationship": trusted.merchant_relationship,
+               "credential_signature_valid": _signature_check(decision)}, direction="in")
 
     # Merchant-scoped loyalty: a member merchant returns this customer's balance.
     # Loyalty is a merchant benefit, not a payment protocol.
@@ -154,13 +205,14 @@ async def create_proposal(
     if error:
         return _reject(trace, error, "The merchant could not create a checkout for this item.")
 
-    # Zero-click loyalty redemption: the agent applies the customer's standing
-    # reward preference automatically. Points are settled by the merchant's own
-    # ledger; only amount_due is charged to the card. Re-hash so the redemption
-    # is bound into the checkout (tamper-proof) before it is stored or mandated.
+    # Loyalty redemption starts at "use all eligible points" — the customer
+    # can dial it down (or to card-only) via the proposal's points slider,
+    # which calls apply_loyalty() below. Points are settled by the merchant's
+    # own ledger; only amount_due is charged to the card. Re-hash so the
+    # redemption is bound into the checkout (tamper-proof) before it's stored.
     redemption = None
     if is_member and loyalty_balance > 0:
-        decision = decide_redemption(loyalty_balance, checkout.total, REWARD_PREFERENCE)
+        decision = decide_redemption(loyalty_balance, checkout.total, max_redeemable(loyalty_balance, checkout.total))
         if decision.points_redeemed > 0:
             checkout.loyalty_points_redeemed = decision.points_redeemed
             checkout.loyalty_value = decision.value_redeemed
@@ -171,7 +223,7 @@ async def create_proposal(
             trace.add(agent, "CustomerAgent", "A2A", "loyalty_redemption_applied", {
                 "merchant": product.merchant_id, "points_redeemed": decision.points_redeemed,
                 "value_redeemed": decision.value_redeemed, "order_total": checkout.total,
-                "amount_due": decision.amount_due, "preference": REWARD_PREFERENCE,
+                "amount_due": decision.amount_due,
                 "note": "Merchant redeemed the customer's points against this order. Settled by the merchant's loyalty ledger, not the card rails.",
             }, direction="in")
 
@@ -201,6 +253,7 @@ async def create_proposal(
     # customer is a guest to returns None, which the UI turns into secure entry.
     pm = (methods.get_method(user_id, payment_method_id) if payment_method_id
           else methods.default_method(user_id, product.merchant_id))
+    _trace_spending_check(trace, checkout, pm, bool(redemption and redemption.fully_covered))
     proposal = {
         **checkout.model_dump(mode="json"),
         "delivery_display": _pretty_date(checkout.delivery_date),
@@ -209,17 +262,96 @@ async def create_proposal(
         "merchant_relationship": trusted.merchant_relationship,
         "talkshop_account": "talkshop_guest" if is_talkshop_guest else "authenticated",
         "payment_method": pm,
+        "agent_spending_limit": AGENT_SPENDING_LIMIT,
+        "spending_check": _spending_check(checkout.payable),
         "loyalty": {
             "balance": loyalty_balance, "is_member": is_member, "merchant_name": checkout.merchant_name,
             "points_redeemed": checkout.loyalty_points_redeemed, "value_redeemed": checkout.loyalty_value,
             "amount_due": checkout.payable, "fully_covered": bool(redemption and redemption.fully_covered),
+            "max_redeemable": max_redeemable(loyalty_balance, checkout.total),
         } if is_member else None,
         "ap2": ap2,
     }
     trace.add("CustomerAgent", "Customer", "internal", "order_proposal", {
         "checkout_id": checkout.checkout_id, "total": checkout.total, "delivery_date": checkout.delivery_date,
-        "payment_method": pm["display"] if pm else None, "awaiting": "GO AHEAD",
+        "payment_method": pm["display"] if pm else None, "awaiting": "Authorize Payment",
     })
+    return _result("proposed", trace, proposal=proposal)
+
+
+# ── 1b. Loyalty choice (all / partial / none points) ─────────────────────────
+
+async def apply_loyalty(
+    *, user_id: str, is_talkshop_guest: bool, checkout_id: str, checkout_hash: str, points_to_redeem: int,
+) -> dict:
+    """
+    Recomputes the checkout's points redemption from the customer's explicit
+    choice (the proposal's points slider) and re-binds the checkout hash and
+    AP2 Cart Mandate to the new amount due — the same rebind pattern used by
+    reconsent() for a merchant-changed term. Never changes checkout status;
+    only GO AHEAD moves a checkout forward.
+    """
+    trace = Trace()
+    with get_session() as db:
+        row, checkout = _load_checkout(db, user_id, checkout_id)
+    if row is None:
+        return _reject(trace, "CHECKOUT_NOT_FOUND", "That checkout no longer exists.")
+    if row.status != "proposed":
+        return _reject(trace, f"CHECKOUT_{row.status.upper()}", "This checkout can no longer be changed.")
+    if checkout_hash != checkout.checkout_hash:
+        return _reject(trace, "CHECKOUT_HASH_MISMATCH",
+                       "This checkout has changed since you last viewed it — please reopen it.")
+
+    product = merchant_catalog.get_product(checkout.product_id)
+    if product is None:
+        return _reject(trace, "PRODUCT_NOT_FOUND", "That product is no longer available.")
+
+    is_member = merchant_relationship(checkout.merchant_id, customer_ref(user_id)) == "merchant_member"
+    loyalty_balance = _merchant_loyalty(user_id, checkout.merchant_id) if is_member else 0
+    decision = decide_redemption(loyalty_balance, checkout.total, points_to_redeem if is_member else 0)
+
+    checkout.loyalty_points_redeemed = decision.points_redeemed
+    checkout.loyalty_value = decision.value_redeemed
+    checkout.amount_due = decision.amount_due
+    unit_price = round(checkout.subtotal / checkout.quantity, 2)
+    checkout.checkout_hash = checkout_hash_for(checkout, unit_price)
+
+    with get_session() as db:
+        db.query(MerchantCheckout).filter(MerchantCheckout.checkout_id == checkout_id).update(
+            {"checkout_hash": checkout.checkout_hash, "document": checkout.model_dump_json()},
+            synchronize_session=False)
+        db.commit()
+
+    ap2 = _issue_checkout_mandates(checkout, product, None, user_id)
+    trace.add("CustomerAgent", "AP2 evidence", "AP2", "ap2_checkout_bound", {
+        "cart_mandate_id": ap2["cart_mandate_id"], "checkout_hash": checkout.checkout_hash,
+        "verified": ap2["cart_verified"], "note": "Re-bound to the customer's chosen points usage.",
+    })
+    trace.add("Customer", "CustomerAgent", "HUMAN", "loyalty_choice_applied", {
+        "checkout_id": checkout_id, "points_redeemed": decision.points_redeemed,
+        "value_redeemed": decision.value_redeemed, "amount_due": checkout.payable,
+    }, direction="in")
+
+    pm = methods.default_method(user_id, checkout.merchant_id)
+    _trace_spending_check(trace, checkout, pm, decision.fully_covered)
+    proposal = {
+        **checkout.model_dump(mode="json"),
+        "delivery_display": _pretty_date(checkout.delivery_date),
+        "image_url": product.image_url,
+        "trusted_session_id": row.trusted_session_id,
+        "merchant_relationship": "merchant_member" if is_member else "merchant_guest",
+        "talkshop_account": "talkshop_guest" if is_talkshop_guest else "authenticated",
+        "payment_method": pm,
+        "agent_spending_limit": AGENT_SPENDING_LIMIT,
+        "spending_check": _spending_check(checkout.payable),
+        "loyalty": {
+            "balance": loyalty_balance, "is_member": is_member, "merchant_name": checkout.merchant_name,
+            "points_redeemed": checkout.loyalty_points_redeemed, "value_redeemed": checkout.loyalty_value,
+            "amount_due": checkout.payable, "fully_covered": decision.fully_covered,
+            "max_redeemable": max_redeemable(loyalty_balance, checkout.total),
+        } if is_member else None,
+        "ap2": ap2,
+    }
     return _result("proposed", trace, proposal=proposal)
 
 
@@ -254,6 +386,20 @@ async def go_ahead(
                        "The approval did not match the merchant's checkout, so nothing was authorized.",
                        mismatched=mismatches)
 
+    # VIC-inspired agent spending guardrail: a hard cap on what the agent is
+    # delegated to charge per checkout, enforced before any protocol work
+    # (AP2/ACP/DPAT) runs or the checkout is claimed — so a blocked order can
+    # still be adjusted (e.g. more points, smaller quantity) and retried.
+    if checkout.payable > AGENT_SPENDING_LIMIT:
+        trace.add("CustomerAgent", "Customer", "SECURITY", "agent_spending_limit_exceeded", {
+            "checkout_amount": checkout.payable, "agent_spending_limit": AGENT_SPENDING_LIMIT,
+            "note": "Blocked before any payment protocol work ran. Nothing was charged.",
+        })
+        return _reject(trace, "AGENT_SPENDING_LIMIT_EXCEEDED",
+                       f"This order's ${checkout.payable:.2f} charge is above your shopping agent's "
+                       f"${AGENT_SPENDING_LIMIT:.2f} spending limit. Nothing was charged.",
+                       agent_spending_limit=AGENT_SPENDING_LIMIT, checkout_amount=checkout.payable)
+
     # Claim the checkout so a double-click can't authorize it twice.
     with get_session() as db:
         claimed = db.query(MerchantCheckout).filter(MerchantCheckout.checkout_id == checkout_id,
@@ -266,8 +412,8 @@ async def go_ahead(
         "consent_id": consent, "checkout_id": checkout.checkout_id, "checkout_hash": checkout.checkout_hash,
         "total": checkout.total, "currency": checkout.currency, "merchant": checkout.merchant_id,
         "payment_method": pm["display"], "consent_mode": consent_mode,
-        "meaning": ("GO AHEAD clicked: I authorize this exact checkout." if consent_mode == "click" else
-                    "Auto GO AHEAD: the visible 10-second countdown on this exact proposal ran out "
+        "meaning": ("Authorize Payment clicked: I authorize this exact checkout." if consent_mode == "click" else
+                    "Auto-authorized: the visible 10-second countdown on this exact proposal ran out "
                     "without the customer pausing or cancelling."),
     }, direction="in")
     return await _authorize_and_execute(trace, user_id, row.trusted_session_id, checkout, pm, consent, demo)
@@ -428,12 +574,15 @@ async def merchant_charge(
                                                trusted_session_id=row.trusted_session_id, amount=amount)
     if trusted is None:
         trace.add(merchant, "CustomerAgent", "TRUST", "trusted_session_rejected",
-                  {"action": SCOPE_PAYMENT, "failed_check": decision.failed_check, "reason": decision.reason},
+                  {"action": SCOPE_PAYMENT, "failed_check": decision.failed_check, "reason": decision.reason,
+                   "credential_signature_valid": _signature_check(decision)},
                   direction="in")
-        return _block(trace, user_id, checkout_id, token_id, "TRUST_VALIDATION_FAILED",
-                      f"{merchant_catalog_name(checkout.merchant_id)} could not verify this shopping agent for payment, so no charge was authorized.")
+        return _block(trace, user_id, checkout_id, token_id, "TRUST_VALIDATION_FAILED", _trust_failure_message(
+            checkout.merchant_id, decision,
+            f"{merchant_catalog_name(checkout.merchant_id)} could not verify this shopping agent for payment, so no charge was authorized."))
     trace.add(merchant, "CustomerAgent", "TRUST", "trusted_session_verified",
-              {"action": SCOPE_PAYMENT, "trusted_session_id": trusted.session_id, "amount": amount}, direction="in")
+              {"action": SCOPE_PAYMENT, "trusted_session_id": trusted.session_id, "amount": amount,
+               "credential_signature_valid": _signature_check(decision)}, direction="in")
 
     if token_status == "consumed":
         return _block(trace, user_id, checkout_id, token_id, "TOKEN_ALREADY_CONSUMED",

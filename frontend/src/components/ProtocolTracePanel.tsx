@@ -402,6 +402,7 @@ const PROTO_THEME: Record<string, { badge: string; badgeText: string; border: st
   TRUST:      { badge: "bg-emerald-600", badgeText: "text-white", border: "border-l-emerald-500", iconBg: "bg-emerald-100", iconText: "text-emerald-700" },
   HUMAN:      { badge: "bg-sky-600",    badgeText: "text-white", border: "border-l-sky-500",    iconBg: "bg-sky-100",    iconText: "text-sky-700"    },
   PAYMENT:    { badge: "bg-rose-600",   badgeText: "text-white", border: "border-l-rose-500",   iconBg: "bg-rose-100",   iconText: "text-rose-700"   },
+  SECURITY:   { badge: "bg-amber-600",  badgeText: "text-white", border: "border-l-amber-500",  iconBg: "bg-amber-100",  iconText: "text-amber-700"  },
 };
 
 function toCard(ev: ProtocolEvent): NarrativeCard {
@@ -615,10 +616,35 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     case "trusted_session_verified":
       return { icon: <ShieldCheck size={14} />, protocol: "TRUST", status: "ok",
         headline: `Trusted session re-checked for ${String(d.action ?? "")}`,
-        what: "The merchant re-verifies the agent's credential before each sensitive action." };
+        what: d.credential_signature_valid === true
+          ? "The merchant re-verified the agent's credential, including its ECDSA cryptographic signature, before this sensitive action."
+          : "The merchant re-verifies the agent's credential before each sensitive action.",
+        highlight: d.credential_signature_valid === true ? "✓ Cryptographic signature verified" : undefined };
     case "trusted_session_rejected":
       return { icon: <ShieldX size={14} />, protocol: "TRUST", status: "fail",
-        headline: "Merchant refused the agent", what: String(d.reason ?? "No valid trusted session") };
+        headline: "Merchant refused the agent",
+        what: d.credential_signature_valid === false
+          ? "Cryptographic authorization failed — the credential's ECDSA signature did not verify against the merchant's trusted public key."
+          : String(d.reason ?? "No valid trusted session") };
+    case "agent_spending_check": {
+      const blocked = d.status === "blocked";
+      const amount = `$${Number(d.checkout_amount ?? 0).toFixed(2)}`;
+      const limit = `$${Number(d.agent_spending_limit ?? 0).toFixed(2)}`;
+      const credential = String(d.payment_credential ?? "pending");
+      const credLabel = credential === "tokenized"
+        ? `payment credential protected/tokenized${d.payment_method_display ? ` (${d.payment_method_display})` : ""}`
+        : credential === "points" ? "paid entirely with loyalty points — no card needed"
+        : "awaiting secure payment entry";
+      return { icon: <ShieldCheck size={14} />, protocol: "SECURITY", status: blocked ? "fail" : "ok",
+        headline: blocked ? "Agent spending guardrail: blocked" : "Agent spending guardrail: passed",
+        what: `Checks the amount actually due (after any loyalty redemption) against the agent's delegated spending limit, and reports the payment credential's protected status: ${credLabel}.`,
+        highlight: `${amount} of ${limit} limit` };
+    }
+    case "agent_spending_limit_exceeded":
+      return { icon: <ShieldX size={14} />, protocol: "SECURITY", status: "fail",
+        headline: "Blocked — agent spending limit exceeded",
+        what: "Checked before any AP2/ACP/DPAT work ran, so nothing was signed or charged.",
+        highlight: `$${Number(d.checkout_amount ?? 0).toFixed(2)} over the $${Number(d.agent_spending_limit ?? 0).toFixed(2)} limit` };
     // ── Demo 2: checkout and consent ──
     case "checkout_created": {
       const t = d.totals as Record<string, number> | undefined;
@@ -634,11 +660,11 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     case "order_proposal":
       return { icon: <Pause size={14} />, protocol: "HUMAN", status: "ok",
         headline: "Order proposal shown",
-        what: "Waiting for the customer's GO AHEAD. Nothing is authorized yet.",
+        what: "Waiting for the customer to authorize payment. Nothing is authorized yet.",
         highlight: d.payment_method ? String(d.payment_method) : undefined };
     case "customer_consent_received":
       return { icon: <User size={14} />, protocol: "HUMAN", status: "ok",
-        headline: d.consent_mode === "auto_countdown" ? "Auto GO AHEAD after the 10 s countdown" : "GO AHEAD received",
+        headline: d.consent_mode === "auto_countdown" ? "Auto-authorized after the 10 s countdown" : "Payment authorized",
         what: "The customer authorized this exact checkout, total and payment method.",
         highlight: typeof d.total === "number" ? `$${(d.total as number).toFixed(2)} · ${String(d.payment_method ?? "")}` : undefined };
     case "customer_consent_rejected":
@@ -648,7 +674,7 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     case "ap2_payment_authorization":
       return { icon: <Lock size={14} />, protocol: "AP2", status: "ok",
         headline: "AP2 authorization evidence created",
-        what: "Created only after GO AHEAD. Proves the customer approved this checkout and amount." };
+        what: "Created only after the customer authorizes payment. Proves the customer approved this checkout and amount." };
     case "ap2_evidence_verified":
       return { icon: <CheckCircle2 size={14} />, protocol: "AP2", status: "ok",
         headline: "AP2 evidence verified by the merchant", what: "Cart and payment evidence match the checkout and the token." };
@@ -932,6 +958,21 @@ function buildStory(all: ProtocolEvent[]): StoryRow[] {
     checkout ? [`Total ${money(totals.total)}`, checkout.detail.delivery_date ? `Delivery ${checkout.detail.delivery_display ?? checkout.detail.delivery_date}` : ""].filter(Boolean) : [],
     find("trusted_session_verified", "trusted_session_rejected", "checkout_created", "order_proposal"));
 
+  // LOYALTY — only appears once a member merchant's balance has been read
+  const loyaltyBalanceEv = last("loyalty_balance");
+  if (loyaltyBalanceEv) {
+    const redeemedEv = last("loyalty_redemption_applied", "loyalty_choice_applied");
+    const settledEv = last("loyalty_settlement");
+    const pts = Number((redeemedEv ?? settledEv)?.detail.points_redeemed ?? 0);
+    const value = Number((redeemedEv ?? settledEv)?.detail.value_redeemed ?? 0);
+    add("loyalty", "Loyalty", pts > 0 ? "ok" : "upcoming",
+      pts > 0
+        ? [`✓ ${pts.toLocaleString()} points applied (−${money(value)})`,
+           settledEv ? "Order fully covered by points — no card charge" : ""].filter(Boolean)
+        : [`${Number(loyaltyBalanceEv.detail.balance ?? 0).toLocaleString()} pts available · none applied yet`],
+      find("loyalty_balance", "loyalty_redemption_applied", "loyalty_choice_applied", "loyalty_settlement"));
+  }
+
   // AP2
   const bound = last("ap2_checkout_bound");
   const evidence = last("ap2_payment_authorization");
@@ -941,6 +982,53 @@ function buildStory(all: ProtocolEvent[]): StoryRow[] {
      ap2Fail ? "✗ Evidence did not match" : ""].filter(Boolean),
     find("ap2_checkout_bound", "ap2_payment_authorization", "ap2_evidence_verified", "ap2_evidence_rejected"));
 
+  // SECURITY — protected payment credential + agent spending guardrail.
+  // Only appears once a checkout proposal exists (never before a product is
+  // selected), and updates live as loyalty changes, approval happens and
+  // payment resolves.
+  const spendCheck = last("agent_spending_check");
+  const spendBlocked = last("agent_spending_limit_exceeded");
+  if (spendCheck || spendBlocked) {
+    const amt = Number((spendBlocked ?? spendCheck)!.detail.checkout_amount ?? 0);
+    const limit = Number((spendBlocked ?? spendCheck)!.detail.agent_spending_limit ?? 500);
+    const blocked = !!spendBlocked;
+    const credential = String(spendCheck?.detail.payment_credential ?? "pending");
+    const credentialLine = credential === "tokenized"
+      ? `✓ Payment credential protected — tokenized${spendCheck?.detail.payment_method_display ? ` (${spendCheck.detail.payment_method_display})` : ""}`
+      : credential === "points" ? "✓ Paid entirely with loyalty points — no card needed"
+      : "Awaiting secure payment entry";
+    const sigEv = last("trusted_session_verified", "trusted_session_rejected");
+    const sigValid = sigEv?.detail.credential_signature_valid as boolean | null | undefined;
+    const signatureLine = sigValid === true ? "✓ Cryptographic authorization verified"
+      : sigValid === false ? "✗ Cryptographic authorization failed"
+      : "Cryptographic authorization pending";
+    const approvalEv = last("customer_consent_received", "reconsent_received");
+    const approvalFailEv = last("customer_consent_rejected");
+    const paymentOkEv = last("psp_result");
+    const paymentFailEv = last("payment_rejected");
+    const orderEv = last("order_created");
+    const approvalLine = approvalFailEv ? "✗ Approval did not match the checkout"
+      : approvalEv ? "✓ User approved"
+      : "⏳ User approval required";
+    const authLine = blocked ? "✗ Payment blocked — spending limit exceeded"
+      : paymentFailEv ? "✗ Payment blocked — nothing charged"
+      : (orderEv || paymentOkEv?.detail.status === "success") ? "✓ Payment authorized"
+      : approvalEv ? "⏳ Payment authorizing…"
+      : "⏳ Payment authorization pending";
+    add("security", "Security", blocked || approvalFailEv || paymentFailEv || sigValid === false ? "fail" : "ok",
+      [
+        `Checkout amount ${money(amt)} · Agent spending limit ${money(limit)}`,
+        credentialLine,
+        blocked ? "✗ Spending limit: blocked" : "✓ Spending limit: passed",
+        signatureLine,
+        approvalLine,
+        authLine,
+        "Card number & CVC never leave the browser — not seen by the agent, the LLM, or stored on this app's servers",
+      ],
+      find("agent_spending_check", "agent_spending_limit_exceeded", "trusted_session_verified", "trusted_session_rejected",
+           "customer_consent_received", "customer_consent_rejected", "psp_result", "payment_rejected", "order_created"));
+  }
+
   // HUMAN: GO AHEAD (and re-consent)
   const consent = last("customer_consent_received", "reconsent_received");
   const consentFail = last("customer_consent_rejected");
@@ -949,7 +1037,7 @@ function buildStory(all: ProtocolEvent[]): StoryRow[] {
   const goStatus: RowStatus = consentFail || cancelled ? "fail"
     : paused && !last("reconsent_received") ? "paused" : consent ? "ok" : "upcoming";
   add("goahead", "Human", goStatus,
-    [consent ? (consent.detail.consent_mode === "auto_countdown" ? "✓ Auto GO AHEAD (10 s countdown)" : "✓ GO AHEAD") : "", last("condition_changed") ? `Delivery changed → ${last("condition_changed")!.detail.new_display ?? last("condition_changed")!.detail.new}` : "",
+    [consent ? (consent.detail.consent_mode === "auto_countdown" ? "✓ Auto-authorized (10 s countdown)" : "✓ Payment authorized") : "", last("condition_changed") ? `Delivery changed → ${last("condition_changed")!.detail.new_display ?? last("condition_changed")!.detail.new}` : "",
      last("reconsent_received") ? "✓ Re-consented to the new terms" : paused ? "Waiting for YES / NO" : "",
      cancelled ? "Cancelled — nothing charged" : "", consentFail ? "✗ Approval did not match the checkout" : ""].filter(Boolean),
     find("customer_consent_received", "customer_consent_rejected", "condition_changed", "reconsent_required",

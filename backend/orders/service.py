@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from backend.agents import trackit
 from backend.config.agents import PAYIT, TRACKIT
-from backend.db.schema import LoyaltyPoints, LoyaltyTransaction, Order, PaymentAuthorization
+from backend.db.schema import CartItem, LoyaltyPoints, LoyaltyTransaction, Order, PaymentAuthorization
 from backend.db.session_utils import write_audit_event
 from backend.models.checkout import CheckoutObject
 from backend.models.payment import PaymentResult
@@ -32,6 +32,14 @@ def confirm_paid_order(session: Session, checkout: CheckoutObject, result: Payme
 
     fields = trackit.confirm_order(checkout, result, user_id)
     insert_order_if_absent(session, fields)
+
+    # The purchased item is paid for — it shouldn't still show up as "in the
+    # cart" afterward. Only this one product/merchant row, never the rest
+    # of the cart (a multi-item checkout confirms each item separately).
+    session.query(CartItem).filter(
+        CartItem.user_id == user_id, CartItem.product_id == checkout.product_id,
+        CartItem.merchant_id == checkout.merchant_id,
+    ).delete(synchronize_session=False)
 
     write_audit_event(session, "PAYMENT_EXECUTED", user_id=user_id, agent_id=PAYIT.agent_id,
                       order_id=checkout.checkout_id,

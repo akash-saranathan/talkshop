@@ -5,24 +5,36 @@
    never activates it. This makes `dark:` target that attribute instead. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* ── Light mode — white + Chase blue ──────────────────────────────── */
+/* Chase-inspired cap: no corner exceeds 8px anywhere in the app — this alone
+   flattens every rounded-xl/2xl/3xl surface (cards, modals, bubbles, panels)
+   to the same restrained radius without touching individual components.
+   rounded-full (true circles/pills for avatars, dots, icon buttons) is
+   untouched by this — it isn't part of the numeric scale. */
+@theme {
+  --radius-lg: 0.5rem;   /* 8px */
+  --radius-xl: 0.5rem;   /* 8px */
+  --radius-2xl: 0.5rem;  /* 8px */
+  --radius-3xl: 0.5rem;  /* 8px */
+}
+
+/* ── Light mode — crisp white + Chase Denim Blue ──────────────────────── */
 :root {
-  --color-primary:      #117ACA;   /* Chase blue */
+  --color-primary:      #117ACA;   /* Chase Denim Blue */
   --color-primary-light:#1A8EE0;   /* hover state */
   --color-primary-dark: #0D5FA3;   /* pressed / nav header */
-  --color-primary-bg:   #EAF4FB;   /* light tint for badges, highlights */
+  --color-primary-bg:   #E9F3F8;   /* soft blue tint for badges, highlights */
   --color-success:      #1E7E34;
   --color-blocked:      #C0392B;
   --color-warning:      #D97706;
-  --color-bg:           #FFFFFF;   /* pure white */
-  --color-surface:      #F5FAFF;   /* very light blue-white */
-  --color-surface-2:    #EAF4FB;
-  --color-border:       #D0E6F5;
-  --color-text:         #0F1923;
-  --color-text-muted:   #5A6A7A;
+  --color-bg:           #FFFFFF;   /* crisp white page canvas */
+  --color-surface:      #FFFFFF;   /* crisp white for cards and message blocks */
+  --color-surface-2:    #F4F4F4;   /* clean light gray for alternating sections, dividers */
+  --color-border:       #E3E3E3;   /* thin neutral border */
+  --color-text:         #211E1E;   /* off-black, authoritative and legible */
+  --color-text-muted:   #6B6B6B;
 }
 
-/* ── Dark mode — black + Chase blue visible ───────────────────────── */
+/* ── Dark mode — black + the same Denim Blue ──────────────────────────── */
 :root[data-theme="dark"] {
   --color-primary:      #117ACA;   /* same Chase blue — readable on black */
   --color-primary-light:#1A8EE0;
@@ -34,13 +46,13 @@
   --color-bg:           #000000;   /* pure black */
   --color-surface:      #111111;
   --color-surface-2:    #1A1A1A;
-  --color-border:       #222222;
+  --color-border:       #2A2A2A;
   --color-text:         #F0F0F0;
-  --color-text-muted:   #8A9AAA;
+  --color-text-muted:   #9A9A9A;
 }
 
 * {
-  font-family: "Inter", sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
 }
 
 button:not(:disabled),
@@ -56,35 +68,29 @@ body {
   color: var(--color-text);
 }
 
-/* ── Financial-commerce elevation system ──────────────────────────────
-   A restrained, consistent shadow scale (not flat borders alone, not
-   heavy drop shadows) used across product cards, checkout, order cards,
-   message bubbles and panels — the "lifted" surface look of a polished
-   commerce/banking UI. Dark mode uses a softer, lower-contrast version
-   since shadows barely read on a black background. */
+/* ── Financial-commerce surface system ─────────────────────────────────
+   Chase-style restraint: thin, clean 1px edges instead of heavy drop
+   shadows. These three utility names are unchanged so every existing card,
+   modal, bubble and panel across the app picks this up automatically. */
 :root {
-  --color-accent:       #7C3AED;   /* violet — pairs with Chase blue for an "AI commerce" identity, used sparingly */
-  --color-accent-bg:    #F3EEFC;
-  --shadow-card:       0 1px 3px rgba(15, 25, 35, 0.07), 0 6px 16px -6px rgba(15, 25, 35, 0.14);
-  --shadow-card-hover: 0 2px 6px rgba(15, 25, 35, 0.10), 0 16px 32px -10px rgba(17, 122, 202, 0.30);
-  --shadow-raised:     0 2px 4px rgba(15, 25, 35, 0.12), 0 4px 12px -2px rgba(17, 122, 202, 0.28);
+  --color-accent:       #0D3B66;   /* deep navy — pairs with Denim Blue for AI touchpoints, no purple/neon */
+  --color-accent-bg:    #E9F3F8;
 }
 :root[data-theme="dark"] {
-  --color-accent:       #A78BFA;
-  --color-accent-bg:    #241B3D;
-  --shadow-card:       0 1px 3px rgba(0, 0, 0, 0.4), 0 6px 20px -6px rgba(17, 122, 202, 0.22);
-  --shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.5), 0 16px 36px -10px rgba(17, 122, 202, 0.42);
-  --shadow-raised:     0 2px 4px rgba(0, 0, 0, 0.5), 0 4px 14px -2px rgba(17, 122, 202, 0.4);
+  --color-accent:       #4FA3D1;
+  --color-accent-bg:    #0D2A40;
 }
 
 /* Tailwind v4: custom utilities must use @utility (not @layer utilities) so
-   that variants like hover:/focus-within: generate correctly. */
+   that variants like hover:/focus-within: generate correctly. A 0-blur,
+   1px-spread box-shadow reads as a clean 1px border without colliding with
+   an element's own explicit `border` class. */
 @utility shadow-card {
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 0 0 1px var(--color-border);
 }
 @utility shadow-card-hover {
-  box-shadow: var(--shadow-card-hover);
+  box-shadow: 0 0 0 1px var(--color-primary);
 }
 @utility shadow-raised {
-  box-shadow: var(--shadow-raised);
+  box-shadow: 0 0 0 1px var(--color-border);
 }

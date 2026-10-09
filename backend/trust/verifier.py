@@ -5,7 +5,6 @@ consulted, and a single failed check refuses the action.
 """
 from __future__ import annotations
 
-import hmac
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -57,8 +56,7 @@ class AgentTrustService:
         add("platform_expected", platform_ok, "agent is not from the expected customer platform")
 
         key = credentials.platform_key(identity.public_key_hint)
-        sig_ok = key is not None and hmac.compare_digest(
-            credentials.sign(identity, grant, key), credential.signature)
+        sig_ok = key is not None and credentials.verify_signature(identity, grant, credential.signature, key)
         add("credential_signature_valid", sig_ok, "credential signature does not verify")
 
         add("delegation_bound_to_agent", grant.agent_id == identity.agent_id and bool(grant.user_id),

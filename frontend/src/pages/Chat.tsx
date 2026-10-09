@@ -713,7 +713,7 @@ export default function Chat() {
           rawTurns.push({
             id: crypto.randomUUID(),
             userMessage: "Checkout",
-            steps: [{ id: "ca1", message: "Checkout ready — waiting for your GO AHEAD", status: "done" as const }],
+            steps: [{ id: "ca1", message: "Checkout ready — waiting for you to authorize payment", status: "done" as const }],
             products: [],
             recommendation: "",
             blocked: null,
@@ -1060,9 +1060,13 @@ export default function Chat() {
 
   const requestProposal = useCallback(async (product: ProductData): Promise<{ checkoutData?: InlineCheckoutDataShape; error?: string; reason?: string }> => {
     try {
+      // The cart is the source of truth for quantity — a product carries no
+      // quantity of its own, so look up whatever the customer last set via
+      // the +/- stepper instead of always proposing a single unit.
+      const quantity = cartItemByProduct.get(product.product_id)?.quantity ?? 1;
       const res = await authFetch("/api/purchase/checkout", {
         method: "POST",
-        body: JSON.stringify({ product_id: product.product_id, quantity: 1, chat_session_id: sessionIdRef.current }),
+        body: JSON.stringify({ product_id: product.product_id, quantity, chat_session_id: sessionIdRef.current }),
       });
       const data = await res.json().catch(() => ({}));
       appendServerEvents(data.events);
@@ -1073,7 +1077,79 @@ export default function Chat() {
     } catch {
       return { error: "Could not prepare your order. Please try again." };
     }
+  }, [appendServerEvents, cartItemByProduct]);
+
+  // Points slider on the order proposal — recomputes the split server-side
+  // (re-binding the checkout hash + AP2 Cart Mandate) without touching
+  // anything else about the checkout. Never executes payment.
+  const applyLoyaltyPoints = useCallback(async (turnId: string, points: number) => {
+    const co = turnsRef.current.find((t) => t.id === turnId)?.checkout;
+    if (!co?.checkoutData) return;
+    try {
+      const res = await authFetch("/api/purchase/loyalty", {
+        method: "POST",
+        body: JSON.stringify({
+          checkout_id: co.checkoutData.checkout_id,
+          checkout_hash: co.checkoutData.checkout_hash,
+          points_to_redeem: points,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      appendServerEvents(data.events);
+      if (!res.ok || data.status !== "proposed" || !data.proposal) return;
+      const updated = data.proposal as InlineCheckoutDataShape;
+      setTurns((prev) => prev.map((t) => (t.id === turnId && t.checkout
+        ? { ...t, checkout: { ...t.checkout, checkoutData: updated } }
+        : t)));
+      persistCheckout(co.product, updated, co.paymentMethodId);
+    } catch { /* the slider is a preview; a failed apply just keeps the last confirmed split */ }
   }, [appendServerEvents]);
+
+  // Debounces the slider's server calls and tracks in-flight state per turn,
+  // so Authorize Payment can never race a points change: a not-yet-sent
+  // change is dropped (cancelPendingLoyalty), and one already in flight keeps
+  // the button disabled (loyaltyBusyTurns) until it settles. Previously the
+  // debounce lived inside the slider component itself, where nothing could
+  // coordinate with the GO AHEAD click — that's what caused CONSENT_DOES_NOT_MATCH_CHECKOUT
+  // when a click landed right after a drag.
+  const loyaltyPendingRef = useRef<Map<string, { timer: ReturnType<typeof setTimeout> | null; inFlight: boolean }>>(new Map());
+  const [loyaltyBusyTurns, setLoyaltyBusyTurns] = useState<Set<string>>(new Set());
+
+  const setLoyaltyBusy = useCallback((turnId: string, busy: boolean) => {
+    setLoyaltyBusyTurns((prev) => {
+      if (prev.has(turnId) === busy) return prev;
+      const next = new Set(prev);
+      if (busy) next.add(turnId); else next.delete(turnId);
+      return next;
+    });
+  }, []);
+
+  const scheduleApplyLoyalty = useCallback((turnId: string, points: number) => {
+    let entry = loyaltyPendingRef.current.get(turnId);
+    if (!entry) { entry = { timer: null, inFlight: false }; loyaltyPendingRef.current.set(turnId, entry); }
+    if (entry.timer) clearTimeout(entry.timer);
+    setLoyaltyBusy(turnId, true);
+    entry.timer = setTimeout(() => {
+      entry!.timer = null;
+      entry!.inFlight = true;
+      void applyLoyaltyPoints(turnId, points).finally(() => {
+        entry!.inFlight = false;
+        setLoyaltyBusy(turnId, false);
+      });
+    }, 350);
+  }, [applyLoyaltyPoints, setLoyaltyBusy]);
+
+  // Drops a not-yet-sent points change so it can never land after
+  // authorization starts. A change already in flight is instead handled by
+  // keeping the Authorize Payment button disabled until it settles.
+  const cancelPendingLoyalty = useCallback((turnId: string) => {
+    const entry = loyaltyPendingRef.current.get(turnId);
+    if (entry?.timer) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+      setLoyaltyBusy(turnId, false);
+    }
+  }, [setLoyaltyBusy]);
 
   const doCheckoutSummary = useCallback(async (userText: string, product: ProductData, alreadyAdded = false) => {
     setInput("");
@@ -1110,13 +1186,12 @@ export default function Chat() {
       }
       return {
         ...t,
-        steps: [{ id: "c1", message: `${checkoutData.merchant_name} — checkout ready, waiting for your GO AHEAD`, status: "done" as const }],
+        steps: [{ id: "c1", message: `${checkoutData.merchant_name} — checkout ready, waiting for you to authorize payment`, status: "done" as const }],
         checkout: { phase: "summary" as const, product, checkoutData, paymentMethodId: checkoutData.payment_method?.payment_method_id },
       };
     }));
     if (checkoutData) {
       persistCheckout(product, checkoutData, checkoutData.payment_method?.payment_method_id);
-      if (checkoutData.payment_method) setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product });
     }
     setLoading(false);
   }, [requestProposal]);
@@ -1159,13 +1234,12 @@ export default function Chat() {
       }
       return {
         ...t,
-        steps: others.concat({ id: "ca1", message: `${checkoutData.merchant_name} — checkout ready, waiting for your GO AHEAD`, status: "done" as const }),
+        steps: others.concat({ id: "ca1", message: `${checkoutData.merchant_name} — checkout ready, waiting for you to authorize payment`, status: "done" as const }),
         checkout: { phase: "summary" as const, product, checkoutData, paymentMethodId: checkoutData.payment_method?.payment_method_id },
       };
     }));
     if (checkoutData) {
       persistCheckout(product, checkoutData, checkoutData.payment_method?.payment_method_id);
-      if (checkoutData.payment_method) setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product });
     }
     setLoading(false);
   }, [requestProposal]);
@@ -1250,7 +1324,7 @@ export default function Chat() {
   // One server call runs consent → AP2 evidence → ACP token → merchant verification
   // → internal DPAT + 12 checks → processor → order, and returns its trace events.
   const GO_AHEAD_STEPS = [
-    "Recording your GO AHEAD for this exact checkout",
+    "Recording your payment authorization for this exact checkout",
     "AP2 authorization evidence",
     "ACP scoped payment token",
     "Merchant verifies agent, token and evidence",
@@ -1273,6 +1347,27 @@ export default function Chat() {
       status: i <= reached ? "done" : !ok && i === reached + 1 ? "error" : "pending",
     }));
   };
+
+  // The server authorizes everything in one synchronous call, so every step's
+  // real status is known instantly — but showing them all as "done" at once
+  // doesn't read as the order actually being worked through. This replays the
+  // already-known outcome one step at a time, each spinning briefly before
+  // landing on its real status, so it looks and feels like it's happening.
+  const animateProcessingSteps = useCallback(async (turnId: string, finalSteps: ProcessingStep[]) => {
+    for (let i = 0; i < finalSteps.length; i++) {
+      if (finalSteps[i].status === "pending") break; // nothing happened past here
+      setTurns((prev) => prev.map((x) => x.id === turnId ? {
+        ...x, checkout: { ...x.checkout!, processingSteps: finalSteps.map((s, j) =>
+          j < i ? s : j === i ? { ...s, status: "running" as const } : { ...s, status: "pending" as const }) },
+      } : x));
+      await new Promise((r) => setTimeout(r, 280));
+      setTurns((prev) => prev.map((x) => x.id === turnId ? {
+        ...x, checkout: { ...x.checkout!, processingSteps: finalSteps.map((s, j) =>
+          j <= i ? s : { ...s, status: "pending" as const }) },
+      } : x));
+      if (finalSteps[i].status === "error") break;
+    }
+  }, []);
 
   const finishPurchase = useCallback((turnId: string, data: {
     status: string; events?: ProtocolEvent[]; message?: string; reason?: string; order?: ConfirmedOrder;
@@ -1356,20 +1451,23 @@ export default function Chat() {
       const data = await res.json();
       const events: ProtocolEvent[] = data.events ?? [];
       const ok = data.status === "approved" || data.status === "reconsent_required" || data.status === "cancelled";
-      setTurns((prev) => prev.map((x) => x.id === turnId ? {
-        ...x, checkout: { ...x.checkout!, processingSteps: stepsFromEvents(events, ok) },
-      } : x));
-      await new Promise((r) => setTimeout(r, 700));  // let the customer see the finished steps
+      await animateProcessingSteps(turnId, stepsFromEvents(events, ok));
+      await new Promise((r) => setTimeout(r, 400));  // let the customer see the finished steps
       finishPurchase(turnId, data, product);
     } catch {
       finishPurchase(turnId, { status: "rejected", message: "Could not reach the merchant. Nothing was charged." }, product);
     } finally {
       setLoading(false);
     }
-  }, [finishPurchase]);
+  }, [finishPurchase, animateProcessingSteps]);
 
   const doGoAhead = useCallback((turnId: string, consentMode: "click" | "auto_countdown" = "click") => {
     setAutoTimer((a) => (a?.turnId === turnId && a.stage === "checkout" ? null : a));
+    // Drop any not-yet-sent points change so it can't land mid-authorization;
+    // a change already in flight keeps the button disabled, so this should
+    // never actually be reached while one's in progress — bail defensively if it is.
+    cancelPendingLoyalty(turnId);
+    if (loyaltyPendingRef.current.get(turnId)?.inFlight) return;
     const co = turnsRef.current.find((t) => t.id === turnId)?.checkout;
     if (!co?.checkoutData || !co.paymentMethodId || co.phase !== "summary") return;
     const demo = demoScenarioRef.current;
@@ -1400,12 +1498,6 @@ export default function Chat() {
 
   const selectPaymentMethod = useCallback((turnId: string, paymentMethodId: string) => {
     setTurns((prev) => prev.map((t) => t.id === turnId ? { ...t, checkout: { ...t.checkout!, paymentMethodId } } : t));
-    // Selecting or adding a method (re)starts the countdown, so the customer
-    // always gets the full window on the method they see.
-    const co = turnsRef.current.find((t) => t.id === turnId)?.checkout;
-    if (co?.phase === "summary") {
-      setAutoTimer({ turnId, stage: "checkout", secondsLeft: AUTO_SECONDS, paused: false, product: co.product });
-    }
   }, []);
 
   const pauseCheckoutTimer = useCallback((turnId: string) => {
@@ -1480,20 +1572,17 @@ export default function Chat() {
       return () => clearTimeout(id);
     }
     setAutoTimer(null);
-    if (autoTimer.stage === "cart") {
-      setPendingCheckoutProduct(null);
-      lastRecommendedProductRef.current = null;
-      // Queue every item in the session cart, not just the one that (re)started
-      // this timer — adding a second item used to silently replace the first
-      // in this slot, so it was never checked out at all.
-      const queued = sessionCartItems.map(cartItemToProduct);
-      checkoutQueueRef.current = queued.length ? queued : [autoTimer.product];
-      advanceCheckoutQueue();
-      return;
-    }
-    // Proposal countdown ran out without a pause or cancel: same GO AHEAD, recorded as "auto_countdown".
-    doGoAhead(autoTimer.turnId, "auto_countdown");
-  }, [autoTimer, doGoAhead]);
+    // Only the cart→checkout stage auto-advances (shows the proposal).
+    // Payment itself now always requires an explicit GO AHEAD click.
+    setPendingCheckoutProduct(null);
+    lastRecommendedProductRef.current = null;
+    // Queue every item in the session cart, not just the one that (re)started
+    // this timer — adding a second item used to silently replace the first
+    // in this slot, so it was never checked out at all.
+    const queued = sessionCartItems.map(cartItemToProduct);
+    checkoutQueueRef.current = queued.length ? queued : [autoTimer.product];
+    advanceCheckoutQueue();
+  }, [autoTimer, advanceCheckoutQueue]);
 
   const BAR_COUNT = 32;
 
@@ -1737,8 +1826,8 @@ export default function Chat() {
                 <Sparkles size={13} className="text-white" />
               </div>
               <div className="leading-none">
-                <p className="text-sm font-bold text-[var(--color-text)] tracking-tight">TalkShop</p>
-                <p className="text-[10px] text-[var(--color-text-muted)] font-medium">Agentic Commerce Intelligence</p>
+                <p className="text-sm font-bold text-[var(--color-primary-dark)] tracking-tight">TalkShop</p>
+                <p className="text-[10px] text-[var(--color-text-muted)] font-medium">Marketplace Assistant</p>
               </div>
             </div>
           </div>
@@ -1810,7 +1899,7 @@ export default function Chat() {
                 <div className="flex gap-3">
                   <div className={`w-8 h-8 rounded-full grid place-items-center shrink-0 ${
                     isActiveTurn
-                      ? "bg-gradient-to-br from-[var(--color-primary)] to-violet-500 shadow-md shadow-[var(--color-primary)]/30"
+                      ? "bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-accent)] shadow-md shadow-[var(--color-primary)]/30"
                       : "bg-[var(--color-primary)]/15"
                   }`}>
                     <Sparkles size={14} className={isActiveTurn ? "text-white animate-pulse" : "text-[var(--color-primary)]"} />
@@ -1902,6 +1991,8 @@ export default function Chat() {
                         onPaymentMethodChange={(id) => selectPaymentMethod(turn.id, id)}
                         onAddCard={(card) => addCard(turn.id, card)}
                         onConnectPayPal={() => connectPayPal(turn.id)}
+                        onApplyLoyalty={(points) => scheduleApplyLoyalty(turn.id, points)}
+                        loyaltyBusy={loyaltyBusyTurns.has(turn.id)}
                         onGoAhead={() => doGoAhead(turn.id, "click")}
                         auto={autoTimer?.turnId === turn.id && autoTimer.stage === "checkout" ? autoTimer : undefined}
                         onPauseToggle={togglePauseAuto}
@@ -2192,7 +2283,7 @@ export default function Chat() {
             </p>
           </>
           ) : (
-            <div className="flex items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card focus-within:border-[var(--color-primary)]/50 focus-within:shadow-card-hover transition-shadow px-4 py-3">
+            <div className="flex items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card focus-within:border-[var(--color-primary)] focus-within:shadow-card-hover transition-shadow px-4 py-3">
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -2312,7 +2403,7 @@ export default function Chat() {
           >
             {/* Shared header with toggle */}
             <div className="flex items-center justify-between px-3 py-2.5 shrink-0"
-              style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)" }}>
+              style={{ background: "linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%)" }}>
               <div className="flex rounded-lg overflow-hidden border border-white/20 text-[9px] font-bold">
                 {([
                   { id: "trace",    label: "Live Trace",     icon: <Activity size={9} /> },

@@ -3,24 +3,29 @@
  *
  * Phases:
  *   setup      → "Preparing your order..." while the merchant builds the checkout
- *   summary    → order proposal: merchant terms, delivery, masked payment method, GO AHEAD
+ *   summary    → order proposal: merchant terms, delivery, masked payment method, Authorize Payment
  *   processing → authorization and payment steps running on the server
  *   reconsent  → the merchant changed a term (delivery date): YES / NO
  *   confirmed  → order confirmation with tracker
  *   failed     → structured rejection (nothing was charged)
  *   cancelled  → checkout cancelled
  *
- * Nothing is authorized or charged until the customer clicks GO AHEAD.
+ * Nothing is authorized or charged until the customer clicks Authorize Payment.
  * Card numbers never live here: a Talkshop guest's card goes straight to the
  * mock processor's tokenize endpoint and only a reference (brand + last4) comes back.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, ChevronDown, ChevronUp, Package, Truck, MapPin, Loader, Lock, X, ShieldCheck, CalendarClock, AlertTriangle, UserCheck, CreditCard, Eye, EyeOff, Star } from "lucide-react";
 import type { ProductData } from "../api/chat";
 import { getProductVisual, type ProductVisual } from "../utils/productVisual";
 import { detectBrand } from "../utils/mockTokenizer";
+
+// Mocked PayPal balance funding source — same figure shown in the funding
+// picker and checked against the order total before "Agree & Continue" is
+// allowed to proceed.
+const PAYPAL_BALANCE = 240.00;
 
 // ── Shared types (also used by Chat.tsx) ─────────────────────────────────────
 
@@ -58,9 +63,13 @@ export interface CheckoutData {
   merchant_relationship?: "merchant_guest" | "merchant_member";
   talkshop_account?: "authenticated" | "talkshop_guest";
   payment_method?: PaymentMethod | null;
+  /** VIC-inspired agent spending guardrail — the agent's delegated per-checkout cap. */
+  agent_spending_limit?: number;
+  spending_check?: "passed" | "blocked";
   loyalty?: {
     balance: number; is_member: boolean; merchant_name: string;
     points_redeemed?: number; value_redeemed?: number; amount_due?: number; fully_covered?: boolean;
+    max_redeemable?: number;
   } | null;
 }
 
@@ -119,10 +128,15 @@ interface Props extends InlineCheckoutData {
   onPaymentMethodChange: (paymentMethodId: string) => void;
   onAddCard: (card: CardInput) => Promise<string | null>;  // resolves to an error message, or null
   onConnectPayPal?: () => Promise<string | null>;          // mocked PayPal handoff; resolves to error, or null
+  /** Customer dragged the points slider — recomputes amount due and re-binds the checkout. */
+  onApplyLoyalty?: (points: number) => void;
+  /** A points change is debounced or in flight — Authorize Payment is disabled
+   * until it settles, so a click can never race a still-pending re-bind. */
+  loyaltyBusy?: boolean;
   onGoAhead: () => void;
   onCancel: () => void;
   onReconsent: (decision: "yes" | "no") => void;
-  /** Visible auto GO AHEAD countdown on the proposal (paused / resumed by the customer). */
+  /** Visible auto-authorize countdown on the proposal (paused / resumed by the customer). */
   auto?: AutoState;
   onPauseToggle?: () => void;
   /** Pause the countdown while the customer is changing something (card picker, add card). */
@@ -180,7 +194,7 @@ function CardPreview({ number, expiry, name, brand, focused }: { number: string;
 }
 
 function SecurePaymentModal({
-  onClose, onAddCard, onConnectPayPal, merchantName, total, currency,
+  onClose, onAddCard, onConnectPayPal, merchantName, total, currency, hidePayPal,
 }: {
   onClose: () => void;
   onAddCard: (card: CardInput) => Promise<string | null>;
@@ -188,6 +202,8 @@ function SecurePaymentModal({
   merchantName: string;
   total: number;
   currency: string;
+  /** Hide the PayPal tab — currently only offered to merchant members. */
+  hidePayPal?: boolean;
 }) {
   const [tab, setTab] = useState<"card" | "paypal">("card");
   const [card, setCard] = useState<CardInput>({ number: "", expiry: "", cvc: "", name: "" });
@@ -220,6 +236,10 @@ function SecurePaymentModal({
 
   const approvePayPal = async () => {
     if (!onConnectPayPal) return;
+    if (payPalFunding === "balance" && total > PAYPAL_BALANCE) {
+      setError(`Your PayPal balance ($${PAYPAL_BALANCE.toFixed(2)}) isn't enough to cover ${amount}. Choose "Visa •••• 2468" or pay by card instead.`);
+      return;
+    }
     setBusy(true); setError(null);
     const err = await onConnectPayPal();
     setBusy(false);
@@ -260,7 +280,7 @@ function SecurePaymentModal({
 
         {/* Tabs */}
         <div className="flex gap-1 px-5 pt-3">
-          {([["card", "Card"], ["paypal", "PayPal"]] as const).map(([id, label]) => (
+          {([["card", "Card"], ["paypal", "PayPal"]] as const).filter(([id]) => !(hidePayPal && id === "paypal")).map(([id, label]) => (
             <button key={id} onClick={() => { setTab(id); setError(null); }}
               className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                 tab === id ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]"
@@ -370,7 +390,7 @@ function SecurePaymentModal({
                       <p className="text-[11px] text-[var(--color-text-muted)] mb-1">Pay with</p>
                       <div className="space-y-1.5">
                         {([
-                          ["balance", "PayPal balance", "$240.00 available"],
+                          ["balance", "PayPal balance", `$${PAYPAL_BALANCE.toFixed(2)} available`],
                           ["card", "Visa •••• 2468", "Linked to PayPal"],
                         ] as const).map(([id, label, sub]) => (
                           <button key={id} type="button" onClick={() => setPayPalFunding(id)}
@@ -449,9 +469,83 @@ function PayGlyph({ method }: { method: PaymentMethod }) {
   return <CreditCard size={15} className="text-[var(--color-text-muted)]" />;
 }
 
+// Mirrors backend/payment/loyalty_policy.py's decide_redemption, for instant
+// visual feedback while dragging — the server call (debounced) is what
+// actually re-binds the checkout; this is preview only.
+function pointsPreview(balance: number, orderTotal: number, points: number) {
+  const maxUsable = Math.min(balance, Math.ceil(orderTotal * 10));
+  const p = Math.max(0, Math.min(points, maxUsable));
+  if (p <= 0 || orderTotal <= 0) return { points: 0, value: 0, amountDue: orderTotal, fullyCovered: false };
+  if (p >= maxUsable && maxUsable === Math.ceil(orderTotal * 10)) {
+    return { points: p, value: orderTotal, amountDue: 0, fullyCovered: true };
+  }
+  const value = Math.round((p / 10) * 100) / 100;
+  return { points: p, value, amountDue: Math.round((orderTotal - value) * 100) / 100, fullyCovered: false };
+}
+
+// All points / partial points / card only — one slider, no separate form.
+// Dragging updates the preview instantly; the actual re-bind to the backend
+// (new checkout_hash + AP2 Cart Mandate) is debounced so it isn't fired on
+// every pixel of drag.
+function LoyaltySlider({ co, onApplyLoyalty }: { co: CheckoutData; onApplyLoyalty?: (points: number) => void }) {
+  const loyalty = co.loyalty!;
+  const max = loyalty.max_redeemable ?? 0;
+  const [points, setPoints] = useState(loyalty.points_redeemed ?? 0);
+
+  // The slider tracks the server's last-confirmed value whenever the
+  // checkout itself changes underneath it (e.g. a fresh proposal).
+  useEffect(() => { setPoints(loyalty.points_redeemed ?? 0); }, [co.checkout_hash]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (max <= 0) return null; // nothing usable against this order
+
+  const preview = pointsPreview(loyalty.balance, co.total, points);
+
+  // Debouncing (and cancelling a pending call before Authorize Payment can
+  // fire) is owned by the caller in Chat.tsx — it's the one place that also
+  // knows about the GO AHEAD click, so it's the only place that can prevent
+  // the race between a stale in-flight points change and an authorization.
+  const drag = (next: number) => {
+    setPoints(next);
+    onApplyLoyalty?.(next);
+  };
+
+  return (
+    <div className="px-4 py-3 border-b border-[var(--color-border)] space-y-2.5">
+      <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-gradient-to-r from-amber-50 dark:from-amber-950/40 to-amber-100/60 dark:to-amber-900/20 border border-amber-200/80 dark:border-amber-800/40">
+        <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 grid place-items-center shrink-0 shadow-sm">
+          <Star size={13} className="text-white" fill="currentColor" />
+        </span>
+        <div className="leading-tight">
+          <p className="text-sm font-semibold text-[var(--color-text)]">{loyalty.merchant_name} Rewards</p>
+          <p className="text-[11px] text-amber-700 dark:text-amber-300/80">Member benefit</p>
+        </div>
+        <span className="ml-auto text-sm font-bold text-amber-700 dark:text-amber-300 tabular-nums">{loyalty.balance.toLocaleString()} <span className="text-[10px] font-semibold">pts</span></span>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between text-[11px] text-[var(--color-text-muted)] mb-1">
+          <span>Card only</span>
+          <span className="font-semibold text-[var(--color-text)]">
+            {preview.points === 0 ? "Card only" : preview.fullyCovered ? "All points" : `${preview.points.toLocaleString()} pts`}
+          </span>
+          <span>All points</span>
+        </div>
+        <input type="range" min={0} max={max} step={1} value={points}
+          onChange={(e) => drag(Number(e.target.value))}
+          className="w-full accent-amber-500" />
+        <p className="text-[11px] text-[var(--color-text-muted)] mt-1 text-center">
+          {preview.points > 0
+            ? `−$${preview.value.toFixed(2)} from points · $${preview.amountDue.toFixed(2)} due${preview.fullyCovered ? " (no card needed)" : ""}`
+            : `Pay the full $${co.total.toFixed(2)} by card`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
   const { product, checkoutData: co, paymentMethods, paymentMethodId,
-    onPaymentMethodChange, onAddCard, onConnectPayPal, onGoAhead, onCancel, auto, onPauseToggle, onPauseAuto } = props;
+    onPaymentMethodChange, onAddCard, onConnectPayPal, onApplyLoyalty, loyaltyBusy, onGoAhead, onCancel, auto, onPauseToggle, onPauseAuto } = props;
   const [showPayModal, setShowPayModal] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   // Saved methods are merchant-scoped: only this merchant's methods are offered.
@@ -461,6 +555,10 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
   const redeemedPts = co.loyalty?.points_redeemed ?? 0;
   const payable = redeemedPts > 0 ? (co.loyalty?.amount_due ?? co.total) : co.total;
   const fullyCovered = !!co.loyalty?.fully_covered || payable <= 0.005;
+  // VIC-inspired agent spending guardrail — mirrors the same check the server
+  // re-validates at Authorize Payment, so the button reflects it up front.
+  const spendingLimit = co.agent_spending_limit ?? 700;
+  const spendingBlocked = co.spending_check === "blocked" || payable > spendingLimit;
 
   return (
     <>
@@ -511,18 +609,7 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
         )}
 
         {co.loyalty && co.loyalty.is_member && (
-          <div className="px-4 py-2.5 border-b border-[var(--color-border)]">
-            <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-gradient-to-r from-amber-50 dark:from-amber-950/40 to-amber-100/60 dark:to-amber-900/20 border border-amber-200/80 dark:border-amber-800/40">
-              <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 grid place-items-center shrink-0 shadow-sm">
-                <Star size={13} className="text-white" fill="currentColor" />
-              </span>
-              <div className="leading-tight">
-                <p className="text-sm font-semibold text-[var(--color-text)]">{co.loyalty.merchant_name} Rewards</p>
-                <p className="text-[11px] text-amber-700 dark:text-amber-300/80">Member benefit</p>
-              </div>
-              <span className="ml-auto text-sm font-bold text-amber-700 dark:text-amber-300 tabular-nums">{co.loyalty.balance.toLocaleString()} <span className="text-[10px] font-semibold">pts</span></span>
-            </div>
-          </div>
+          <LoyaltySlider co={co} onApplyLoyalty={onApplyLoyalty} />
         )}
 
         <div className="px-4 py-3 border-b border-[var(--color-border)]">
@@ -562,21 +649,33 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
           )}
         </div>
 
-        {/* Auto GO AHEAD countdown hidden — the order continues silently after a
+        {/* Auto-authorize countdown hidden — the order continues silently after a
             short delay once a payment method is ready. */}
         <div className="px-4 py-3 space-y-2">
-          <button onClick={onGoAhead} disabled={!selected && !fullyCovered}
+          {spendingBlocked && (
+            <div className="flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-800/40 bg-rose-50 dark:bg-rose-950/30 px-3 py-2.5 text-xs text-rose-700 dark:text-rose-300">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span>
+                <strong className="font-semibold">Blocked — agent spending limit exceeded.</strong> This order's
+                ${payable.toFixed(2)} is above your shopping agent's ${spendingLimit.toFixed(2)} authorized limit.
+                Nothing was charged — apply more loyalty points or reduce the quantity to continue.
+              </span>
+            </div>
+          )}
+          <button onClick={onGoAhead} disabled={loyaltyBusy || spendingBlocked || (!selected && !fullyCovered)}
             className="w-full py-2.5 rounded-xl bg-gradient-to-b from-[var(--color-primary-light)] to-[var(--color-primary)] text-white text-sm font-bold tracking-wide shadow-raised hover:brightness-105 active:brightness-95 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none">
-            {fullyCovered ? "GO AHEAD · Pay with points" : `GO AHEAD · $${payable.toFixed(2)}`}
+            {loyaltyBusy ? "Updating points…" : fullyCovered ? "Authorize Payment · Pay with points" : `Authorize Payment · $${payable.toFixed(2)}`}
           </button>
-          <p className="text-[11px] text-[var(--color-text-muted)] text-center leading-snug">
-            {fullyCovered
-              ? `GO AHEAD places this order with ${co.merchant_name}, paid in full with your ${co.loyalty?.merchant_name} points.`
-              : `GO AHEAD authorizes exactly $${payable.toFixed(2)} to ${co.merchant_name} for this order${selected ? `, paid with ${selected.display}` : ""}${redeemedPts > 0 ? ` (after ${redeemedPts.toLocaleString()} points)` : ""}.`}
-            {auto && !auto.paused
-              ? " It continues automatically in a moment — or cancel to stop it."
-              : " Nothing is charged before you click."}
-          </p>
+          {!spendingBlocked && (
+            <p className="text-[11px] text-[var(--color-text-muted)] text-center leading-snug">
+              {fullyCovered
+                ? `Authorizing payment places this order with ${co.merchant_name}, paid in full with your ${co.loyalty?.merchant_name} points.`
+                : `Authorizing payment charges exactly $${payable.toFixed(2)} to ${co.merchant_name} for this order${selected ? `, paid with ${selected.display}` : ""}${redeemedPts > 0 ? ` (after ${redeemedPts.toLocaleString()} points)` : ""}.`}
+              {auto && !auto.paused
+                ? " It continues automatically in a moment — or cancel to stop it."
+                : " Nothing is charged before you click."}
+            </p>
+          )}
           <button onClick={onCancel} className="w-full text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">Cancel</button>
         </div>
       </motion.div>
@@ -590,6 +689,7 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
             merchantName={co.merchant_name}
             total={co.total}
             currency={co.currency}
+            hidePayPal
           />
         )}
       </AnimatePresence>

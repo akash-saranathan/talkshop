@@ -1,10 +1,11 @@
 """
 AP2Adapter — creates and signs the three AP2 Verifiable Credential mandates.
 
-Wraps the existing HMAC-SHA256 signing from backend.payment.signing.
-Production would use ECDSA-P256 keys from a hardware wallet or HSM — the
-mandate structure is identical; only the cryptosuite field and signing call
-differ.
+Signs with real ECDSA (P-256/SHA-256, via the `cryptography` package): the
+agent's private key signs, and verification checks against the matching
+public key — the mandate structure, chain-linking and checkout-hash binding
+are unchanged; only the cryptosuite underneath `proof.jws` differs from a
+production HSM-backed key.
 
 Mandate chain integrity guarantee:
   IntentMandate.id  ← linked by CartMandate.credentialSubject.intent_mandate_id
@@ -17,17 +18,40 @@ public key — no server state needed.
 from __future__ import annotations
 import base64
 import hashlib
-import hmac
 import json
-import os
 import uuid
 from datetime import datetime, timezone, timedelta
+from typing import Optional
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 
 from backend.ap2.models import AP2CartMandate, AP2IntentMandate, AP2PaymentMandate, AP2Proof
 
-_KEY = os.getenv("SIGNING_KEY", "demo-signing-key-replace-in-production").encode()
+# The agent's ECDSA keypair — generated once for this process, held only in
+# memory. Mirrors the trust layer's platform keypair (backend/trust/credentials.py)
+# one level up the chain: here the issuer is "the agent," not the platform.
+_AGENT_PRIVATE_KEY: EllipticCurvePrivateKey = ec.generate_private_key(ec.SECP256R1())
+_AGENT_PUBLIC_KEY = _AGENT_PRIVATE_KEY.public_key()
 
 _AGENT_DID = "did:demo:agent:generic-shopping-agent"
+
+
+def _sign_bytes(payload: bytes, private_key: Optional[EllipticCurvePrivateKey] = None) -> str:
+    key = private_key or _AGENT_PRIVATE_KEY
+    signature = key.sign(payload, ec.ECDSA(hashes.SHA256()))
+    return base64.urlsafe_b64encode(signature).decode().rstrip("=")
+
+
+def _verify_bytes(payload: bytes, signature_b64: str) -> bool:
+    try:
+        raw = base64.urlsafe_b64decode(signature_b64 + "=" * (-len(signature_b64) % 4))
+        _AGENT_PUBLIC_KEY.verify(raw, payload, ec.ECDSA(hashes.SHA256()))
+        return True
+    except (InvalidSignature, ValueError):
+        return False
 
 
 def _now_iso() -> str:
@@ -39,14 +63,13 @@ def _expiry_iso(minutes: int) -> str:
 
 
 def _sign_vc(subject: dict, issuer: str, mandate_type: str) -> str:
-    """Sign the VC credentialSubject + issuer + type with HMAC-SHA256."""
+    """ECDSA-sign the VC credentialSubject + issuer + type."""
     payload = json.dumps(
         {"mandate_type": mandate_type, "issuer": issuer, "credentialSubject": subject},
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    sig = hmac.new(_KEY, payload, hashlib.sha256).digest()
-    return base64.urlsafe_b64encode(sig).decode().rstrip("=")
+    return _sign_bytes(payload)
 
 
 class AP2Adapter:
@@ -163,15 +186,14 @@ class AP2Adapter:
         """
         PaymentMandate — issued by the agent on APPROVE & PAY.
         Links to CartMandate and binds the payment_ref (opaque token).
-        user_authorization = HMAC of the CartMandate id, proving the user
-        saw and approved this exact cart before payment was triggered.
+        user_authorization = the agent's ECDSA signature over the CartMandate
+        id, proving the user saw and approved this exact cart before payment
+        was triggered.
         """
         mandate_id = f"urn:ap2:mandate:payment:{uuid.uuid4().hex}"
         now = _now_iso()
 
-        user_authorization = base64.urlsafe_b64encode(
-            hmac.new(_KEY, cart_mandate.id.encode(), hashlib.sha256).digest()
-        ).decode().rstrip("=")
+        user_authorization = _sign_bytes(cart_mandate.id.encode())
 
         subject = {
             "payment_mandate_id": mandate_id,
@@ -204,9 +226,13 @@ class AP2Adapter:
 
     def verify_mandate(self, mandate) -> bool:
         """
-        Deterministic verification — recompute HMAC over subject+issuer+type
-        and compare against proof.jws. Returns False on any mismatch.
+        ECDSA verification against the agent's public key, over the same
+        canonicalized subject+issuer+type payload that was signed. Returns
+        False on any mismatch, tampering or malformed signature.
         """
         mandate_type = mandate.type[-1]
-        expected = _sign_vc(mandate.credentialSubject, mandate.issuer, mandate_type)
-        return hmac.compare_digest(expected, mandate.proof.jws)
+        payload = json.dumps(
+            {"mandate_type": mandate_type, "issuer": mandate.issuer, "credentialSubject": mandate.credentialSubject},
+            sort_keys=True, separators=(",", ":"),
+        ).encode()
+        return _verify_bytes(payload, mandate.proof.jws)

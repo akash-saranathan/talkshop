@@ -54,6 +54,12 @@ class CheckoutRequest(BaseModel):
     payment_method_id: Optional[str] = None
 
 
+class ApplyLoyaltyRequest(BaseModel):
+    checkout_id: str
+    checkout_hash: str
+    points_to_redeem: int = 0
+
+
 class GoAheadRequest(BaseModel):
     checkout_id: str
     checkout_hash: str
@@ -153,6 +159,17 @@ async def purchase_checkout(req: CheckoutRequest, current_user: CurrentUser = De
     status = 200
     if result["status"] == "rejected":
         status = {"TRUST_VALIDATION_FAILED": 403, "PRODUCT_NOT_FOUND": 404}.get(result["reason"], 400)
+    return JSONResponse(status_code=status, content=result)
+
+
+@router.post("/api/purchase/loyalty")
+async def purchase_apply_loyalty(req: ApplyLoyaltyRequest, current_user: CurrentUser = Depends(get_current_user)):
+    result = await service.apply_loyalty(
+        user_id=current_user.user_id, is_talkshop_guest=current_user.is_talkshop_guest,
+        checkout_id=req.checkout_id, checkout_hash=req.checkout_hash, points_to_redeem=req.points_to_redeem)
+    status = 200
+    if result["status"] == "rejected":
+        status = {"CHECKOUT_NOT_FOUND": 404, "PRODUCT_NOT_FOUND": 404}.get(result["reason"], 400)
     return JSONResponse(status_code=status, content=result)
 
 

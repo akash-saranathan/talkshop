@@ -11,9 +11,8 @@ from backend.trust.verifier import merchant_relationship, trust_service
 def _resign(cred, identity=None, **grant_changes):
     identity = identity or cred.identity
     grant = cred.delegation.model_copy(update=grant_changes)
-    key = credentials.platform_key(credentials.KEY_ID)
     return cred.model_copy(update={"identity": identity, "delegation": grant,
-                                   "signature": credentials.sign(identity, grant, key)})
+                                   "signature": credentials.sign(identity, grant)})
 
 
 def test_valid_credential_passes_every_check():
@@ -75,6 +74,20 @@ def test_customer_is_a_guest_to_nike_by_default():
     assert merchant_relationship("nike", cred.delegation.customer_ref) == "merchant_guest"
     assert cred.delegation.talkshop_account == "authenticated"
     assert "u1" not in str(credentials.public_view(cred))  # the merchant sees a pseudonymous ref only
+
+
+def test_ecdsa_signature_verifies_against_the_published_public_key():
+    cred = credentials.issue_customer_agent_credential("u1")
+    pub = credentials.platform_key(cred.identity.public_key_hint)
+    assert credentials.verify_signature(cred.identity, cred.delegation, cred.signature, pub)
+
+
+def test_ecdsa_signature_tampering_fails_verification():
+    cred = credentials.issue_customer_agent_credential("u1")
+    pub = credentials.platform_key(cred.identity.public_key_hint)
+    tampered = cred.signature[:-1] + ("A" if cred.signature[-1] != "A" else "B")
+    assert not credentials.verify_signature(cred.identity, cred.delegation, tampered, pub)
+    assert not credentials.verify_signature(cred.identity, cred.delegation, "not-a-real-signature", pub)
 
 
 def test_trust_decision_code_never_calls_an_llm():
