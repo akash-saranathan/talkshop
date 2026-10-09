@@ -26,6 +26,11 @@ HOME = {"full_name": "Test Shopper", "line1": "1 Main St", "city": "Austin", "st
 @pytest.fixture
 def client():
     return TestClient(app)
+@pytest.fixture
+def auth_headers(member_headers):
+    """Part 2: the marketplace is for eligible cardmembers only."""
+    return member_headers
+
 
 
 @pytest.fixture
@@ -125,14 +130,15 @@ def test_spec_conversation_end_to_end(client, shopper):
 
     ev = turn(client, shopper, sid, text="Yes.")
     co = of(ev, "checkout_ready")[0]["checkout"]
-    assert (co["subtotal"], co["tax"], co["total"]) == (129.0, 10.64, 139.64)
+    # Part 2: member pricing (15% running-shoe offer before tax)
+    assert (co["subtotal"], co["tax"], co["total"]) == (129.0, 9.05, 118.7)
     assert stage(ev) == "AWAITING_CONSENT"
 
     ev = turn(client, shopper, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
     states = [e["state"] for e in of(ev, "payment_status")]
     assert states == ["processing", "authorizing", "authorized"]
     order = of(ev, "order_confirmed")[0]["order"]
-    assert order["order_id"].startswith("SS-") and order["total"] == 139.64
+    assert order["order_id"].startswith("SS-") and order["total"] == 118.7
     assert stage(ev) == "ORDER_CONFIRMED"
 
     agents = [e["agent"] for e in of(ev, "status")]       # presenter trace
@@ -155,7 +161,7 @@ def test_typing_never_pays(client, shopper, typed, fake_llm):
     co = _to_review(client, shopper, sid)
     ev = turn(client, shopper, sid, text=typed)
     assert not of(ev, "payment_status") and not of(ev, "order_confirmed")
-    assert "tap GO AHEAD" in of(ev, "message")[0]["text"] and of(ev, "checkout_ready")
+    assert "tap Approve and pay" in of(ev, "message")[0]["text"] and of(ev, "checkout_ready")
     assert stage(ev) == "AWAITING_CONSENT" and orders_for(co["checkout_id"]) == 0
     assert all(c["message"] != typed for c in fake_llm["decide"])   # never even reached the LLM
 
@@ -313,9 +319,9 @@ def test_item_already_in_cart_buys_only_what_the_chat_added(client, shopper):
     client.post("/api/cart/lines", json={"sku": "SSP001-BLACK-8"}, headers=shopper)
     sid = f"t-{uuid.uuid4().hex[:8]}"
     co = _to_review(client, shopper, sid)
-    assert co["lines"][0]["quantity"] == 1 and co["total"] == 139.64
+    assert co["lines"][0]["quantity"] == 1 and co["total"] == 118.7
     ev = turn(client, shopper, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
-    assert of(ev, "order_confirmed")[0]["order"]["total"] == 139.64
+    assert of(ev, "order_confirmed")[0]["order"]["total"] == 118.7
     left = [l for l in client.get("/api/cart/lines", headers=shopper).json()["lines"] if l["sku"] == "SSP001-BLACK-8"]
     assert len(left) == 1 and left[0]["quantity"] == 1
 

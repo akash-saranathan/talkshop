@@ -1,5 +1,6 @@
 """
-ShopSphere catalog API (public — browsing doesn't need a login).
+ShopSphere catalog API. Part 2: the catalog is restricted to eligible
+cardmembers (require_cardmember on the whole router).
 
   GET /api/products                          search + filters + sort
   GET /api/products/{id}                     product detail with every variant (SKU)
@@ -11,14 +12,30 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from backend.db.init_db import get_engine
-from backend.shop import catalog
+from backend.auth.dependencies import CurrentUser, get_current_user
+from backend.shop import catalog, offers
+from backend.shop.eligibility import require_cardmember
 
-router = APIRouter(prefix="/api/products", tags=["products"])
+router = APIRouter(prefix="/api/products", tags=["products"], dependencies=[Depends(require_cardmember)])
 
 
 def get_db():
     with Session(get_engine()) as session:
         yield session
+
+
+def _member_offers(db: Session, user: CurrentUser):
+    return offers.entitled(db, user.user_id)
+
+
+def _with_member(d: dict, p, member_offers) -> dict:
+    """Cardmember extras on a product card, computed by the server: the offers
+    that apply and the points a purchase at list price would earn."""
+    badges = offers.badges_for_product(member_offers, p.department, p.subcategory)
+    bonus = sum(int(p.price * o.value) for o in member_offers
+                if o.kind == "bonus_points" and offers._matches(o, p.department, p.subcategory))
+    d["member"] = {"offers": badges, "points": int(p.price) + bonus}
+    return d
 
 
 @router.get("")
@@ -39,6 +56,7 @@ def list_products(
     sort: str = Query("relevance", description="relevance | price_asc | price_desc | rating | new"),
     limit: Optional[int] = Query(None, ge=1, le=100),
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     if sort not in catalog.SORTS:
         raise HTTPException(status_code=422, detail=f"sort must be one of {', '.join(catalog.SORTS)}")
@@ -47,15 +65,16 @@ def list_products(
         brand=brand, color=color, size=size, min_price=min_price, max_price=max_price, is_new=new,
         in_stock=in_stock, merchant_id=merchant_id, sort=sort, limit=limit,
     )
-    return [catalog.product_summary(p) for p in products]
+    member_offers = _member_offers(db, user)
+    return [_with_member(catalog.product_summary(p), p, member_offers) for p in products]
 
 
 @router.get("/{product_id}")
-def get_product(product_id: str, db: Session = Depends(get_db)):
+def get_product(product_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     p = catalog.get_product(db, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
-    return catalog.product_detail(p)
+    return _with_member(catalog.product_detail(p), p, _member_offers(db, user))
 
 
 @router.get("/{product_id}/availability")

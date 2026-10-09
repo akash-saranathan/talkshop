@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from backend.db.schema import (Address, CartItem, Checkout, LoyaltyPoints, PaymentMethod, Product, ProductVariant,
                                User, Wallet)
 from backend.payment.policy import TAX_RATE
+from backend.shop import offers
 from backend.shop.profile import address_dict, card_dict, list_addresses, list_cards
 
 EXPRESS_PRICE = 9.99
@@ -53,6 +54,7 @@ def _hash(co: Checkout, lines: list[dict]) -> str:
         "address_id": co.address_id, "delivery_method": co.delivery_method,
         "payment_method_id": co.payment_method_id, "pay_with": co.pay_with or "card",
         "points_used": co.points_used or 0, "points_discount": co.points_discount or 0.0,
+        "offer_id": co.offer_id, "offer_discount": co.offer_discount or 0.0,
         "guest_email": co.guest_email,
         "subtotal": co.subtotal, "tax": co.tax, "shipping": co.shipping, "total": co.total, "currency": co.currency,
     }
@@ -76,12 +78,16 @@ def _recalculate(db: Session, co: Checkout) -> list[dict]:
                            "requested": ln["quantity"], "available": ln["stock"]})
     co.lines_json = json.dumps(lines)
     co.subtotal = round(sum(ln["line_total"] for ln in lines), 2)
+    # Member offer (Part 2): the server picks the one discount that saves the most.
+    offer, offer_discount = offers.best_discount(db, co.user_id, lines)
+    co.offer_id, co.offer_discount = (offer.offer_id if offer else None), offer_discount
+    after_offer = round(co.subtotal - offer_discount, 2)
     # Loyalty points (Phase 12): 100 points = $1 off the products, before tax.
-    co.points_used = min(co.points_used or 0, max_points(db, co.user_id, co.subtotal))
+    co.points_used = min(co.points_used or 0, max_points(db, co.user_id, after_offer))
     co.points_discount = round(co.points_used * POINT_VALUE, 2)
-    co.tax = round((co.subtotal - co.points_discount) * TAX_RATE, 2)
+    co.tax = round((after_offer - co.points_discount) * TAX_RATE, 2)
     co.shipping = EXPRESS_PRICE if co.delivery_method == "express" else 0.0
-    co.total = round(co.subtotal - co.points_discount + co.tax + co.shipping, 2)
+    co.total = round(after_offer - co.points_discount + co.tax + co.shipping, 2)
     std_days = max((ln.get("delivery_days") or 5) for ln in lines)
     co.delivery_date = datetime.combine(delivery_dates(std_days)[co.delivery_method], datetime.min.time())
     co.checkout_hash = _hash(co, lines)
@@ -203,8 +209,17 @@ def update_checkout(db: Session, user_id: str, checkout_id: str, *, delivery_met
             by_id[line_id]["quantity"] = qty
         co.lines_json = json.dumps(lines)
     _recalculate(db, co)
+    _invalidate_instructions(db, co)
     db.commit()
     return co
+
+
+def _invalidate_instructions(db: Session, co: Checkout) -> None:
+    """Part 2: a Visa payment instruction covers one exact set of terms. If the
+    checkout's fingerprint changed (card, address, delivery, quantity, points,
+    price), any open instruction for the old terms is cancelled."""
+    from backend.vic.instructions import invalidate_for_checkout
+    invalidate_for_checkout(db, co.checkout_id, co.checkout_hash if co.status == "open" else None)
 
 
 def reassign(db: Session, user_id: str, field: str, old_id: str, new_id: Optional[str]) -> None:
@@ -213,6 +228,7 @@ def reassign(db: Session, user_id: str, field: str, old_id: str, new_id: Optiona
     for co in db.query(Checkout).filter_by(user_id=user_id, status="open").filter(getattr(Checkout, field) == old_id):
         setattr(co, field, new_id)
         _recalculate(db, co)
+        _invalidate_instructions(db, co)
     db.commit()
 
 
@@ -247,6 +263,7 @@ def cancel_checkout(db: Session, user_id: str, checkout_id: str) -> Checkout:
     co = get_checkout(db, user_id, checkout_id)
     if co.status in ("open", "consented"):
         co.status = "cancelled"
+        _invalidate_instructions(db, co)
         db.commit()
     return co
 
@@ -282,6 +299,11 @@ def snapshot(db: Session, co: Checkout, issues: Optional[list[dict]] = None) -> 
                     "balance": round(wallet.balance, 2), "enough": wallet.balance >= co.total} if wallet else None)
     std_days = max((ln.get("delivery_days") or 5) for ln in lines)
     dates = delivery_dates(std_days)
+    offer = db.query(offers.MemberOffer).filter_by(offer_id=co.offer_id).first() if co.offer_id else None
+    bonus = [] if guest else offers.bonus_points(db, co.user_id, lines)
+    from backend.shop import vic                       # which payment path this card takes (Part 2)
+    path = vic.payment_path(db, co)
+    cash = [] if guest or on_wallet else offers.cashback(db, co.user_id, lines, agent_pay=path["path"] == "vic")
     return {
         "checkout_id": co.checkout_id,
         "status": co.status,
@@ -307,10 +329,19 @@ def snapshot(db: Session, co: Checkout, issues: Optional[list[dict]] = None) -> 
         # Phase 12: customers see their balance, what they can use, and what this order earns.
         "points": None if guest else {
             "balance": points_balance(db, co.user_id), "used": co.points_used or 0,
-            "discount": co.points_discount or 0.0, "max_usable": max_points(db, co.user_id, co.subtotal),
+            "discount": co.points_discount or 0.0,
+            "max_usable": max_points(db, co.user_id, round(co.subtotal - (co.offer_discount or 0.0), 2)),
             "value_per_point": POINT_VALUE,
         },
-        "earn_points": int(co.total),             # what this order earns (guests: if they had an account)
+        "earn_points": int(co.total) + sum(b["points"] for b in bonus),   # base 1 point per $1 + bonus offers
+        "base_points": int(co.total),
+        # Part 2: member offer, bonus points and simulated cashback — all computed here, never sent by a client
+        "offer": {"offer_id": offer.offer_id, "title": offer.title, "kind": offer.kind,
+                  "discount": co.offer_discount or 0.0} if offer else None,
+        "offer_discount": co.offer_discount or 0.0,
+        "bonus_points": bonus,
+        "cashback": cash,
+        "payment_path": path,
         "saved_addresses": [] if guest else [address_dict(a) for a in list_addresses(db, co.user_id)],
         "saved_payment_methods": [] if guest else [card_dict(c) for c in list_cards(db, co.user_id)],
         "issues": problems,

@@ -27,6 +27,11 @@ HOME = {"full_name": "Test Shopper", "line1": "1 Main St", "city": "Austin", "st
 @pytest.fixture
 def client():
     return TestClient(app)
+@pytest.fixture
+def auth_headers(member_headers):
+    """Part 2: the marketplace is for eligible cardmembers only."""
+    return member_headers
+
 
 
 @pytest.fixture(autouse=True)
@@ -106,10 +111,10 @@ def test_address_then_card_resume_to_review_and_pay(client, auth_headers, llm):
                                                  "label": f"Card added · {card['display']}"})
     co = of(ev, "checkout_ready")[0]["checkout"]
     assert co["address"]["city"] == "Austin" and co["payment_method"]["display"] == "Visa •••• 4242"
-    assert (co["subtotal"], co["tax"], co["total"]) == (129.0, 10.64, 139.64) and stage(ev) == "AWAITING_CONSENT"
+    assert (co["subtotal"], co["tax"], co["total"]) == (129.0, 9.05, 118.7) and stage(ev) == "AWAITING_CONSENT"
 
     ev = turn(client, auth_headers, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
-    assert of(ev, "order_confirmed")[0]["order"]["total"] == 139.64
+    assert of(ev, "order_confirmed")[0]["order"]["total"] == 118.7
     s = session_of(client, auth_headers, sid)
     assert_no_raw_card(s.transcript, s.history, llm)
 
@@ -129,9 +134,8 @@ def test_both_saved_goes_straight_to_review(client, auth_headers):
 
 
 def test_someone_elses_address_is_refused(client, auth_headers):
-    other = client.post("/api/auth/register", json={"name": "Other", "email": f"o-{uuid.uuid4().hex[:8]}@example.com",
-                                                    "password": "other1234"}).json()
-    oh = {"Authorization": f"Bearer {other['access_token']}"}
+    from tests.conftest import register_member
+    oh, _ = register_member()                     # another eligible cardmember
     theirs = client.post("/api/me/addresses", json=HOME, headers=oh).json()
     sid, _ = to_checkout(client, auth_headers)
     ev = turn(client, auth_headers, sid, action={"type": "details_added", "address_id": theirs["address_id"]})
@@ -217,11 +221,15 @@ def test_order_failure_after_authorization_releases_the_payment(client, auth_hea
         raise RuntimeError("order store unavailable")
 
     monkeypatch.setattr(order_service, "finalize", boom)
-    voided = len(mock_processor.VOIDED)
+    from backend.db.schema import GatewayAuthorization
+    from backend.db.session_utils import get_session
+    with get_session() as db:
+        voided = db.query(GatewayAuthorization).filter_by(status="voided").count()
     ev = turn(client, auth_headers, sid, action={"type": "go_ahead", "checkout_id": co_id})
     assert of(ev, "payment_status")[-1]["state"] == "failed" and not of(ev, "order_confirmed")
     assert "haven't been charged" in of(ev, "message")[-1]["text"] and stage(ev) == "AWAITING_CONSENT"
-    assert len(mock_processor.VOIDED) == voided + 1
+    with get_session() as db:                 # the gateway authorization was voided (issuer hold released)
+        assert db.query(GatewayAuthorization).filter_by(status="voided").count() == voided + 1
     assert client.get("/api/orders", headers=auth_headers).json() in ([], {"orders": []})
 
     monkeypatch.setattr(order_service, "finalize", real)           # the shopper can simply try again

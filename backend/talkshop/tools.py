@@ -149,7 +149,11 @@ def own_order(user_id: str, order_id: str) -> Optional[dict]:
         return order_service.tracking_view(db, order) if order and order.display_id else None
 
 
-async def confirm_and_pay(user: CurrentUser, checkout_id: str, consent_mode: str = "button") -> dict:
-    """Only ever called for the shopper's GO AHEAD action: tapped, or sent by the
-    review card's countdown (consent_mode="auto_countdown"). Never by the LLM."""
-    return await payment_service.confirm(user, checkout_id, consent=True, consent_mode=consent_mode)
+async def confirm_and_pay(user: CurrentUser, checkout_id: str, consent_mode: str = "button",
+                          instruction_id: Optional[str] = None) -> dict:
+    """Only ever called for the member's Approve-and-pay action (tapped, or the
+    review card's countdown on the standard path). On the Visa path it also
+    needs the member's AUTHENTICATED instruction (simulated passkey, done by
+    the panel directly with ShopSphere). Never by the LLM."""
+    return await payment_service.confirm(user, checkout_id, consent=True, consent_mode=consent_mode,
+                                         instruction_id=instruction_id)

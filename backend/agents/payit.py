@@ -8,7 +8,7 @@ from typing import Optional
 
 from backend.models.payment import GuardrailEvent, PaymentRequest, PaymentResult
 from backend.observability.tracing import get_tracer
-from backend.payment import mock_processor
+from backend.payment import mock_processor, processor_route
 from backend.payment.guardrail_engine import run_guardrails
 
 tracer = get_tracer(__name__)
@@ -42,7 +42,10 @@ async def execute_payment(
             return None, events, blocked_reason
 
         with tracer.start_as_current_span("mock_processor.process_payment") as proc_span:
-            result = await mock_processor.process_payment(request)
+            # Default: the mock processor. ShopSphere (Demo 1) routes this one charge
+            # through its PaymentGatewayAdapter instead (processor_route).
+            route = processor_route.ACTIVE.get()
+            result = await (route(request) if route else mock_processor.process_payment(request))
             proc_span.set_attribute("status", result.status)
 
         return result, events, None

@@ -6,6 +6,7 @@ Run directly:  python -m backend.db.init_db
 """
 import json
 import os
+import secrets
 import zlib
 from pathlib import Path
 
@@ -15,7 +16,8 @@ from sqlalchemy.orm import Session
 from backend.auth.security import hash_password
 from backend.config.agents import ALL_AGENTS
 from backend.db.schema import (
-    Base, Address, Agent, LoyaltyPoints, Merchant, PaymentMethod, Product, ProductVariant, User, Wallet,
+    Base, Address, Agent, CardAccount, LoyaltyPoints, LoyaltyTransaction, Merchant, PaymentMethod, Product,
+    ProductVariant, User, Wallet,
 )
 
 from backend.db.config import DB_PATH  # noqa: E402  (single source; overridable in tests)
@@ -90,6 +92,13 @@ def init_db(db_path: Path = DB_PATH):
     for col in ("points_used", "points_earned"):
         _ensure_column(engine, "orders", col, f"{col} INTEGER")
     _ensure_column(engine, "orders", "points_discount", "points_discount FLOAT")
+    # Part 2 (Phase 14): member offers on checkouts and orders
+    _ensure_column(engine, "checkouts", "offer_id", "offer_id VARCHAR(40)")
+    _ensure_column(engine, "checkouts", "offer_discount", "offer_discount FLOAT NOT NULL DEFAULT 0")
+    for col, ddl in [("offer_id", "offer_id VARCHAR(40)"), ("offer_discount", "offer_discount FLOAT"),
+                     ("bonus_points", "bonus_points INTEGER"), ("cashback", "cashback FLOAT"),
+                     ("payment_path", "payment_path VARCHAR(20)")]:
+        _ensure_column(engine, "orders", col, ddl)
     return engine
 
 
@@ -143,10 +152,10 @@ def seed_demo_profile(session: Session):
         session.add_all([
             PaymentMethod(payment_method_id="PM_VISA_4821", user_id=DEMO_USER_ID, brand="Visa", last4="4821",
                           exp_month=8, exp_year=2029, cardholder_name="Kaajal",
-                          token_ref="tok_demo_visa_4821", behaviour="approve", is_default=True),
+                          token_ref=f"tok_{secrets.token_urlsafe(18)}", behaviour="approve", is_default=True),
             PaymentMethod(payment_method_id="PM_MC_0019", user_id=DEMO_USER_ID, brand="Mastercard", last4="0019",
                           exp_month=11, exp_year=2028, cardholder_name="Kaajal",
-                          token_ref="tok_demo_mc_0019_decline", behaviour="decline", is_default=False),
+                          token_ref=f"tok_{secrets.token_urlsafe(18)}", behaviour="decline", is_default=False),
         ])
     session.commit()
 
@@ -163,6 +172,87 @@ def seed_demo_loyalty(session: Session):
     if not exists:
         session.add(LoyaltyPoints(user_id=DEMO_USER_ID, balance=0, lifetime_points=0))
     session.commit()
+
+
+# Part 2 (Phase 13): demo personas. Every identity, account and card here is a
+# simulated fixture — no real Chase or Visa data, masked card metadata only.
+PERSONAS = [
+    # user_id, name, email, accounts [(account_id, type, network, last4, payment_method_id, behaviour)], points
+    ("USR001", "Kaajal", DEMO_EMAIL, [
+        ("ACCT_A_VISA", "credit_card", "Visa", "4821", "PM_VISA_4821", "approve"),
+        ("ACCT_A_MC", "credit_card", "Mastercard", "0019", "PM_MC_0019", "decline"),
+    ], 12500),
+    ("USR002", "Marcus", "marcus@shopsphere.demo", [
+        ("ACCT_B_MC", "credit_card", "Mastercard", "5510", "PM_MC_5510", "approve"),
+    ], 4200),
+    ("USR003", "Priya", "priya@shopsphere.demo", [
+        ("ACCT_C_CHK", "checking", None, "7702", None, None),
+    ], 0),
+    ("USR004", "Elena", "elena@shopsphere.demo", [
+        ("ACCT_E_VISA", "credit_card", "Visa", "4002", "PM_VISA_4002", "approve"),
+    ], 800),
+]
+PERSONA_ADDRESSES = {
+    "USR002": ("ADDR_HOME_USR002", "Marcus", "915 Larkspur Avenue", None, "Denver", "CO", "80203"),
+    "USR004": ("ADDR_HOME_USR004", "Elena", "77 Harbor View Road", "Unit 12", "Seattle", "WA", "98109"),
+}
+
+
+def seed_personas(session: Session):
+    """Personas A–E (D, the guest, is simply not signed in). Inserts only
+    what's missing, so an existing demo database keeps its history."""
+    for user_id, name, email, accts, points in PERSONAS:
+        if not session.query(User).filter_by(user_id=user_id).first():
+            session.add(User(user_id=user_id, name=name, email=email,
+                             password_hash=hash_password(DEMO_PASSWORD), status="active"))
+            session.add(Wallet(user_id=user_id, balance=STARTING_WALLET_BALANCE))
+        if user_id in PERSONA_ADDRESSES and not session.query(Address).filter_by(user_id=user_id).first():
+            aid, full, l1, l2, city, state, zipc = PERSONA_ADDRESSES[user_id]
+            session.add(Address(address_id=aid, user_id=user_id, label="Home", full_name=full, line1=l1,
+                                line2=l2, city=city, state=state, postal_code=zipc, country="US", is_default=True))
+        # Older databases seeded readable processor tokens (tok_demo_visa_4821):
+        # replace them with random ones so no token is derived from card digits.
+        for pm in session.query(PaymentMethod).filter(PaymentMethod.user_id == user_id,
+                                                       PaymentMethod.token_ref.like("tok_demo_%")):
+            pm.token_ref = f"tok_{secrets.token_urlsafe(18)}"
+        first_seed = not session.query(CardAccount).filter_by(user_id=user_id).first()
+        for i, (account_id, kind, network, last4, pm_id, behaviour) in enumerate(accts):
+            if session.query(CardAccount).filter_by(account_id=account_id).first():
+                continue
+            if pm_id and not session.query(PaymentMethod).filter_by(payment_method_id=pm_id).first():
+                session.add(PaymentMethod(payment_method_id=pm_id, user_id=user_id, brand=network, last4=last4,
+                                          exp_month=9, exp_year=2030, cardholder_name=name,
+                                          token_ref=f"tok_{secrets.token_urlsafe(18)}", behaviour=behaviour,
+                                          is_default=i == 0))
+            is_card = kind == "credit_card"
+            session.add(CardAccount(
+                account_id=account_id, user_id=user_id, issuer="Chase", account_type=kind,
+                product_name=f"Chase {network} credit card" if is_card else "Chase checking account",
+                network=network, last4=last4, status="active", marketplace_eligible=is_card,
+                payment_method_id=pm_id, credit_limit=8000.0 if is_card else None,
+                available_credit=8000.0 if is_card else None))
+        if first_seed and points:
+            lp = session.query(LoyaltyPoints).filter_by(user_id=user_id).first()
+            if not lp:
+                lp = LoyaltyPoints(user_id=user_id, balance=0, lifetime_points=0)
+                session.add(lp)
+            lp.balance = (lp.balance or 0) + points
+            lp.lifetime_points = (lp.lifetime_points or 0) + points
+            session.add(LoyaltyTransaction(transaction_id=f"LTX_WELCOME_{user_id}", user_id=user_id,
+                                           points_earned=points, reason="Cardmember welcome bonus (demo)"))
+    session.commit()
+
+
+def seed_agent_tokens(session: Session):
+    """Persona A starts enrolled (ACTIVE simulated agent token); Persona E doesn't."""
+    from backend.vic.enrollment import seed_active
+    if session.query(CardAccount).filter_by(account_id="ACCT_A_VISA").first():
+        seed_active(session, "USR001", "ACCT_A_VISA")
+
+
+def seed_offers(session: Session):
+    from backend.shop.offers import seed
+    seed(session)
 
 
 def _load_catalog() -> dict:
@@ -254,6 +344,9 @@ def run(db_path: Path = DB_PATH):
         seed_demo_profile(session)
         seed_demo_wallet(session)
         seed_demo_loyalty(session)
+        seed_personas(session)
+        seed_offers(session)
+        seed_agent_tokens(session)
         seed_merchants(session)
         seed_products(session)
     print(f"Database initialized at {db_path}")

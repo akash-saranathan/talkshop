@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey,
-    Integer, String, Text, func
+    Integer, String, Text, UniqueConstraint, func
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -142,6 +142,65 @@ class PaymentMethod(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class CardAccount(Base):
+    """A simulated issuer account (Part 2). Demo fixtures only — no real bank
+    or card-account verification. Marketplace eligibility comes from these:
+    an active, eligible Chase credit card. A checking/savings account alone
+    doesn't qualify. Card accounts link to the masked saved card used to pay."""
+    __tablename__ = "card_accounts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False, index=True)
+    issuer = Column(String(30), nullable=False, default="Chase")      # simulated issuer
+    account_type = Column(String(20), nullable=False)                   # credit_card | checking | savings
+    product_name = Column(String(80), nullable=False)
+    network = Column(String(20))                                        # Visa | Mastercard (cards only)
+    last4 = Column(String(4), nullable=False)
+    status = Column(String(20), nullable=False, default="active")      # active | suspended | closed
+    marketplace_eligible = Column(Boolean, nullable=False, default=False)
+    payment_method_id = Column(String(50))                              # the masked saved card, if a card
+    credit_limit = Column(Float)
+    available_credit = Column(Float)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class MemberOffer(Base):
+    """A ShopSphere cardmember offer (Part 2, demo). Not a real Chase or Visa benefit.
+    kind: discount_percent | discount_amount (lower the price, before tax),
+          bonus_points (extra points per $1 on matching items),
+          cashback (simulated statement credit after an approved payment)."""
+    __tablename__ = "member_offers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    offer_id = Column(String(40), unique=True, nullable=False)
+    title = Column(String(120), nullable=False)
+    description = Column(String(300), nullable=False)
+    kind = Column(String(20), nullable=False)
+    value = Column(Float, nullable=False)
+    department = Column(String(30))          # scope filters (all optional)
+    subcategories = Column(String(200))      # comma-separated
+    min_subtotal = Column(Float, nullable=False, default=0.0)
+    audience = Column(String(30), nullable=False, default="all_cardmembers")   # | visa_agent_pay
+    max_uses_per_member = Column(Integer)    # None = unlimited
+    active = Column(Boolean, nullable=False, default=True)
+
+
+class OfferRedemption(Base):
+    """One use of an offer on one order. Unique per (offer, order) so a retry
+    can never redeem twice."""
+    __tablename__ = "offer_redemptions"
+    __table_args__ = (UniqueConstraint("offer_id", "order_id", name="uq_offer_order"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    offer_id = Column(String(40), nullable=False, index=True)
+    user_id = Column(String(50), nullable=False, index=True)
+    order_id = Column(String(50), nullable=False)
+    kind = Column(String(20), nullable=False)
+    amount = Column(Float, nullable=False, default=0.0)     # $ discount / $ cashback / bonus points
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class Checkout(Base):
     """The canonical checkout snapshot the customer reviews and consents to.
     Amounts here — not anything the browser sends — are what get charged."""
@@ -163,6 +222,9 @@ class Checkout(Base):
     # Phase 12: loyalty points spent on this checkout (100 points = $1 off, before tax)
     points_used = Column(Integer, nullable=False, default=0)
     points_discount = Column(Float, nullable=False, default=0.0)
+    # Part 2: the member offer applied by the server (best discount) and its value
+    offer_id = Column(String(40))
+    offer_discount = Column(Float, nullable=False, default=0.0)
     subtotal = Column(Float, nullable=False, default=0.0)
     tax = Column(Float, nullable=False, default=0.0)
     shipping = Column(Float, nullable=False, default=0.0)
@@ -212,6 +274,12 @@ class Order(Base):
     points_used = Column(Integer)
     points_discount = Column(Float)
     points_earned = Column(Integer)
+    # Part 2: member offer + simulated cashback, and which payment path ran (vic | standard | wallet)
+    offer_id = Column(String(40))
+    offer_discount = Column(Float)
+    bonus_points = Column(Integer)
+    cashback = Column(Float)
+    payment_path = Column(String(20))
 
 
 class EmailOutbox(Base):
@@ -378,3 +446,157 @@ class AuditEvent(Base):
     event_type = Column(String(100), nullable=False)
     event_timestamp = Column(DateTime, server_default=func.now())
     metadata_json = Column(Text)
+
+
+# ── Part 2: Visa Intelligent Commerce-INSPIRED local simulator ────────────────
+# Everything below is simulated locally. None of it is issued by, connected to
+# or certified by Visa (no Visa Token Service, no VisaNet) or Chase.
+
+class AgentToken(Base):
+    """A simulated agent-specific payment token: one member + one permitted
+    agent + one Visa card fixture. The reference is random and opaque (never
+    derived from card digits) and is not a VTS / network token."""
+    __tablename__ = "agent_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_token_ref = Column(String(64), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False, index=True)
+    card_account_id = Column(String(50), nullable=False)
+    payment_method_id = Column(String(50), nullable=False)
+    agent_id = Column(String(50), nullable=False)
+    # NOT_ENROLLED is "no row"; then PENDING_AUTHENTICATION → ACTIVE (→ SUSPENDED ⇄ ACTIVE, → REVOKED)
+    status = Column(String(30), nullable=False, default="PENDING_AUTHENTICATION")
+    status_reason = Column(String(100))
+    passkey_credential_id = Column(String(64))
+    created_at = Column(DateTime, server_default=func.now())
+    activated_at = Column(DateTime)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class PasskeyChallenge(Base):
+    """Simulated passkey / step-up challenge: random, single use, short-lived,
+    bound to one member and one purpose. NOT WebAuthn and NOT a Visa passkey."""
+    __tablename__ = "passkey_challenges"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    challenge_id = Column(String(64), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False, index=True)
+    purpose = Column(String(20), nullable=False)            # enrollment | instruction
+    subject_ref = Column(String(64), nullable=False)        # agent_token_ref or instruction_id
+    nonce_hash = Column(String(64), nullable=False)         # sha256 of the nonce; the nonce goes to the browser once
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime)
+    result = Column(String(20))                             # verified | failed | expired
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PaymentInstruction(Base):
+    """The member's authenticated instruction for ONE exact purchase."""
+    __tablename__ = "payment_instructions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    instruction_id = Column(String(64), unique=True, nullable=False)
+    user_id = Column(String(50), nullable=False, index=True)
+    agent_token_ref = Column(String(64), nullable=False)
+    agent_id = Column(String(50), nullable=False)
+    merchant_id = Column(String(50), nullable=False)
+    checkout_id = Column(String(50), nullable=False, index=True)
+    checkout_hash = Column(String(64), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), nullable=False)
+    max_transactions = Column(Integer, nullable=False, default=1)
+    transactions_used = Column(Integer, nullable=False, default=0)
+    # PENDING_AUTHENTICATION | AUTHENTICATED | CONSUMED | CANCELLED | EXPIRED | FAILED
+    status = Column(String(30), nullable=False, default="PENDING_AUTHENTICATION")
+    status_reason = Column(String(100))
+    consent_mode = Column(String(20))
+    lifecycle_state = Column(String(40), nullable=False, default="CHECKOUT_CREATED")
+    payment_ref = Column(String(60))
+    expires_at = Column(DateTime, nullable=False)
+    authenticated_at = Column(DateTime)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PaymentCredential(Base):
+    """Purchase-specific credential issued by the simulator after the controls
+    pass. Only the opaque reference leaves the server-side services; the
+    simulated cryptogram is stored hashed and never shown."""
+    __tablename__ = "payment_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    credential_ref = Column(String(64), unique=True, nullable=False)
+    instruction_id = Column(String(64), nullable=False, index=True)
+    user_id = Column(String(50), nullable=False)
+    merchant_id = Column(String(50), nullable=False)
+    checkout_id = Column(String(50), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), nullable=False)
+    cryptogram_hash = Column(String(64), nullable=False)
+    status = Column(String(20), nullable=False, default="ISSUED")   # ISSUED | USED | EXPIRED | REVOKED
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CommerceSignal(Base):
+    """Transaction outcome sent back to the (simulated) VIC service, linked to
+    the member's original instruction."""
+    __tablename__ = "commerce_signals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    signal_id = Column(String(64), unique=True, nullable=False)
+    instruction_id = Column(String(64), index=True)
+    agent_token_ref = Column(String(64))
+    credential_ref = Column(String(64))
+    checkout_id = Column(String(50))
+    merchant_id = Column(String(50))
+    amount = Column(Float)
+    currency = Column(String(10))
+    outcome = Column(String(20), nullable=False)        # APPROVED | DECLINED | TIMEOUT | ERROR
+    reason = Column(String(60))
+    gateway_ref = Column(String(64))
+    order_id = Column(String(50))
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class VicLifecycleEvent(Base):
+    """Every lifecycle transition of a Visa-path purchase (audit + trace)."""
+    __tablename__ = "vic_lifecycle_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    instruction_id = Column(String(64), index=True)
+    user_id = Column(String(50))
+    state = Column(String(40), nullable=False)
+    detail = Column(String(300))
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class GatewayAuthorization(Base):
+    """The mock gateway/PSP's own record (simulated). idempotency_key is unique:
+    a retried request gets the stored response instead of a second authorization."""
+    __tablename__ = "gateway_authorizations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    gateway_ref = Column(String(64), unique=True, nullable=False)
+    idempotency_key = Column(String(100), unique=True, nullable=False)
+    request_hash = Column(String(64), nullable=False)
+    merchant_id = Column(String(50), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), nullable=False)
+    instrument_type = Column(String(20), nullable=False)   # vic_credential | card_on_file
+    payment_method_id = Column(String(50))                 # which card the issuer held (for voids)
+    status = Column(String(20), nullable=False)            # approved | declined | timeout | voided
+    response_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class SimScenario(Base):
+    """Demo control: the next authorization for this member ends as
+    decline | timeout | duplicate (used once, then cleared)."""
+    __tablename__ = "sim_scenarios"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(50), unique=True, nullable=False)
+    outcome = Column(String(20), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+

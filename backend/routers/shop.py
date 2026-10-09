@@ -38,8 +38,12 @@ from backend.shop import notifications
 from backend.shop import orders as order_service
 from backend.shop import profile as profile_service
 from backend.shop import shipping
+from backend.shop.eligibility import require_cardmember
 
-router = APIRouter(tags=["shop"])
+# Part 2: every marketplace service is for eligible cardmembers only. The
+# router-level check runs before each endpoint (guests and checking-only
+# customers get 403 LOGIN_REQUIRED / NO_ELIGIBLE_CARD).
+router = APIRouter(tags=["shop"], dependencies=[Depends(require_cardmember)])
 
 
 def get_db():
@@ -203,7 +207,10 @@ class UpdateCheckoutRequest(BaseModel):
 
 
 class ConfirmRequest(BaseModel):
-    consent: bool = False   # true only from the customer's explicit GO AHEAD / Place order
+    consent: bool = False   # true only from the member's explicit Approve and pay / Place order
+    # Visa agent-payment path (Part 2): the member's AUTHENTICATED payment instruction
+    instruction_id: Optional[str] = Field(None, max_length=80)
+    consent_mode: str = Field("button", pattern="^(button|typed)$")
 
 
 @router.post("/api/checkouts")
@@ -250,7 +257,8 @@ def cancel_checkout(checkout_id: str, user: CurrentUser = Depends(get_current_us
 async def confirm_checkout(checkout_id: str, req: ConfirmRequest, user: CurrentUser = Depends(get_current_user)):
     """Customers, and guests once their details are in (checked in payment.confirm)."""
     try:
-        return await payment_service.confirm(user, checkout_id, req.consent)
+        return await payment_service.confirm(user, checkout_id, req.consent, consent_mode=req.consent_mode,
+                                             instruction_id=req.instruction_id)
     except checkout_service.CheckoutError as exc:
         return _error(exc)
 

@@ -20,6 +20,11 @@ HOME = {"full_name": "Test Shopper", "line1": "1 Main St", "city": "Austin", "st
 @pytest.fixture
 def client():
     return TestClient(app)
+@pytest.fixture
+def auth_headers(member_headers):
+    """Part 2: the marketplace is for eligible cardmembers only."""
+    return member_headers
+
 
 
 @pytest.fixture
@@ -55,30 +60,30 @@ def _checkout(client, headers, *line_ids):
 
 # ── Catalog / search / inventory ────────────────────────────────────────────
 
-def test_spec_search_returns_the_three_documented_shoes_first(client):
-    r = client.get("/api/products", params={"q": "I need running shoes under $150 for everyday running",
+def test_spec_search_returns_the_three_documented_shoes_first(client, auth_headers):
+    r = client.get("/api/products", headers=auth_headers, params={"q": "I need running shoes under $150 for everyday running",
                                             "category": "running_shoes", "max_price": 150, "limit": 3})
     assert [p["name"] for p in r.json()] == ["Runner Pro X", "FlexRun 5", "Daily Runner"]
 
 
-def test_search_filters(client):
-    women = client.get("/api/products", params={"gender": "women"}).json()
+def test_search_filters(client, auth_headers):
+    women = client.get("/api/products", headers=auth_headers, params={"gender": "women"}).json()
     assert women and all(p["gender"] in ("women", "unisex") for p in women)
-    cheap = client.get("/api/products", params={"department": "shoes", "sort": "price_asc"}).json()
+    cheap = client.get("/api/products", headers=auth_headers, params={"department": "shoes", "sort": "price_asc"}).json()
     assert [p["price"] for p in cheap] == sorted(p["price"] for p in cheap)
-    size11 = {p["product_id"] for p in client.get("/api/products", params={"size": "11", "category": "running_shoes"}).json()}
+    size11 = {p["product_id"] for p in client.get("/api/products", headers=auth_headers, params={"size": "11", "category": "running_shoes"}).json()}
     assert "SSP001" not in size11            # Runner Pro X is sold out in 11
-    assert client.get("/api/products", params={"sort": "nope"}).status_code == 422
+    assert client.get("/api/products", headers=auth_headers, params={"sort": "nope"}).status_code == 422
 
 
-def test_product_detail_and_availability(client):
-    d = client.get("/api/products/SSP001").json()
+def test_product_detail_and_availability(client, auth_headers):
+    d = client.get("/api/products/SSP001", headers=auth_headers).json()
     assert d["name"] == "Runner Pro X" and d["variants"] and {"sku", "stock", "image_url"} <= d["variants"][0].keys()
-    a = client.get("/api/products/SSP001/availability", params={"size": "11"}).json()
+    a = client.get("/api/products/SSP001/availability", headers=auth_headers, params={"size": "11"}).json()
     assert all(not c["available"] for c in a["colors"])
-    a = client.get("/api/products/SSP001/availability", params={"size": "8", "color": "black"}).json()
+    a = client.get("/api/products/SSP001/availability", headers=auth_headers, params={"size": "8", "color": "black"}).json()
     assert a["selected"]["sku"] == "SSP001-BLACK-8" and a["selected"]["available"]
-    assert client.get("/api/products/NOPE/availability").status_code == 404
+    assert client.get("/api/products/NOPE/availability", headers=auth_headers).status_code == 404
 
 
 # ── Cart ────────────────────────────────────────────────────────────────────
@@ -125,11 +130,13 @@ def test_address_validation(client, auth_headers):
 
 def test_checkout_snapshot_matches_spec_amounts(client, shopper):
     co = _checkout(client, shopper, _add(client, shopper, "SSP001-BLACK-8"))
-    assert (co["subtotal"], co["tax"], co["shipping"], co["total"]) == (129.0, 10.64, 0.0, 139.64)
+    # Part 2: cardmembers get the 15% running-shoe offer before tax (spec: $139.64 without it)
+    assert (co["subtotal"], co["tax"], co["shipping"], co["total"]) == (129.0, 9.05, 0.0, 118.7)
+    assert co["offer"]["offer_id"] == "OFF_RUN15" and co["offer_discount"] == 19.35
     assert co["ready"] and co["payment_method"]["display"] == "Visa •••• 4242"
     assert {o["method"] for o in co["delivery"]["options"]} == {"standard", "express"}
     express = client.patch(f"/api/checkouts/{co['checkout_id']}", json={"delivery_method": "express"}, headers=shopper).json()
-    assert express["shipping"] == 9.99 and express["total"] == round(139.64 + 9.99, 2)
+    assert express["shipping"] == 9.99 and express["total"] == round(118.7 + 9.99, 2)
     assert express["delivery"]["date"] < co["delivery"]["date"]
     assert express["checkout_hash"] != co["checkout_hash"]
 
@@ -138,7 +145,8 @@ def test_checkout_quantity_change_recalculates(client, shopper):
     line = _add(client, shopper, "SSP003-BLUE-9")
     co = _checkout(client, shopper, line)
     co2 = client.patch(f"/api/checkouts/{co['checkout_id']}", json={"quantities": {line: 2}}, headers=shopper).json()
-    assert co2["subtotal"] == 238.0 and co2["tax"] == round(238.0 * 0.0825, 2)
+    after_offer = 238.0 - co2["offer_discount"]
+    assert co2["subtotal"] == 238.0 and co2["tax"] == round(after_offer * 0.0825, 2)
 
 
 def test_new_customer_without_saved_details_is_not_ready(client, auth_headers):
@@ -150,9 +158,9 @@ def test_new_customer_without_saved_details_is_not_ready(client, auth_headers):
 
 def test_cannot_check_out_someone_elses_cart_line(client, shopper, auth_headers):
     line = _add(client, shopper, "SSP010-RED-9")
-    other = client.post("/api/auth/register", json={"name": "Other", "email": "other-%s@example.com" % line.lower(),
-                                                    "password": "other12345"}).json()["access_token"]
-    r = client.post("/api/checkouts", json={"line_ids": [line]}, headers={"Authorization": f"Bearer {other}"})
+    from tests.conftest import register_member
+    other, _ = register_member()
+    r = client.post("/api/checkouts", json={"line_ids": [line]}, headers=other)
     assert r.status_code == 404
 
 
@@ -169,7 +177,7 @@ def test_happy_path_go_ahead_creates_order(client, shopper):
     assert out["status"] == "authorized"
     order = out["order"]
     assert re.fullmatch(r"SS-\d{5}", order["order_id"])
-    assert order["total"] == 139.64 and order["payment"]["display"] == "Visa •••• 4242"
+    assert order["total"] == 118.7 and order["payment"]["display"] == "Visa •••• 4242"
     assert order["lines"][0]["sku"] == sku and order["ship_to"]["city"] == "Austin" and order["delivery_date"]
     assert _stock(sku) == before - 1                                  # stock committed
     assert client.get("/api/cart/lines", headers=shopper).json()["lines"] == []   # bought line removed

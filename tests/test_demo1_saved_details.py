@@ -19,6 +19,11 @@ MASTER = {**VISA, "number": "5555 5555 5555 4444"}
 @pytest.fixture
 def client():
     return TestClient(app)
+@pytest.fixture
+def auth_headers(member_headers):
+    """Part 2: the marketplace is for eligible cardmembers only."""
+    return member_headers
+
 
 
 def add(client, h, path, body):
@@ -66,9 +71,8 @@ def test_deleting_a_non_default_card_keeps_the_default(client, auth_headers):
 
 
 def test_cannot_delete_someone_elses_details(client, auth_headers):
-    other = client.post("/api/auth/register", json={"name": "Other", "email": f"o-{uuid.uuid4().hex[:8]}@example.com",
-                                                    "password": "other1234"}).json()
-    oh = {"Authorization": f"Bearer {other['access_token']}"}
+    from tests.conftest import register_member
+    oh, _ = register_member()                     # another eligible cardmember
     theirs = add(client, oh, "/api/me/addresses", HOME)
     their_card = add(client, oh, "/api/me/payment-methods", VISA)
     r = client.delete(f"/api/me/addresses/{theirs['address_id']}", headers=auth_headers)

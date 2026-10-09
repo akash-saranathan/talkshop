@@ -30,11 +30,13 @@ class Stage(str, Enum):
 
 
 # The journey stepper shown in the panel header.
+# Customer-friendly progress (Part 2): Find → Choose → Review → Approve → Done
 STEPPER = {
-    Stage.GREETING: "Search", Stage.SEARCHING: "Search", Stage.RECOMMENDED: "Choose",
-    Stage.PRODUCT_SELECTED: "Choose", Stage.ASK_SIZE: "Size", Stage.ASK_COLOR: "Colour",
-    Stage.VARIANT_CONFIRMED: "Colour", Stage.IN_CART: "Cart", Stage.OFFER_CHECKOUT: "Cart", Stage.CHECKOUT_DETAILS: "Review",
-    Stage.AWAITING_CONSENT: "Review", Stage.PAYING: "Review", Stage.ORDER_CONFIRMED: "Done",
+    Stage.GREETING: "Find", Stage.SEARCHING: "Find", Stage.RECOMMENDED: "Choose",
+    Stage.PRODUCT_SELECTED: "Choose", Stage.ASK_SIZE: "Choose", Stage.ASK_COLOR: "Choose",
+    Stage.VARIANT_CONFIRMED: "Choose", Stage.IN_CART: "Choose", Stage.OFFER_CHECKOUT: "Choose",
+    Stage.CHECKOUT_DETAILS: "Review", Stage.AWAITING_CONSENT: "Review", Stage.PAYING: "Approve",
+    Stage.ORDER_CONFIRMED: "Done",
 }
 
 # What each stage allows next (plan §6.2). A new search is allowed from any

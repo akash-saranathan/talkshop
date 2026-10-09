@@ -122,30 +122,30 @@ def test_merchants_returns_shopsphere(client):
     assert [m["merchant_id"] for m in data] == ["SHOPSPHERE"]
 
 
-def test_products_returns_60(client):
-    r = client.get("/api/products")
+def test_products_returns_60(client, member_headers):
+    r = client.get("/api/products", headers=member_headers)
     assert r.status_code == 200
     assert len(r.json()) == 60
 
 
-def test_products_filter_by_category(client):
-    r = client.get("/api/products?category=running_shoes")
+def test_products_filter_by_category(client, member_headers):
+    r = client.get("/api/products?category=running_shoes", headers=member_headers)
     assert r.status_code == 200
     products = r.json()
     assert len(products) == 7
     assert all(p["category"] == "running_shoes" for p in products)
 
 
-def test_products_filter_by_merchant(client):
-    r = client.get("/api/products?merchant_id=SHOPSPHERE")
+def test_products_filter_by_merchant(client, member_headers):
+    r = client.get("/api/products?merchant_id=SHOPSPHERE", headers=member_headers)
     assert r.status_code == 200
     products = r.json()
     assert len(products) == 60
     assert all(p["merchant_id"] == "SHOPSPHERE" for p in products)
 
 
-def test_product_get_by_id(client):
-    r = client.get("/api/products/SSP001")
+def test_product_get_by_id(client, member_headers):
+    r = client.get("/api/products/SSP001", headers=member_headers)
     assert r.status_code == 200
     p = r.json()
     assert p["product_id"] == "SSP001"
@@ -153,8 +153,8 @@ def test_product_get_by_id(client):
     assert p["price"] == 129.00
 
 
-def test_product_not_found_returns_404(client):
-    r = client.get("/api/products/DOES_NOT_EXIST")
+def test_product_not_found_returns_404(client, member_headers):
+    r = client.get("/api/products/DOES_NOT_EXIST", headers=member_headers)
     assert r.status_code == 404
 
 

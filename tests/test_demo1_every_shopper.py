@@ -1,5 +1,7 @@
 """
 Demo 1, Phase 10: every shopper can buy, and every order can be tracked.
+Part 2 retired guest checkout (the marketplace is for eligible cardmembers);
+the guest cases now live in test_part2_cardmember_vic.py as denial tests.
 
 The four checkout scenarios (existing customer with a saved card or wallet,
 customer without a saved card, new customer, guest), the guest's data
@@ -46,9 +48,15 @@ def bearer(token):
 
 
 def customer(client):
+    """An eligible cardmember (Part 2): a new account plus a simulated Chase
+    credit card, with no saved payment card yet."""
+    from backend.db.session_utils import get_session
+    from backend.shop.eligibility import link_demo_card
     email = f"c-{uuid.uuid4().hex[:8]}@example.com"
     r = client.post("/api/auth/register", json={"name": "Casey Customer", "email": email, "password": "customer123"})
     assert r.status_code == 200, r.text
+    with get_session() as db:
+        link_demo_card(db, r.json()["user"]["user_id"], network="Visa", with_payment_method=False)
     return bearer(r.json()["access_token"]), email
 
 
@@ -75,21 +83,34 @@ def confirm(client, h, co_id):
     return r.json()
 
 
-def guest_buys(client):
-    """Visitor → Continue as guest → details → one-time card → order."""
-    h, vid = visitor(client)
-    co = checkout(client, h, guest=True)
-    email = f"guest-{uuid.uuid4().hex[:8]}@example.com"
-    r = client.post(f"/api/checkouts/{co['checkout_id']}/guest-details",
-                    json={**HOME, "full_name": "Gita Guest", "email": email}, headers=h)
-    assert r.status_code == 200, r.text
-    card = client.post("/api/me/payment-methods", json=CARD, headers=h).json()
-    client.patch(f"/api/checkouts/{co['checkout_id']}", json={"payment_method_id": card["payment_method_id"]}, headers=h)
-    return h, vid, email, co["checkout_id"], confirm(client, h, co["checkout_id"])
+
+
+_TRACKER: dict = {}
+
+
+def member_buys(client):
+    """Part 2 stand-in for the old guest purchase: an eligible cardmember with a
+    saved address and card buys one item. Returns (headers, user_id, email,
+    checkout_id, confirm result)."""
+    h, email = customer(client)
+    client.post("/api/me/addresses", json=HOME, headers=h)
+    client.post("/api/me/payment-methods", json=CARD, headers=h)
+    uid = client.get("/api/auth/me", headers=h).json()["user_id"]
+    co = checkout(client, h)
+    return h, uid, email, co["checkout_id"], confirm(client, h, co["checkout_id"])
+
+
+def other_member(client):
+    h, _ = customer(client)
+    return h, client.get("/api/auth/me", headers=h).json()["user_id"]
 
 
 def track(client, order_id, email, path=""):
-    return client.post(f"/api/orders/track{path}", json={"order_id": order_id, "email": email})
+    """Track Order is a marketplace service (Part 2): any signed-in cardmember can
+    look an order up by Order ID + email."""
+    if not _TRACKER:
+        _TRACKER.update(customer(client)[0])
+    return client.post(f"/api/orders/track{path}", json={"order_id": order_id, "email": email}, headers=_TRACKER)
 
 
 # ── 1. Existing customer + saved card ────────────────────────────────────────
@@ -166,66 +187,18 @@ def test_4_new_customer_signs_up_and_buys(client):
 
 # ── 5–8. Guest checkout ──────────────────────────────────────────────────────
 
-def test_5_guest_checkout_creates_no_account(client):
-    h, vid = visitor(client)
-    r = client.post("/api/checkouts", json={"line_ids": [add_line(client, h)]}, headers=h)
-    assert r.status_code == 403 and r.json()["detail"]["code"] == "LOGIN_REQUIRED"   # must pick log in / sign up / guest
-    co = checkout(client, h, guest=True)
-    assert co["guest"] == {"email": None, "name": None} and not co["ready"]
-    r = client.post(f"/api/checkouts/{co['checkout_id']}/confirm", json={"consent": True}, headers=h)
-    assert r.status_code == 403 and r.json()["detail"]["code"] == "GUEST_DETAILS_REQUIRED"
-    _, vid, email, _, res = guest_buys(client)
-    assert res["status"] == "authorized" and res["order"]["guest"] is True
-    with Session(get_engine()) as db:
-        assert db.query(User).filter(User.email == email).count() == 0           # no customer account
-        assert db.query(User).filter_by(user_id=vid).one().is_guest              # still an anonymous visitor
-        card = db.query(PaymentMethod).filter_by(user_id=vid).one()
-        assert card.saved is False                                               # guest cards are one-time
 
 
-def test_5b_guest_details_are_validated(client):
-    h, _ = visitor(client)
-    co = checkout(client, h, guest=True)
-    bad = client.post(f"/api/checkouts/{co['checkout_id']}/guest-details",
-                      json={**HOME, "email": "not-an-email"}, headers=h)
-    assert bad.status_code == 400 and bad.json()["detail"]["code"] == "INVALID_EMAIL"
-    bad = client.post(f"/api/checkouts/{co['checkout_id']}/guest-details",
-                      json={**HOME, "email": "g@example.com", "state": "Texas"}, headers=h)
-    assert bad.json()["detail"]["code"] == "INVALID_STATE"
-    r = client.patch(f"/api/checkouts/{co['checkout_id']}", json={"pay_with": "wallet"}, headers=h)
-    assert r.status_code == 403 and r.json()["detail"]["code"] == "WALLET_UNAVAILABLE"   # wallet is for customers
 
 
-def test_6_and_8_guest_order_id_and_confirmation(client):
-    _, _, email, _, res = guest_buys(client)
-    order_id = res["order"]["order_id"]
-    assert order_id.startswith("SS-") and res["confirmation_email"] == email
-    mail = track(client, order_id, email, "/email").json()
-    assert mail["to"] == email and order_id in mail["subject"] and order_id in mail["body"]
-    assert "Track order" in mail["body"] and "4242" not in mail["body"]          # no card details in email
 
 
-def test_7_guest_payment_failure_creates_no_order(client):
-    h, vid = visitor(client)
-    co = checkout(client, h, guest=True)
-    email = f"fail-{uuid.uuid4().hex[:6]}@example.com"
-    client.post(f"/api/checkouts/{co['checkout_id']}/guest-details", json={**HOME, "email": email}, headers=h)
-    card = client.post("/api/me/payment-methods", json=CARD, headers=h).json()
-    with Session(get_engine()) as db:                                           # the processor will decline it
-        db.query(PaymentMethod).filter_by(payment_method_id=card["payment_method_id"]).update({"behaviour": "decline"})
-        db.commit()
-    client.patch(f"/api/checkouts/{co['checkout_id']}", json={"payment_method_id": card["payment_method_id"]}, headers=h)
-    res = confirm(client, h, co["checkout_id"])
-    assert res["status"] == "declined"
-    with Session(get_engine()) as db:
-        assert db.query(Order).filter(Order.guest_email == email, Order.display_id.isnot(None)).count() == 0
-        assert db.query(EmailOutbox).filter_by(to_email=email).count() == 0
 
 
 # ── 9–11. Tracking by Order ID + email ───────────────────────────────────────
 
-def test_9_10_11_guest_tracking(client):
-    _, _, email, _, res = guest_buys(client)
+def test_9_10_11_tracking_by_order_id_and_email(client):
+    _, _, email, _, res = member_buys(client)
     order_id = res["order"]["order_id"]
     r = track(client, order_id, email.upper())                                  # email match ignores case
     assert r.status_code == 200
@@ -241,28 +214,12 @@ def test_9_10_11_guest_tracking(client):
 
 # ── 12–13. Registered history unchanged; guest orders stay separate ─────────
 
-def test_12_13_registered_history_and_guest_separation(client):
-    h, email = customer(client)
-    client.post("/api/me/addresses", json=HOME, headers=h)
-    client.post("/api/me/payment-methods", json=CARD, headers=h)
-    mine = confirm(client, h, checkout(client, h)["checkout_id"])["order"]["order_id"]
-    gh, _, gemail, _, gres = guest_buys(client)
-    guest_order = gres["order"]["order_id"]
-    ids = [o.get("display_id") for o in client.get("/api/orders", headers=h).json()]
-    assert mine in ids and guest_order not in ids
-    assert track(client, mine, email).status_code == 200                        # customers can track by email too
-    # the same browser later signs up: the guest order still belongs to no account
-    r = client.post("/api/auth/register", headers=gh,
-                    json={"name": "Later", "email": f"l-{uuid.uuid4().hex[:6]}@example.com", "password": "later1234"})
-    nh = bearer(r.json()["access_token"])
-    assert guest_order not in [o.get("display_id") for o in client.get("/api/orders", headers=nh).json()]
-    assert track(client, guest_order, gemail).status_code == 200
 
 
 # ── 14–15. Shipment lifecycle ────────────────────────────────────────────────
 
 def test_14_15_shipment_lifecycle(client):
-    _, _, email, _, res = guest_buys(client)
+    _, _, email, _, res = member_buys(client)
     order_id = res["order"]["order_id"]
     view = track(client, order_id, email).json()["shipment"]
     assert view["status"] == "processing" and view["tracking_number"] is None and view["simulated"]
@@ -311,30 +268,6 @@ def to_offer(client, h):
     return sid
 
 
-def test_talkshop_guest_checkout_end_to_end(client, quiet_llm):
-    h, vid = visitor(client)
-    sid = to_offer(client, h)
-    ev = say(client, h, sid, action={"type": "checkout"})
-    assert first(ev, "login_required") and "continue as a guest" in first(ev, "message")["text"]
-    ev = say(client, h, sid, action={"type": "checkout", "guest": True, "label": "Continue as guest"})
-    need = first(ev, "checkout_details_needed")
-    assert need["needs"]["guest"] and need["guest"] and need["wallet"] is None
-    email = f"chat-guest-{uuid.uuid4().hex[:6]}@example.com"
-    r = client.post(f"/api/checkouts/{need['checkout_id']}/guest-details", json={**HOME, "email": email}, headers=h)
-    assert r.status_code == 200
-    ev = say(client, h, sid, action={"type": "details_added", "label": "Details added"})
-    assert first(ev, "checkout_details_needed")["needs"] == {"guest": False, "address": False, "payment": True}
-    card = client.post("/api/me/payment-methods", json=CARD, headers=h).json()
-    ev = say(client, h, sid, action={"type": "details_added", "payment_method_id": card["payment_method_id"]})
-    co = first(ev, "checkout_ready")["checkout"]
-    assert co["guest"]["email"] == email and co["payment_method"]["display"] == "Visa •••• 4242"
-    ev = say(client, h, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
-    done = first(ev, "order_confirmed")
-    assert done["order"]["guest"] and done["email"] == email
-    assert email in [e["text"] for e in ev if e["type"] == "message"][-1]
-    assert track(client, done["order"]["order_id"], email).status_code == 200
-    with Session(get_engine()) as db:
-        assert db.query(User).filter(User.email == email).count() == 0
 
 
 def test_talkshop_customer_without_card_can_use_wallet(client, quiet_llm):
@@ -357,9 +290,9 @@ from backend.talkshop import state as talk_state
 
 
 def test_chat_tracks_an_order_with_id_and_email(client, quiet_llm):
-    _, _, email, _, res = guest_buys(client)
+    _, _, email, _, res = member_buys(client)
     order_id = res["order"]["order_id"]
-    h, vid = visitor(client)                                     # someone new, not logged in
+    h, vid = other_member(client)                                # another member: needs ID + email
     sid = f"trk-{uuid.uuid4().hex[:8]}"
     ev = say(client, h, sid, text=f"hey i have placed an order with this order id {order_id}, show me the order details and tracking")
     form = first(ev, "track_order_form")
@@ -377,9 +310,9 @@ def test_chat_tracks_an_order_with_id_and_email(client, quiet_llm):
 
 
 def test_chat_tracking_with_the_email_typed_in(client, quiet_llm):
-    _, _, email, _, res = guest_buys(client)
+    _, _, email, _, res = member_buys(client)
     order_id = res["order"]["order_id"]
-    h, vid = visitor(client)
+    h, vid = other_member(client)
     sid = f"trk-{uuid.uuid4().hex[:8]}"
     ev = say(client, h, sid, text=f"where is my order {order_id}? my email is {email}")
     assert first(ev, "order_tracking")["order"]["order_id"] == order_id
@@ -398,10 +331,6 @@ def test_chat_shows_a_customers_own_order_without_email(client, quiet_llm):
     assert first(ev, "track_order_form") and not [e for e in ev if e["type"] == "order_tracking"]
 
 
-def test_chat_where_is_my_order_asks_for_the_id(client, quiet_llm):
-    h, _ = visitor(client)
-    ev = say(client, h, f"trk-{uuid.uuid4().hex[:8]}", text="where is my order?")
-    assert first(ev, "track_order_form")["order_id"] is None and "SS-12345" in first(ev, "message")["text"]
 
 
 # ── Phase 11: real email delivery (fake SMTP server) ─────────────────────────
@@ -446,7 +375,7 @@ def smtp(monkeypatch):
 def test_confirmation_email_is_really_sent(client, smtp, monkeypatch):
     from backend.shop import mailer
     monkeypatch.setattr(mailer, "deliverable", lambda a: True)               # test addresses use example.com
-    _, _, email, _, res = guest_buys(client)
+    _, _, email, _, res = member_buys(client)
     order_id = res["order"]["order_id"]
     assert len(smtp.sent) == 1
     msg = smtp.sent[0]
@@ -460,7 +389,7 @@ def test_email_failure_never_undoes_the_order(client, smtp, monkeypatch):
     from backend.shop import mailer
     monkeypatch.setattr(mailer, "deliverable", lambda a: True)
     smtp.fail = True
-    _, _, email, _, res = guest_buys(client)
+    _, _, email, _, res = member_buys(client)
     assert res["status"] == "authorized"
     mail = track(client, res["order"]["order_id"], email, "/email").json()
     assert mail["delivery"] == "failed"
@@ -491,7 +420,7 @@ def test_made_up_addresses_are_not_mailed(client, smtp):
     """kaajal@shopsphere.demo, example.com… would only bounce: they stay in the outbox."""
     from backend.shop.mailer import deliverable
     assert not deliverable("kaajal@shopsphere.demo") and not deliverable("a@example.com") and deliverable("a@gmail.com")
-    _, _, email, _, res = guest_buys(client)                                    # guest email is @example.com
+    _, _, email, _, res = member_buys(client)                                   # member email is @example.com
     assert smtp.sent == [] and track(client, res["order"]["order_id"], email, "/email").json()["delivery"] == "outbox"
 
 
@@ -523,10 +452,6 @@ def test_logged_in_customer_with_no_orders(client, quiet_llm):
     assert "haven't placed any orders" in first(ev, "message")["text"]
 
 
-def test_guest_still_needs_id_and_email(client, quiet_llm):
-    h, _ = visitor(client)
-    ev = say(client, h, f"own-{uuid.uuid4().hex[:6]}", text="hey i placed an order of nike shoes, where is it?")
-    assert first(ev, "track_order_form") and not [e for e in ev if e["type"] == "order_tracking"]
 
 
 # ── Phase 12: loyalty points ─────────────────────────────────────────────────
@@ -556,16 +481,12 @@ def _give_points(client, h, n):
         db.commit()
 
 
-def test_customers_earn_points_guests_do_not(client):
+def test_customers_earn_points(client):
     h, _ = _ready_customer(client)
     co = checkout(client, h)
     assert co["points"]["balance"] == 0 and co["earn_points"] == int(co["total"])
     res = confirm(client, h, co["checkout_id"])
     assert res["order"]["points"]["earned"] == int(co["total"]) == _points(client, h)
-    gh, gid, _, _, gres = guest_buys(client)
-    assert gres["order"]["points"]["earned"] == 0
-    with Session(get_engine()) as db:
-        assert db.query(LoyaltyPoints).filter_by(user_id=gid).first() is None
 
 
 def test_redeem_points_discount_tax_and_balance(client):
@@ -574,10 +495,11 @@ def test_redeem_points_discount_tax_and_balance(client):
     co = checkout(client, h)                                       # FlexRun 5, $139.00
     co = client.patch(f"/api/checkouts/{co['checkout_id']}", json={"points_used": 2500}, headers=h).json()
     assert co["points"]["used"] == 2500 and co["points_discount"] == 25.0
-    assert co["tax"] == round((139.0 - 25.0) * 0.0825, 2) and co["total"] == round(139.0 - 25.0 + co["tax"], 2)
+    off = co["offer_discount"]                                     # Part 2 member offer, before points and tax
+    assert co["tax"] == round((139.0 - off - 25.0) * 0.0825, 2) and co["total"] == round(139.0 - off - 25.0 + co["tax"], 2)
     res = confirm(client, h, co["checkout_id"])                    # payment checks pass on the discounted total
     assert res["status"] == "authorized" and res["order"]["total"] == co["total"]
-    assert res["order"]["points"] == {"used": 2500, "discount": 25.0, "earned": int(co["total"])}
+    assert res["order"]["points"] == {"used": 2500, "discount": 25.0, "earned": int(co["total"]), "bonus": 0}
     assert _points(client, h) == 2500 - 2500 + int(co["total"])
 
 
@@ -586,7 +508,8 @@ def test_points_are_capped_and_kept_on_decline(client):
     _give_points(client, h, 99999)
     co = checkout(client, h)
     co = client.patch(f"/api/checkouts/{co['checkout_id']}", json={"points_used": 99999}, headers=h).json()
-    assert co["points"]["used"] == 13800 and co["points_discount"] == 138.0   # $1 of the $139 stays payable
+    cap = round((139.0 - co["offer_discount"] - 1.0) * 100)      # $1 of the products stays payable
+    assert co["points"]["used"] == cap and co["points_discount"] == cap / 100
     me = client.get("/api/auth/me", headers=h).json()
     with Session(get_engine()) as db:                               # the card will be declined
         db.query(PaymentMethod).filter_by(user_id=me["user_id"]).update({"behaviour": "decline"})
@@ -595,12 +518,6 @@ def test_points_are_capped_and_kept_on_decline(client):
     assert _points(client, h) == 99999                             # nothing spent without an authorized payment
 
 
-def test_guests_cannot_use_points(client):
-    h, _ = visitor(client)
-    co = checkout(client, h, guest=True)
-    assert co["points"] is None and co["earn_points"] > 0          # UI: "create an account to earn N points"
-    r = client.patch(f"/api/checkouts/{co['checkout_id']}", json={"points_used": 100}, headers=h)
-    assert r.status_code == 403 and r.json()["detail"]["code"] == "POINTS_UNAVAILABLE"
 
 
 def test_talkshop_points_question_and_review_toggle(client, quiet_llm):
@@ -613,8 +530,9 @@ def test_talkshop_points_question_and_review_toggle(client, quiet_llm):
     ev = say(client, h, sid, action={"type": "update_checkout", "points_used": 1415})
     upd = first(ev, "checkout_updated")["checkout"]
     assert upd["points_discount"] == 14.15 and upd["total"] < co["total"]
-    vh, _ = visitor(client)
-    assert "create an account" in first(say(client, vh, f"pts-{uuid.uuid4().hex[:6]}", text="my loyalty points?"), "message")["text"]
+    vh, _ = visitor(client)                                      # Part 2: visitors can't reach Talkshop at all
+    assert client.post("/api/talkshop/turn", json={"session_id": "pts-vis1", "text": "my loyalty points?"},
+                       headers=vh).status_code == 403
 
 
 # ── Live guardrail trace (info view) ─────────────────────────────────────────
@@ -629,11 +547,13 @@ def test_trace_covers_every_step_of_a_purchase(client, quiet_llm):
     co = first(say(client, h, sid, action={"type": "checkout"}), "checkout_ready")["checkout"]
     ev = say(client, h, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"], "consent": "auto_countdown"})
     g = _guards(ev)
-    payit = [x for x in g if x["agent"] == "PayIt" and x["check"].startswith("Check ")]
+    payit = [x for x in g if x["agent"] == "PayIt" and x["check"].startswith("DPAT check ")]
     assert len(payit) == 12 and all(x["result"] == "pass" for x in payit)
     names = [(x["agent"], x["check"]) for x in g]
-    for want in [("GreenLight", "Consent gate"), ("GreenLight", "Spending policy"), ("GreenLight", "Payment token issued"),
-                 ("PayIt", "Charge"), ("TrackIt", "Order created"), ("TrackIt", "Confirmation email")]:
+    for want in [("GreenLight", "Consent gate"), ("GreenLight", "Spending policy"), ("GreenLight", "DPAT issued"),
+                 ("PayIt", "Gateway request sent"), ("Mock gateway / PSP", "Mock gateway / PSP"),
+                 ("Simulated Visa network", "Simulated Visa network"), ("Simulated card issuer", "Simulated card issuer"),
+                 ("TrackIt", "Order confirmed"), ("TrackIt", "Confirmation email")]:
         assert want in names, want
     assert "Automatic after the 3-second countdown" in next(x for x in g if x["check"] == "Consent gate")["detail"]
     assert all(x["protocol"] for x in g)                                  # every check is tagged with its protocol
@@ -648,9 +568,18 @@ def test_trace_shows_a_decline_and_no_secrets(client, quiet_llm):
     sid = to_offer(client, h)
     co = first(say(client, h, sid, action={"type": "checkout"}), "checkout_ready")["checkout"]
     ev = say(client, h, sid, action={"type": "go_ahead", "checkout_id": co["checkout_id"]})
-    charge = next(x for x in _guards(ev) if x["check"] == "Charge")
-    assert charge["result"] == "blocked" and "Nothing charged" in charge["detail"]
+    issuer = next(x for x in _guards(ev) if x["check"] == "Simulated card issuer")
+    assert issuer["result"] == "blocked" and "declined" in issuer["detail"] and issuer["layer"] == "simulated"
+    assert not [e for e in ev if e["type"] == "order_confirmed"]
     ev2 = say(client, h, sid, text=f"my card is 4242 4242 4242 4242 and email {email}")
     blob = str(_guards(ev) + _guards(ev2))
     assert "4242424242424242" not in blob and "4242 4242 4242 4242" not in blob and email not in blob
     assert any(x["check"] == "Sensitive-data mask" and x["result"] == "blocked" for x in _guards(ev2))
+
+
+def test_guest_checkout_is_retired_in_part2(client):
+    """Part 2: a visitor can't create a checkout, guest or not."""
+    h, _ = visitor(client)
+    r = client.post("/api/checkouts", json={"line_ids": ["x"], "guest": True}, headers=h)
+    assert r.status_code == 403 and r.json()["detail"]["code"] == "LOGIN_REQUIRED"
+

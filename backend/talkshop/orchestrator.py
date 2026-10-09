@@ -10,7 +10,9 @@ authorized → order confirmed.
 Typed text is read deterministically where the answer is predictable
 (parse.py), otherwise the LLM chooses an action (brain.decide) from those the
 current stage allows (state.ALLOWED). Payment happens ONLY for the explicit
-{"type": "go_ahead"} action — typed "go ahead" just re-shows the review card.
+{"type": "go_ahead"} action. Typed "go ahead" on the Visa agent-payment path
+asks the panel to start the simulated passkey approval (it never pays by
+itself); on the standard path it re-shows the review card.
 """
 import asyncio
 import logging
@@ -42,6 +44,7 @@ class Turn:
 
     def __init__(self, s: Session):
         self.s, self.events = s, []
+        self.user: Optional[CurrentUser] = None
         self.queue: asyncio.Queue = asyncio.Queue()   # streamed to the panel as they happen
 
     def emit(self, type_: str, **data) -> dict:
@@ -65,10 +68,13 @@ class Turn:
     def status(self, agent: str, message: str) -> dict:
         return self.emit("status", agent=agent, message=message)
 
-    def guard(self, agent: str, check: str, result: str, detail: str = "", protocol: str = "") -> dict:
+    def guard(self, agent: str, check: str, result: str, detail: str = "", protocol: str = "",
+              layer: str = "local") -> dict:
         """One guardrail decision for the live trace in the info view.
-        result: pass | blocked | info. Never carries card data or emails."""
-        return self.emit("guardrail", agent=agent, check=check, result=result, detail=detail, protocol=protocol)
+        result: pass | blocked | info. layer: local (code that ran here) |
+        simulated (a stand-in for an external service). Never carries card data or emails."""
+        return self.emit("guardrail", agent=agent, check=check, result=result, detail=detail, protocol=protocol,
+                         layer=layer)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -380,9 +386,22 @@ async def _checkout(t: Turn, guest: bool = False) -> None:
         t.guard("CartUp", "Secure forms", "info",
                 "Missing details go straight to ShopSphere; the AI only receives the saved IDs", "ACP delegated payment")
         return _ask_for_details(t, co)
-    t.say("Here's your order. Review it, then tap GO AHEAD to place it.")
+    t.say(_review_line(co))
     t.emit("checkout_ready", checkout=co)
     t.stage(Stage.AWAITING_CONSENT)
+
+
+def _review_line(co: dict) -> str:
+    path = (co.get("payment_path") or {}).get("path")
+    offer = co.get("offer")
+    saving = f" Your member offer saves ${offer['discount']:.2f}." if offer else ""
+    if path == "vic":
+        return (f"Here's your order.{saving} Review it, then tap Approve and pay. You'll confirm with a "
+                "simulated passkey.")
+    if path == "vic_setup_required":
+        return (f"Here's your order.{saving} To pay with your Visa through Talkshop, set up agent payments first "
+                "(a quick simulated passkey step), or choose another card.")
+    return f"Here's your order.{saving} Review it, then tap Approve and pay to place it."
 
 
 def _missing(co: dict) -> dict:
@@ -475,22 +494,39 @@ def _nice_date(iso) -> str:
         return str(iso)
 
 
-async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str], consent_mode: str = "button") -> None:
-    """The consent gate. Reachable only from the explicit GO AHEAD action."""
+async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str], consent_mode: str = "button",
+                    instruction_id: Optional[str] = None) -> None:
+    """The consent gate. Reachable only from the explicit Approve-and-pay action."""
     s = t.s
     if s.stage != Stage.AWAITING_CONSENT or not s.checkout_id or checkout_id != s.checkout_id:
-        t.guard("GreenLight", "Consent gate", "blocked", "No order is waiting for a go-ahead: nothing charged", "AP2")
+        t.guard("GreenLight", "Consent gate", "blocked", "No order is waiting for a go-ahead: nothing charged",
+                "AP2-style")
         t.say("There's no order waiting for your go-ahead right now.")
         return
     co = tools.get_checkout(s.user_id, s.checkout_id)
     card = (co.get("payment_method") or {}).get("display")
+    path = (co.get("payment_path") or {}).get("path")
+    if path == "vic_setup_required":
+        t.guard("GreenLight", "Agent-payment enrollment", "blocked",
+                "This Visa has no active agent token yet: set up first (simulated passkey)", "VIC-inspired")
+        t.say(_review_line(co))
+        t.emit("agent_pay_setup", checkout_id=s.checkout_id, card_account_id=co["payment_path"].get("card_account_id"))
+        return
+    if path == "vic" and not instruction_id:
+        # The member approves with a simulated passkey, directly with ShopSphere's
+        # payment-instruction service; Talkshop never sees the challenge.
+        t.guard("GreenLight", "Authenticated instruction needed", "info",
+                "Visa agent payment: the member confirms this exact order with a simulated passkey", "VIC-inspired")
+        t.emit("approval_required", checkout_id=s.checkout_id, consent_mode=consent_mode,
+               amount=co["total"], currency=co["currency"], merchant="ShopSphere", payment=card)
+        return
     t.stage(Stage.PAYING)
     t.emit("payment_status", state="processing", payment=card)
     t.status("GreenLight", "Recording your consent and issuing a one-time payment token…")
     t.emit("payment_status", state="authorizing", payment=card)
     t.status("PayIt", "Running 12 security checks and authorizing payment…")
     try:
-        result = await tools.confirm_and_pay(user, s.checkout_id, consent_mode)
+        result = await tools.confirm_and_pay(user, s.checkout_id, consent_mode, instruction_id)
     except CheckoutError as exc:
         t.guard("GreenLight", "Ready to pay", "blocked", exc.message, "AP2")
         t.emit("payment_status", state="failed", payment=card, reason=exc.code, message=exc.message)
@@ -498,8 +534,9 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str], cons
         t.emit("checkout_updated", checkout=tools.get_checkout(s.user_id, s.checkout_id))
         t.stage(Stage.AWAITING_CONSENT)
         return
-    for g in result.get("trace") or []:               # GreenLight → PayIt → TrackIt guardrails, as they ran
-        t.guard(g["agent"], g["check"], g["result"], g.get("detail") or "", g.get("protocol") or "")
+    for g in result.get("trace") or []:               # GreenLight → PayIt → VIC sim → gateway → TrackIt, as they ran
+        t.guard(g["agent"], g["check"], g["result"], g.get("detail") or "", g.get("protocol") or "",
+                g.get("layer") or "local")
     if result["status"] == "order_failed":           # authorized, then ShopSphere couldn't create the order
         t.emit("payment_status", state="failed", payment=card, reason=result["reason"], message=result["message"])
         t.say(result["message"])
@@ -525,6 +562,8 @@ async def _go_ahead(t: Turn, user: CurrentUser, checkout_id: Optional[str], cons
     pts = order.get("points") or {}
     if pts.get("earned"):
         track += f" You earned {pts['earned']:,} points."
+    if order.get("cashback"):
+        track += f" ${order['cashback']:.2f} cashback is on its way as a (simulated) statement credit."
     t.say(f"Your order is confirmed! Order {order['order_id']} arrives {_nice_date(order['delivery_date'])}.{sent}{track}")
     t.emit("order_confirmed", order=order, email=email)
     t.stage(Stage.ORDER_CONFIRMED)
@@ -570,6 +609,7 @@ async def run_turn(user: CurrentUser, session_id: str, *, text: Optional[str] = 
     if page is not None:
         s.page = page
     t = Turn(s)
+    t.user = user
     end = object()
 
     async def work():
@@ -626,8 +666,20 @@ async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
     elif kind == "track_order" and s.stage != Stage.PAYING:
         _track_lookup(t, str(action.get("order_id") or ""), str(action.get("email") or ""))
     elif kind == "go_ahead":
-        mode = "auto_countdown" if action.get("consent") == "auto_countdown" else "button"
-        await _go_ahead(t, user, action.get("checkout_id"), mode)
+        mode = action.get("consent") if action.get("consent") in ("auto_countdown", "typed") else "button"
+        iid = action.get("instruction_id")
+        await _go_ahead(t, user, action.get("checkout_id"), mode, str(iid)[:80] if iid else None)
+    elif kind == "approval_cancelled" and s.stage == Stage.AWAITING_CONSENT:
+        t.guard("GreenLight", "Approval cancelled", "info", "Passkey step cancelled: nothing approved or charged",
+                "VIC-inspired")
+        t.say("No problem. Nothing was approved or charged; your order is still here when you're ready.")
+    elif kind == "agent_pay_ready" and s.stage == Stage.AWAITING_CONSENT and s.checkout_id:
+        co = tools.get_checkout(s.user_id, s.checkout_id)
+        t.guard("GreenLight", "Agent-payment enrollment", "pass",
+                "Simulated agent token ACTIVE for this Visa (member + Talkshop AI + card fixture)", "VIC-inspired",
+                "simulated")
+        t.say("Visa agent payments are set up. " + _review_line(co))
+        t.emit("checkout_updated", checkout=co)
     else:
         t.say("That isn't available right now.")
 
@@ -706,8 +758,13 @@ async def _handle_text(t: Turn, text: str) -> None:
 
     # Fast, exact paths for predictable replies
     if s.stage == Stage.AWAITING_CONSENT and parse.sounds_like_payment(text):
-        t.say("To place the order, tap GO AHEAD on the review card — I never charge from a typed message.")
-        t.emit("checkout_ready", checkout=tools.get_checkout(s.user_id, s.checkout_id))
+        co = tools.get_checkout(s.user_id, s.checkout_id)
+        if (co.get("payment_path") or {}).get("path") == "vic":
+            # Typed GO AHEAD starts the approval; the simulated passkey tap is still required.
+            t.say("Great. Confirm with your passkey to approve this exact order.")
+            return await _go_ahead(t, t.user, s.checkout_id, "typed")
+        t.say("To place the order, tap Approve and pay on the review card. I never charge from a typed message.")
+        t.emit("checkout_ready", checkout=co)
         return
     if s.stage in (Stage.OFFER_CHECKOUT, Stage.IN_CART):
         if parse.is_yes(text):

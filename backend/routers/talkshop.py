@@ -19,9 +19,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import CurrentUser, get_current_user
+from backend.shop.eligibility import require_cardmember
 from backend.talkshop import orchestrator, state
 
-router = APIRouter(tags=["talkshop"])
+router = APIRouter(dependencies=[Depends(require_cardmember)], tags=["talkshop"])
 
 
 class TurnRequest(BaseModel):

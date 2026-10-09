@@ -11,9 +11,9 @@ from typing import Optional
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from backend.db.schema import (Address, CartItem, Checkout, LoyaltyPoints, LoyaltyTransaction, Order, OrderLine,
-                               PaymentMethod, Product, ProductVariant, User)
-from backend.shop import shipping
+from backend.db.schema import (Address, CartItem, Checkout, MemberOffer, Order, OrderLine, PaymentMethod, Product,
+                               ProductVariant, User)
+from backend.shop import offers, rewards, shipping
 from backend.shop.profile import address_dict
 
 
@@ -24,9 +24,13 @@ def new_display_id(db: Session) -> str:
             return candidate
 
 
-def finalize(db: Session, co: Checkout, payment_ref: str) -> Order:
-    """Turn the authorized payment's order row into the full ShopSphere order."""
+def finalize(db: Session, co: Checkout, payment_ref: str, payment_path: Optional[str] = None) -> Order:
+    """Turn the authorized payment's order row into the full ShopSphere order.
+    Runs once: an order that is already finalized is returned unchanged, so a
+    retry can never commit stock, points or offers twice."""
     order = db.query(Order).filter_by(order_id=payment_ref).one()
+    if order.display_id:
+        return order
     lines = json.loads(co.lines_json)
     address = db.query(Address).filter_by(address_id=co.address_id).first()
     card = db.query(PaymentMethod).filter_by(payment_method_id=co.payment_method_id).first()
@@ -53,12 +57,24 @@ def finalize(db: Session, co: Checkout, payment_ref: str) -> Order:
     order.points_used, order.points_discount = co.points_used or 0, co.points_discount or 0.0
     order.points_earned = int(order.amount) if is_customer else 0
     if is_customer and order.points_used:
-        lp = db.query(LoyaltyPoints).filter_by(user_id=co.user_id).first()
-        spent = min(order.points_used, lp.balance if lp else 0)
-        if lp and spent:
-            lp.balance -= spent
-            db.add(LoyaltyTransaction(transaction_id=f"RDM-{order.order_id}"[:50], user_id=co.user_id,
-                                      order_id=order.order_id, points_earned=-spent, reason="redeemed"))
+        rewards.redeem(db, co.user_id, order.order_id, order.points_used)
+    # Part 2: member offer, bonus points and simulated cashback (once per order)
+    order.payment_path = payment_path or ("wallet" if order.payment_method_type == "wallet" else "standard")
+    order.offer_id, order.offer_discount = co.offer_id, co.offer_discount or 0.0
+    if co.offer_id and co.offer_discount:
+        offer = db.query(MemberOffer).filter_by(offer_id=co.offer_id).first()
+        offers.record(db, co.user_id, order.order_id, co.offer_id, offer.kind if offer else "discount",
+                      co.offer_discount)
+    order.bonus_points, order.cashback = 0, 0.0
+    if is_customer:
+        for b in offers.bonus_points(db, co.user_id, lines):
+            if offers.record(db, co.user_id, order.order_id, b["offer_id"], "bonus_points", b["points"]):
+                rewards.earn(db, co.user_id, order.order_id, b["points"], f"Bonus: {b['title']}", key=f"BONUS-{b['offer_id']}")
+                order.bonus_points += b["points"]
+        for c in offers.cashback(db, co.user_id, lines, agent_pay=order.payment_path == "vic"):
+            if offers.record(db, co.user_id, order.order_id, c["offer_id"], "cashback", c["amount"]):
+                order.cashback = round(order.cashback + c["amount"], 2)
+        order.points_earned += order.bonus_points
 
     for ln in lines:
         db.add(OrderLine(
@@ -110,10 +126,20 @@ def order_dict(db: Session, order: Order) -> dict:
         "guest_email": order.guest_email,
         "shipment": shipping.view(order),
         "points": {"used": order.points_used or 0, "discount": order.points_discount or 0.0,
-                   "earned": order.points_earned or 0},
+                   "earned": order.points_earned or 0, "bonus": order.bonus_points or 0},
+        "offer": _offer_view(db, order),
+        "cashback": order.cashback or 0.0,
+        "payment_path": order.payment_path,
         "tracking_number": order.tracking_number,
         "created_at": order.created_at.isoformat() if order.created_at else None,
     }
+
+
+def _offer_view(db: Session, order: Order) -> Optional[dict]:
+    if not order.offer_id or not order.offer_discount:
+        return None
+    o = db.query(MemberOffer).filter_by(offer_id=order.offer_id).first()
+    return {"offer_id": order.offer_id, "title": o.title if o else order.offer_id, "discount": order.offer_discount}
 
 
 def _payment_view(order: Order) -> Optional[dict]:
