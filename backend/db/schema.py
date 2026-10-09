@@ -165,6 +165,33 @@ class CardAccount(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class IssuerCardholder(Base):
+    """The SIMULATED issuer's records (Chase stand-in): one row per account a
+    cardholder holds. ShopSphere only ever matches against it at sign-up; it
+    never stores more than the masked last four digits. Not real bank data."""
+    __tablename__ = "issuer_cardholders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    record_id = Column(String(40), unique=True, nullable=False)
+    full_name = Column(String(100), nullable=False)
+    email = Column(String(200), nullable=False, index=True)
+    account_type = Column(String(20), nullable=False)        # credit_card | checking | savings
+    network = Column(String(20))                               # Visa | Mastercard (cards only)
+    last4 = Column(String(4), nullable=False)
+    status = Column(String(20), nullable=False, default="active")
+    claimed_by = Column(String(50))                            # ShopSphere user_id once linked
+
+
+class CardVerificationAttempt(Base):
+    """Failed sign-up / card-verification attempts, to rate-limit guessing."""
+    __tablename__ = "card_verification_attempts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(220), nullable=False, index=True)     # normalized email
+    succeeded = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class MemberOffer(Base):
     """A ShopSphere cardmember offer (Part 2, demo). Not a real Chase or Visa benefit.
     kind: discount_percent | discount_amount (lower the price, before tax),

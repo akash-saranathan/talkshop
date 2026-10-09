@@ -250,6 +250,12 @@ def seed_agent_tokens(session: Session):
         seed_active(session, "USR001", "ACCT_A_VISA")
 
 
+def seed_issuer_directory(session: Session):
+    """The simulated Chase cardholder directory used by cardmember sign-up."""
+    from backend.shop.cardholder_verification import seed
+    seed(session)
+
+
 def seed_offers(session: Session):
     from backend.shop.offers import seed
     seed(session)
@@ -347,6 +353,7 @@ def run(db_path: Path = DB_PATH):
         seed_personas(session)
         seed_offers(session)
         seed_agent_tokens(session)
+        seed_issuer_directory(session)
         seed_merchants(session)
         seed_products(session)
     print(f"Database initialized at {db_path}")

@@ -50,6 +50,8 @@ export const member = {
   me: () => call<MemberInfo>("/api/member"),
   offers: () => call<Offer[]>("/api/offers"),
   rewards: () => call<Rewards>("/api/rewards"),
+  /** Signed-in account without an eligible card: its name + email + these digits must match. */
+  verifyCard: (last4: string) => call<MemberInfo>("/api/member/verify-card", json("POST", { last4 })),
 };
 
 export const vic = {

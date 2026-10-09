@@ -1,7 +1,10 @@
+import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, BadgePercent, Bot, CreditCard, Gift, Landmark, LockKeyhole, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useMember } from "../../member/MemberContext";
+import { member as memberApi } from "../../api/member";
+import { Button, Field, Notice } from "../../components/ui";
 
 /**
  * What a guest (Persona D) or a signed-in customer without an eligible credit
@@ -9,7 +12,17 @@ import { useMember } from "../../member/MemberContext";
  * here — the server refuses it anyway (403 LOGIN_REQUIRED / NO_ELIGIBLE_CARD).
  */
 export default function MemberGate() {
-  const { info } = useMember();
+  const { info, refresh } = useMember();
+  const [last4, setLast4] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const verify = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setError(null);
+    try { await memberApi.verifyCard(last4); await refresh(); }
+    catch (err) { setError((err as Error).message); }
+    finally { setBusy(false); }
+  };
   const { logout } = useAuth();
   const navigate = useNavigate();
   const ineligible = info?.signed_in && info.code === "NO_ELIGIBLE_CARD";
@@ -29,6 +42,19 @@ export default function MemberGate() {
               {ineligible ? info?.message
                 : "Member pricing, rewards on every purchase and Talkshop AI, an assistant that finds what you need and checks out only when you approve."}
             </p>
+            {ineligible && (
+              <form onSubmit={verify} className="rounded-2xl bg-white text-ink p-5 flex flex-col gap-3 max-w-md">
+                <p className="text-sm font-semibold">Have a Chase credit card? Verify it</p>
+                <p className="text-xs text-muted leading-relaxed">
+                  Your account name ({info?.member?.name}) and email must match your Chase account. Enter only the last
+                  four digits of the card (checked with Chase, simulated).
+                </p>
+                <Field label="Last 4 digits of your Chase credit card" value={last4} required inputMode="numeric"
+                  maxLength={4} autoComplete="off" onChange={(e) => setLast4(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+                {error && <Notice>{error}</Notice>}
+                <Button type="submit" loading={busy} disabled={last4.length !== 4}>Verify card</Button>
+              </form>
+            )}
             <div className="flex flex-wrap gap-3 pt-2">
               {ineligible ? (
                 <button onClick={async () => { await logout(); navigate("/login", { replace: true }); }}
@@ -36,9 +62,14 @@ export default function MemberGate() {
                   Sign in with another account <ArrowRight size={16} />
                 </button>
               ) : (
-                <Link to="/login" className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-white text-navy text-[15px] font-semibold hover:opacity-90">
-                  Sign in as a cardmember <ArrowRight size={16} />
-                </Link>
+                <>
+                  <Link to="/login" className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-white text-navy text-[15px] font-semibold hover:opacity-90">
+                    Sign in as a cardmember <ArrowRight size={16} />
+                  </Link>
+                  <Link to="/login?signup=1" className="inline-flex items-center h-12 px-6 rounded-full border border-white/30 text-[15px] font-medium hover:border-white">
+                    New customer? Create an account
+                  </Link>
+                </>
               )}
             </div>
           </div>

@@ -23,6 +23,8 @@ interface AuthContextValue {
   isCustomer: boolean;
   login: (email: string, password: string) => Promise<AuthResult>;
   register: (name: string, email: string, password: string) => Promise<AuthResult>;
+  /** Part 2: new cardmember — name + email + last 4 must match the (simulated) Chase records. */
+  registerCardmember: (fullName: string, email: string, password: string, last4: string) => Promise<AuthResult>;
   logout: () => Promise<void>;
 }
 
@@ -49,7 +51,8 @@ async function authCall(url: string, body?: unknown): Promise<{ access_token: st
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong — please try again.");
+    throw new Error(typeof data.detail === "string" ? data.detail
+      : typeof data.detail?.message === "string" ? data.detail.message : "Something went wrong — please try again.");
   }
   return res.json();
 }
@@ -124,6 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback((email: string, password: string) => signIn("/api/auth/login", { email, password }), [signIn]);
   const register = useCallback((name: string, email: string, password: string) =>
     signIn("/api/auth/register", { name, email, password }), [signIn]);
+  const registerCardmember = useCallback((full_name: string, email: string, password: string, last4: string) =>
+    signIn("/api/auth/register-cardmember", { full_name, email, password, last4 }), [signIn]);
 
   const logout = useCallback(async () => {
     clearTabState();                 // a fresh chat and an empty visitor cart
@@ -133,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [startVisitor]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isCustomer: !!user && !user.is_visitor, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, isCustomer: !!user && !user.is_visitor, login, register, registerCardmember, logout }}>
       {children}
     </AuthContext.Provider>
   );

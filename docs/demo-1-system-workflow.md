@@ -471,6 +471,13 @@ called, nothing is VIC compliant, agent tokens are not Visa Token Service tokens
 rewards and `/api/vic/*` routers. `GET /api/member` is open so the gate page can say *why*. Demo 2's APIs
 (`/api/chat`, `/api/authorizations`, `/api/payments`, `/api/cart`, `/api/orders`) are unchanged.
 
+**Sign-up (new customers).** `POST /api/auth/register-cardmember {full_name, email, password, last4}`: name
+(case/spacing ignored) + email (case ignored) + last four digits must match one active, unlinked **credit-card**
+record in the simulated Chase directory (`issuer_cardholders`, `backend/shop/cardholder_verification.py`). Then the
+user is created and all of that cardholder's accounts are linked. Mismatch → one generic `NO_MATCH` message;
+checking-only → `NOT_ELIGIBLE`; 5 failures in 15 min → `TOO_MANY_ATTEMPTS`. Existing accounts without a card use
+`POST /api/member/verify-card {last4}` with their own name + email. Extra records: `DEMO_CARDHOLDERS` in `.env`.
+
 ### 16.2 Offers and rewards (server-authoritative)
 
 - **One discount offer** per checkout, the best one (`offers.best_discount`); applied before points and tax; offer id

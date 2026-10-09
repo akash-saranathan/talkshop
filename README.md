@@ -54,6 +54,26 @@ do this). `python -m backend.db.reset_demo --yes` (backend stopped) gives a fres
 | **D** | Guest (not signed in) | — | **Denied**: public gate page; APIs return 403 `LOGIN_REQUIRED` |
 | **E** | Elena · `elena@shopsphere.demo` | Chase Visa credit •••• 4002 (agent token **NOT_ENROLLED**) | Can browse; must set up agent payments (simulated passkey) before a Visa agent payment |
 
+### New customers: create an account
+
+**Sign in → Create account.** Enter the **same name and email as your Chase account** and the **last four digits** of
+your Chase credit card, plus a password. ShopSphere checks all three against a **simulated Chase cardholder
+directory** (`issuer_cardholders`); only a match creates the account and links the cardholder's cards (Visa →
+agent payments set up on first purchase; Mastercard → standard path). A mismatch gets one generic message (no hint
+which field was wrong), 5 failed tries lock that email for 15 minutes, a checking-only match is refused, and a card
+can be linked to one account only. Never a full card number or CVV.
+
+Free demo cardholders: Alex Rivera · `alex.rivera@cardmember.demo` · 1188 (Visa) · Jordan Lee ·
+`jordan.lee@cardmember.demo` · 2277 (Mastercard) · Sam Patel · `sam.patel@cardmember.demo` · 3366 / 3367 (Visa +
+Mastercard) · Taylor Kim · `taylor.kim@cardmember.demo` · 9900 (checking only → refused). Add your own (simulated)
+record in `.env`, which git ignores:
+```
+DEMO_CARDHOLDERS=Your Name|you@gmail.com|4417|Visa;Your Name|you@gmail.com|5562|Mastercard
+```
+Signed-in accounts without a card (e.g. created before Part 2) can verify one on the "not eligible" page with the last
+four digits; their account name and email must match. A real bank would add a second factor (a one-time code to the
+email or phone on file); the last four digits alone don't prove ownership.
+
 ### Walkthrough (Persona A)
 
 1. Sign in → pick **A · Kaajal**. The landing shows the member card (•••• 4821, points, agent pay on), member offers and
