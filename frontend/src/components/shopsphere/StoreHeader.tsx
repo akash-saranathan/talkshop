@@ -7,15 +7,31 @@ import { useCart } from "../../store/cart";
 import { useMember } from "../../member/MemberContext";
 import { DEPARTMENTS, money } from "../../api/shop";
 import { cx } from "../ui";
+import { BRAND } from "../../brand";
 
-export function Wordmark({ className }: { className?: string }) {
+/** The brand mark. Chase: the approved logo file (public/brand/), falling back to a
+ *  text wordmark until it's added. ShopSphere: the original sphere mark. */
+export function Wordmark({ className, onDark }: { className?: string; onDark?: boolean }) {
+  const [logoOk, setLogoOk] = useState(!!BRAND.logo);
+  const text = onDark ? "text-white" : "text-ink";
   return (
-    <Link to="/" className={cx("flex items-center gap-2.5 shrink-0", className)} aria-label="ShopSphere home">
-      {/* Original ShopSphere mark: a navy sphere with a blue orbit */}
-      <span className="relative w-7 h-7 rounded-full bg-[radial-gradient(circle_at_32%_30%,#4f8fe8,#1f5fbf_45%,#0a2342_80%)] shadow-[inset_0_-2px_6px_rgba(0,0,0,0.3)]">
-        <span className="absolute inset-[-3px] rounded-full border border-accent/40 rotate-[-20deg] scale-x-[1.25]" />
-      </span>
-      <span className="text-[15px] sm:text-[17px] font-bold tracking-[0.16em] sm:tracking-[0.22em] text-ink">SHOPSPHERE</span>
+    <Link to="/" className={cx("flex items-center gap-2.5 shrink-0", className)} aria-label={`${BRAND.name} home`}>
+      {BRAND.logo && logoOk ? (
+        <img src={BRAND.logo} alt={BRAND.short} onError={() => setLogoOk(false)}
+          className={cx("h-6 sm:h-7 w-auto", onDark && "brightness-0 invert")} />
+      ) : BRAND.key === "shopsphere" ? (
+        // Original ShopSphere mark: a navy sphere with a blue orbit
+        <span className="relative w-7 h-7 rounded-full bg-[radial-gradient(circle_at_32%_30%,#4f8fe8,#1f5fbf_45%,#0a2342_80%)] shadow-[inset_0_-2px_6px_rgba(0,0,0,0.3)]">
+          <span className="absolute inset-[-3px] rounded-full border border-accent/40 rotate-[-20deg] scale-x-[1.25]" />
+        </span>
+      ) : null}
+      {!(BRAND.logo && logoOk) && (
+        <span className={cx("text-[15px] sm:text-[17px] font-bold tracking-[0.16em] sm:tracking-[0.22em]", text)}>{BRAND.wordmark}</span>
+      )}
+      {BRAND.wordmarkSuffix && (
+        <span className={cx("text-[13px] sm:text-[15px] font-medium tracking-wide -ml-1", onDark ? "text-white/80" : "text-muted")}>
+          {BRAND.wordmarkSuffix}</span>
+      )}
     </Link>
   );
 }
@@ -102,7 +118,7 @@ export default function StoreHeader() {
         {eligible && (
           <form onSubmit={submit} className="hidden md:flex items-center gap-2 h-10 w-56 xl:w-72 rounded-full bg-panel px-4 border border-transparent focus-within:border-line-strong">
             <Search size={15} className="text-muted shrink-0" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the marketplace"
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${BRAND.name}`}
               className="w-full bg-transparent text-sm outline-none placeholder:text-faint" aria-label="Search products" />
           </form>
         )}

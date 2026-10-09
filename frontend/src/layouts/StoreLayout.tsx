@@ -7,6 +7,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useMember } from "../member/MemberContext";
 import { Spinner } from "../components/ui";
 import MemberGate from "../pages/store/MemberGate";
+import { BRAND } from "../brand";
 
 /**
  * Every ShopSphere page: header, the page itself, footer — with Talkshop AI
@@ -87,8 +88,7 @@ function StoreFooter() {
       </div>
       {/* Extra room on phones so the floating "Ask Talkshop" button never covers content */}
       <div className="border-t border-line pt-5 pb-24 lg:pb-5 px-4 text-center text-xs text-faint leading-relaxed">
-        © ShopSphere · Concept demo. Not affiliated with JPMorgan Chase or Visa. Identities, cards, rewards and payments
-        are simulated.
+        © {BRAND.name} · {BRAND.disclaimer}
       </div>
     </footer>
   );

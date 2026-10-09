@@ -19,6 +19,7 @@ import logging
 from typing import AsyncIterator, Optional
 
 from backend.auth.dependencies import CurrentUser
+from backend.config import brand
 from backend.shop.cart import CartError
 from backend.shop.checkout import CheckoutError
 from backend.talkshop import brain, parse, state, tools
@@ -48,7 +49,7 @@ class Turn:
         self.queue: asyncio.Queue = asyncio.Queue()   # streamed to the panel as they happen
 
     def emit(self, type_: str, **data) -> dict:
-        ev = {"type": type_, **data}
+        ev = brand.display_obj({"type": type_, **data})     # customers see the display brand
         self.events.append(ev)
         self.queue.put_nowait(ev)
         if type_ != "status":

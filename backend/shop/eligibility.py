@@ -23,8 +23,8 @@ from backend.db.session_utils import get_session
 ISSUER = "Chase"
 
 MESSAGES = {
-    "LOGIN_REQUIRED": "Sign in with your cardmember account to enter the ShopSphere marketplace.",
-    "NO_ELIGIBLE_CARD": "The ShopSphere marketplace is for eligible Chase credit-card members. "
+    "LOGIN_REQUIRED": "Sign in with your cardmember account to enter ShopSphere.",
+    "NO_ELIGIBLE_CARD": "ShopSphere is for eligible Chase credit-card members. "
                         "We couldn't find an eligible credit card on this account.",
 }
 

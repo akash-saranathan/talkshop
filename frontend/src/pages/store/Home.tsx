@@ -9,6 +9,7 @@ import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 import { useMember } from "../../member/MemberContext";
 import { Skeleton } from "../../components/ui";
 import { MemberCard, OfferCard } from "./Member";
+import { BRAND } from "../../brand";
 
 const DEPT_TILES = [
   { slug: "shoes", label: "Shoes", blurb: "Runners, sneakers & boots", query: { department: "shoes" } },
@@ -147,7 +148,7 @@ export default function StoreHome() {
             : Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="aspect-square" />)}
         </div>
         <p className="mt-10 text-xs text-faint flex items-center gap-1.5"><Sparkles size={12} />
-          Offers and points shown on products are calculated by ShopSphere's servers for your membership.</p>
+          Offers and points shown on products are calculated by {BRAND.name}'s servers for your membership.</p>
       </section>
     </div>
   );

@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useMember } from "../../member/MemberContext";
 import { member as memberApi } from "../../api/member";
 import { Button, Field, Notice } from "../../components/ui";
+import { BRAND } from "../../brand";
 
 /**
  * What a guest (Persona D) or a signed-in customer without an eligible credit
@@ -33,7 +34,7 @@ export default function MemberGate() {
         <div className="absolute -right-40 -top-40 w-[560px] h-[560px] rounded-full bg-navy-2 opacity-60" aria-hidden />
         <div className="relative mx-auto max-w-[1200px] px-4 sm:px-6 py-16 sm:py-24 grid lg:grid-cols-[1.2fr_1fr] gap-10 items-center">
           <div className="flex flex-col gap-5">
-            <p className="text-[11px] font-semibold tracking-[0.24em] text-gold uppercase">ShopSphere cardmember marketplace</p>
+            <p className="text-[11px] font-semibold tracking-[0.24em] text-gold uppercase">{BRAND.name} · for cardmembers</p>
             <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.08]">
               {ineligible ? `Sorry, ${info?.member?.name ?? "there"}. This marketplace is for credit-card members.`
                 : "A members-only marketplace for eligible Chase credit-card holders."}
@@ -89,7 +90,7 @@ export default function MemberGate() {
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-white/50">Checked by ShopSphere's servers on every request, not just hidden in the page.</p>
+            <p className="text-xs text-white/50">Checked by {BRAND.name}'s servers on every request, not just hidden in the page.</p>
           </div>
         </div>
       </section>
@@ -112,8 +113,7 @@ export default function MemberGate() {
       <section className="mx-auto max-w-[1200px] px-4 sm:px-6 mt-10">
         <div className="rounded-2xl bg-panel p-5 flex flex-col sm:flex-row gap-3 sm:items-center text-sm text-muted">
           <span className="flex items-center gap-2 font-medium text-ink whitespace-nowrap"><Landmark size={16} /><CreditCard size={16} /> Concept demo</span>
-          ShopSphere is an original concept marketplace and is not affiliated with JPMorgan Chase or Visa. Identities,
-          accounts, cards, rewards and payments are simulated with demo data.
+          {BRAND.disclaimer}
         </div>
       </section>
     </div>

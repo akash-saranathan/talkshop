@@ -71,7 +71,9 @@ def send_order_confirmation(db: Session, order: Order) -> Optional[str]:
     )
     message_id = f"MSG_{uuid.uuid4().hex[:12].upper()}"
     real = mailer.configured() and mailer.deliverable(to)   # made-up addresses stay in the outbox
-    db.add(EmailOutbox(message_id=message_id, to_email=to, subject=f"Your ShopSphere order {order.display_id} is confirmed",
+    from backend.config.brand import display
+    body = display(body)
+    db.add(EmailOutbox(message_id=message_id, to_email=to, subject=display(f"Your ShopSphere order {order.display_id} is confirmed"),
                        body=body, order_id=order.order_id, delivery="sending" if real else "outbox"))
     db.commit()
     if real:

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Lock } from "lucide-react";
 import { shop, ShopError, type Address, type Card, type Checkout } from "../../api/shop";
 import { Button, Field, Notice } from "../ui";
+import { BRAND } from "../../brand";
 
 export function AddressForm({ onSaved, onCancel, defaultName }: { onSaved: (a: Address) => void; onCancel?: () => void; defaultName?: string }) {
   const [f, setF] = useState({ full_name: defaultName ?? "", line1: "", line2: "", city: "", state: "", postal_code: "" });
@@ -80,7 +81,7 @@ export function CardForm({ onSaved, onCancel, allowSave = true }: { onSaved: (c:
           Save this card for next time
         </label>
       ) : (
-        <p className="col-span-2 text-xs text-muted">Used for this order only. ShopSphere won't keep this card.</p>
+        <p className="col-span-2 text-xs text-muted">Used for this order only. {BRAND.name} won't keep this card.</p>
       )}
       <p className="col-span-2 flex items-center gap-1.5 text-xs text-muted">
         <Lock size={12} /> Only the card's last 4 digits are stored. The full number and CVC are never kept.

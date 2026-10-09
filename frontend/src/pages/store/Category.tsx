@@ -6,6 +6,7 @@ import ProductTile from "../../components/shopsphere/ProductTile";
 import TalkshopPicks from "../../components/talkshop/TalkshopPicks";
 import { useTalkshopShared } from "../../talkshop/TalkshopContext";
 import { Chip, Empty, Skeleton, Swatch, cx } from "../../components/ui";
+import { BRAND } from "../../brand";
 
 const PAGES: Record<string, { title: string; blurb: string; query: ProductQuery }> = {
   women: { title: "Women", blurb: "Shoes, clothing and accessories for her.", query: { gender: "women" } },
@@ -14,7 +15,7 @@ const PAGES: Record<string, { title: string; blurb: string; query: ProductQuery 
   clothing: { title: "Clothing", blurb: "Everyday layers, denim and dresses.", query: { department: "clothing" } },
   accessories: { title: "Accessories", blurb: "Bags, watches, sunglasses and small leather goods.", query: { department: "accessories" } },
   electronics: { title: "Electronics", blurb: "Headphones, phones, laptops and wearables.", query: { department: "electronics" } },
-  new: { title: "New arrivals", blurb: "The latest additions to ShopSphere.", query: { new: true } },
+  new: { title: "New arrivals", blurb: `The latest additions to ${BRAND.name}.`, query: { new: true } },
 };
 
 const PRICES = [
@@ -78,7 +79,7 @@ export default function Category() {
   const active = [price && { key: "price", label: price.label }, color && { key: "color", label: color },
     size && { key: "size", label: `Size ${size}` }].filter(Boolean) as { key: string; label: string }[];
 
-  if (!page) return <Empty title="Page not found"><Link to="/" className="underline">Back to ShopSphere</Link></Empty>;
+  if (!page) return <Empty title="Page not found"><Link to="/" className="underline">Back to {BRAND.name}</Link></Empty>;
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 sm:px-6 pt-10">
