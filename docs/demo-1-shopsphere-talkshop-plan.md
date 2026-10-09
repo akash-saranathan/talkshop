@@ -281,7 +281,7 @@ Source: the *Master implementation prompt* (Oct 2026). Details, personas and the
 - **Frontend:** `member/MemberContext.tsx`, `member/PasskeyContext.tsx`, `api/member.ts`; pages `MemberGate`,
   `Member` (offers, rewards), `Account`; new `Login`, `Home`, `StoreHeader`, `StoreLayout`; checkout + Talkshop
   approval/enrollment cards; developer trace with a Payment tab.
-- **Verified:** 368 pytest tests (Demo 1 + Demo 2, incl. 27 new Part 2 tests); browser QA of personas A–E on desktop
+- **Verified:** 374 pytest tests (Demo 1 + Demo 2, incl. 33 new Part 2 tests); browser QA of personas A–E on desktop
   and a 390 px phone with the gateway as a separate HTTP service.
 - **Not built:** real WebAuthn, any real Visa/Chase integration, A2A, MCP for Demo 1.
 
