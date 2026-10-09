@@ -5,7 +5,6 @@ import { useAuth } from "../auth/AuthContext";
 import { afterSignIn } from "../auth/afterSignIn";
 import { Wordmark } from "../components/shopsphere/StoreHeader";
 import { Button, Field, Notice, cx } from "../components/ui";
-import { BRAND } from "../brand";
 
 /**
  * Cardmember sign-in and sign-up (Part 2). ShopSphere is a restricted
@@ -72,7 +71,7 @@ export default function Login() {
       <div className="hidden lg:flex flex-col justify-between bg-navy text-white p-12 relative overflow-hidden">
         <div className="absolute -right-32 -top-32 w-[520px] h-[520px] rounded-full bg-navy-2 opacity-70" aria-hidden />
         <div className="absolute -right-10 bottom-24 w-[260px] h-[260px] rounded-full border border-white/10" aria-hidden />
-        <Wordmark className="relative" onDark />
+        <Wordmark className="relative [&_span:last-child]:text-white" />
         <div className="relative max-w-md flex flex-col gap-5">
           <p className="text-[11px] font-semibold tracking-[0.24em] text-gold uppercase">Cardmember marketplace</p>
           <h1 className="text-4xl font-semibold tracking-tight leading-[1.1]">
@@ -84,7 +83,10 @@ export default function Login() {
             <li className="flex gap-3"><ShieldCheck size={18} className="text-gold shrink-0 mt-0.5" />Every payment approved by you, one exact order at a time</li>
           </ul>
         </div>
-        <p className="relative text-xs text-white/50 max-w-md">{BRAND.disclaimer}</p>
+        <p className="relative text-xs text-white/50 max-w-md">
+          Concept demo. ShopSphere is not affiliated with JPMorgan Chase or Visa. All identities, cards, rewards and
+          payments are simulated.
+        </p>
       </div>
 
       {/* Sign-in side */}
@@ -104,7 +106,7 @@ export default function Login() {
           {screen === "signup" ? (
             <form onSubmit={create} className="flex flex-col gap-4">
               <div>
-                <h2 className="text-2xl font-semibold tracking-tight">New to {BRAND.name}?</h2>
+                <h2 className="text-2xl font-semibold tracking-tight">New to ShopSphere?</h2>
                 <p className="text-muted text-sm mt-1 leading-relaxed">
                   Create your account with the <span className="text-ink font-medium">same name and email as your Chase
                   account</span>, and the <span className="text-ink font-medium">last four digits</span> of your Chase

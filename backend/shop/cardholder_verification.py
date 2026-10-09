@@ -39,7 +39,7 @@ LOCK_WINDOW = timedelta(minutes=15)
 NO_MATCH = ("We couldn't verify those details with Chase (simulated). Use the name and email on your Chase "
             "account and the last four digits of your Chase credit card.")
 LOCKED = "Too many attempts. For your security, please wait 15 minutes and try again."
-NOT_CREDIT = ("Those details match a Chase checking account. ShopSphere is for Chase "
+NOT_CREDIT = ("Those details match a Chase checking account. The ShopSphere marketplace is for Chase "
               "credit-card members.")
 
 

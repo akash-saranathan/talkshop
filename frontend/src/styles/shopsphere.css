@@ -81,25 +81,3 @@
 @media (prefers-reduced-motion: reduce) {
   .ss-bump { animation: none; }
 }
-
-/* Chase Marketplace brand (data-brand="chase", set from src/brand.ts): Chase blue
-   accent on the same navy/white base. Approved for the internal demo. */
-:root[data-brand="chase"] {
-  --ss-accent: #117aca;
-  --ss-accent-soft: #e5f1fb;
-  --ss-navy: #0b2a4a;
-  --ss-navy-2: #0f3a66;
-  --ss-btn: #0b2a4a;
-  --ss-talk: #1f6fd1;
-  --ss-talk-soft: #e7f0fc;
-}
-:root[data-brand="chase"][data-theme="dark"] {
-  --ss-accent: #4aa3ea;
-  --ss-accent-soft: #0f2b47;
-  --ss-navy: #0a2240;
-  --ss-navy-2: #123864;
-  --ss-btn: #eef3fa;
-  --ss-talk: #6fa8f5;
-  --ss-talk-soft: #142a4a;
-}
-

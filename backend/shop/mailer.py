@@ -61,8 +61,7 @@ def send(to: str, subject: str, body: str) -> None:
     if not (cfg["host"] and cfg["sender"]):
         raise RuntimeError("SMTP is not configured")
     msg = EmailMessage()
-    from backend.config.brand import current
-    msg["From"] = formataddr((current()["name"], cfg["sender"]))
+    msg["From"] = formataddr(("ShopSphere", cfg["sender"]))
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(body)

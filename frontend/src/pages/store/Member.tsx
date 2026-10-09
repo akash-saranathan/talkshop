@@ -4,7 +4,6 @@ import { ArrowRight, BadgePercent, Coins, Gift, Sparkles, Wallet } from "lucide-
 import { member as memberApi, type MemberInfo, type Offer, type Rewards } from "../../api/member";
 import { money } from "../../api/shop";
 import { Skeleton, cx } from "../../components/ui";
-import { BRAND } from "../../brand";
 
 /** The member's eligible card, drawn as an original ShopSphere card (no issuer or network artwork). */
 export function MemberCard({ info }: { info: MemberInfo }) {
@@ -15,7 +14,7 @@ export function MemberCard({ info }: { info: MemberInfo }) {
     <div className="w-full max-w-sm justify-self-center lg:justify-self-end">
       <div className="aspect-[1.586] rounded-2xl p-5 flex flex-col justify-between bg-[linear-gradient(135deg,#1c3f6e,#0a2342_55%,#07182e)] border border-white/15 shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-start justify-between">
-          <span className="text-[11px] font-semibold tracking-[0.2em] text-white/70 uppercase">{BRAND.memberCard}</span>
+          <span className="text-[11px] font-semibold tracking-[0.2em] text-white/70 uppercase">ShopSphere member</span>
           <span className="text-[10px] rounded-full border border-gold/60 text-gold px-2 py-0.5 uppercase tracking-wider">Demo</span>
         </div>
         <div className="w-10 h-7 rounded-md bg-[linear-gradient(135deg,#d9c08f,#a8844f)] opacity-90" aria-hidden />
@@ -78,7 +77,7 @@ export function OffersPage() {
       <p className="text-xs font-semibold tracking-[0.2em] text-gold uppercase">Exclusive to cardmembers</p>
       <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mt-1">Your offers</h1>
       <p className="text-muted mt-2 max-w-2xl">
-        {BRAND.name} applies the offer that saves you the most at checkout, automatically. Bonus points add up; cashback
+        ShopSphere applies the offer that saves you the most at checkout, automatically. Bonus points add up; cashback
         arrives as a simulated statement credit after an approved Visa agent payment.
       </p>
       <div className="grid sm:grid-cols-2 gap-4 mt-8">
@@ -139,7 +138,7 @@ export function RewardsPage() {
           )}
         </>
       )}
-      <p className="mt-8 text-xs text-faint">{BRAND.points} are demo points, not a real Chase rewards programme. <Link to="/offers" className="underline">See offers</Link></p>
+      <p className="mt-8 text-xs text-faint">ShopSphere demo points are not a real Chase rewards programme. <Link to="/offers" className="underline">See offers</Link></p>
     </div>
   );
 }

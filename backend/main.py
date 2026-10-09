@@ -32,10 +32,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Demo 1 display brand (Chase Marketplace by default; BRAND=shopsphere for the original)
-from backend.config.brand import BrandMiddleware  # noqa: E402
-app.add_middleware(BrandMiddleware)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],

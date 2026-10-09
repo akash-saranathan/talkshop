@@ -14,7 +14,6 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 import { Fingerprint, ShieldCheck, X } from "lucide-react";
 import { vic } from "../api/member";
 import { money } from "../api/shop";
-import { BRAND } from "../brand";
 
 type Outcome = "verified" | "failed" | "cancelled";
 interface Prompt { title: string; lines: [string, string][]; purpose: "payment" | "enrollment" }
@@ -47,7 +46,7 @@ export function PasskeyProvider({ children }: { children: ReactNode }) {
     const { instruction, passkey } = await vic.createInstruction(checkoutId, consentMode);
     const outcome = await ask({
       title: "Approve this payment", purpose: "payment",
-      lines: [["Merchant", BRAND.name], ["Amount", money(instruction.amount)], ["Card", info.card ?? "Visa"],
+      lines: [["Merchant", "ShopSphere"], ["Amount", money(instruction.amount)], ["Card", info.card ?? "Visa"],
               ["Agent", "Talkshop AI (one purchase only)"]],
     });
     if (outcome === "cancelled") {

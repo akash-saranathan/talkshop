@@ -19,7 +19,6 @@ import {
   OrderTrackingCard, RecommendationCards, ReviewOrderCard, SecureDetailsCard, SelectedProduct, SignInCard, TrackLookupCard,
 } from "./cards";
 import { cx } from "../ui";
-import { BRAND } from "../../brand";
 
 // Customer-friendly progress (Part 2): Find → Choose → Review → Approve → Done
 const STEPS = ["Find", "Choose", "Review", "Approve", "Done"];
@@ -28,7 +27,7 @@ const STEP_OF: Record<Stage, number> = {
   IN_CART: 1, OFFER_CHECKOUT: 1, CHECKOUT_DETAILS: 2, AWAITING_CONSENT: 2, PAYING: 3, ORDER_CONFIRMED: 4,
 };
 const AGENTS: Record<string, string> = {
-  VibeCheck: "Understands the request", SneakPeek: `Searches the ${BRAND.name} catalog only`,
+  VibeCheck: "Understands the request", SneakPeek: "Searches the ShopSphere catalog only",
   CartUp: "Cart, offers & authoritative totals", GreenLight: "Consent + DPAT (scoped token)",
   PayIt: "12 DPAT checks, then the gateway", TrackIt: "Order, email & tracking",
 };
@@ -288,10 +287,10 @@ const GUARDRAILS: { agent: string; checks: string[] }[] = [
   { agent: "VibeCheck", checks: ["Card numbers, CVC and expiry masked in the browser and again on the server",
     "Emails masked before the AI sees the history", "Input guardrail: keyword list + NeMo", "Not-sold blocker",
     "The AI may only pick an action allowed at this stage; payment is never one of them"] },
-  { agent: "SneakPeek", checks: [`${BRAND.name}'s catalog only (merchant-restricted search)`, "Prices, stock, offers and points from the server",
+  { agent: "SneakPeek", checks: ["ShopSphere's catalog only (merchant-restricted search)", "Prices, stock, offers and points from the server",
     "AI relevance check (no unrelated cards)"] },
   { agent: "CartUp", checks: ["Exact size/colour stock check", "Server picks the member offer; totals + SHA-256 fingerprint are server-only",
-    `Secure forms: details go to ${BRAND.name}, the AI gets IDs`, "Changing the order cancels any open Visa instruction"] },
+    "Secure forms: details go to ShopSphere, the AI gets IDs", "Changing the order cancels any open Visa instruction"] },
   { agent: "GreenLight", checks: ["Approve and pay (tap, or typed GO AHEAD) + simulated passkey on the Visa path; no automatic payment",
     "Live stock and price refresh", "Spending policy: approved merchant, USD, up to $2,500",
     "DPAT: HMAC-SHA256 signed, 15 minutes, single use"] },
@@ -361,7 +360,7 @@ function PresenterTrace({ trace, onClose }: { trace: TraceStep[]; onClose: () =>
         <button onClick={onClose} className="text-xs underline">Back to chat</button>
       </div>
       <p className="text-xs text-muted leading-relaxed">
-        Real backend steps, as they ran. <span className="font-medium text-ink">Local</span> = {BRAND.name} code that ran here;
+        Real backend steps, as they ran. <span className="font-medium text-ink">Local</span> = ShopSphere code that ran here;
         {" "}<span className="font-medium text-gold">Simulated</span> = a local stand-in for an external service (gateway, card
         network, issuer, VIC). No Visa or Chase system is called. Secrets are never shown.
       </p>

@@ -17,7 +17,6 @@ from pathlib import Path
 # app's real backend/db/commerce.db.
 _TEST_DB = Path(tempfile.mkdtemp(prefix="talkshop-tests-")) / "test.db"
 os.environ["COMMERCE_DB_PATH"] = str(_TEST_DB)
-os.environ["BRAND"] = "shopsphere"          # existing tests assert ShopSphere wording; brand tests switch it
 
 from backend.db import init_db  # noqa: E402
 

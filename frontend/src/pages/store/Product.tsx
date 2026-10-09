@@ -6,7 +6,6 @@ import ProductTile from "../../components/shopsphere/ProductTile";
 import { Badge, Button, Chip, Empty, Notice, Rating, Skeleton, Swatch } from "../../components/ui";
 import { useCart } from "../../store/cart";
 import { TALKSHOP_ENABLED, askTalkshop } from "../../talkshop/bridge";
-import { BRAND } from "../../brand";
 
 function deliveryDate(days: number) {
   const d = new Date();
@@ -45,7 +44,7 @@ export default function ProductPage() {
   const selected = avail?.selected;
   const ready = !!color && (!hasSizes || !!size) && !!selected?.available;
 
-  if (product === null) return <Empty title="We couldn't find that product"><Link to="/" className="underline">Back to {BRAND.name}</Link></Empty>;
+  if (product === null) return <Empty title="We couldn't find that product"><Link to="/" className="underline">Back to ShopSphere</Link></Empty>;
   if (!product) return (
     <div className="mx-auto max-w-[1400px] px-4 sm:px-6 pt-10 grid lg:grid-cols-2 gap-12">
       <Skeleton className="aspect-square" /><div className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-6 w-1/3" /><Skeleton className="h-40" /></div>

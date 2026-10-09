@@ -44,20 +44,6 @@ cd frontend; npm run dev                                              # http://l
 Without `MOCK_GATEWAY_URL` the backend calls the same gateway app in-process through the same HTTP client (the tests
 do this). `python -m backend.db.reset_demo --yes` (backend stopped) gives a fresh database with all personas.
 
-### Branding: Chase Marketplace (default) or ShopSphere
-
-The display brand is a setting; shopping, payment and eligibility logic never change with it.
-
-| Setting | Chase Marketplace (default) | ShopSphere |
-|---|---|---|
-| Frontend (`frontend/.env` or shell) | `VITE_BRAND=chase` | `VITE_BRAND=shopsphere` |
-| Backend (Talkshop text, API text, emails) | `BRAND=chase` | `BRAND=shopsphere` |
-
-**Logo:** put the approved Chase logo at `frontend/public/brand/chase-logo.svg` (or a PNG with
-`VITE_BRAND_LOGO=/brand/chase-logo.png`). Until then a text wordmark ("CHASE Marketplace") is shown. Use of the Chase
-name and logo is approved for this internal demo; payments, cards and rewards stay simulated and the UI says so.
-Internal ids (`SHOPSPHERE` merchant, `shopsphere.demo` emails) and Demo 2's APIs are not re-branded.
-
 ### Demo personas (password `demo1234`; one click on the sign-in page)
 
 | | Persona | Simulated accounts | What happens |

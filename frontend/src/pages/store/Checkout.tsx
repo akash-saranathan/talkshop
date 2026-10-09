@@ -8,7 +8,6 @@ import { useAuth } from "../../auth/AuthContext";
 import { useCart } from "../../store/cart";
 import { PasskeyCancelled, usePasskey } from "../../member/PasskeyContext";
 import { useMember } from "../../member/MemberContext";
-import { BRAND } from "../../brand";
 
 function Section({ n, title, icon, action, children }: { n: number; title: string; icon: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
@@ -231,7 +230,7 @@ export default function CheckoutPage() {
               <div className="flex flex-col gap-2">
                 {co.wallet && (
                   <Radio checked={onWallet} onClick={() => change({ pay_with: "wallet" })}>
-                    <span className="flex items-center gap-2 text-sm font-medium"><Wallet size={15} /> {BRAND.wallet}</span>
+                    <span className="flex items-center gap-2 text-sm font-medium"><Wallet size={15} /> ShopSphere Wallet</span>
                     <span className={cx("block text-sm", co.wallet.enough ? "text-muted" : "text-bad")}>
                       Balance {money(co.wallet.balance)}{co.wallet.enough ? "" : " · not enough for this order"}
                     </span>
@@ -250,7 +249,7 @@ export default function CheckoutPage() {
                 <button onClick={() => setAdding("card")} className="self-start text-sm font-medium mt-1 hover:underline">+ Add a new card</button>
               </div>
             ) : onWallet && co.wallet ? (
-              <p className="text-sm"><span className="flex items-center gap-2 font-medium"><Wallet size={15} /> {BRAND.wallet}</span>
+              <p className="text-sm"><span className="flex items-center gap-2 font-medium"><Wallet size={15} /> ShopSphere Wallet</span>
                 <span className="block text-muted">Balance {money(co.wallet.balance)}</span></p>
             ) : card ? (
               <div className="flex flex-col gap-3">
@@ -264,7 +263,7 @@ export default function CheckoutPage() {
                 {co.wallet && (
                   <button type="button" onClick={() => change({ pay_with: "wallet" })} disabled={!co.wallet.enough}
                     className="self-start inline-flex items-center gap-2 text-sm font-medium hover:underline disabled:opacity-50 disabled:no-underline">
-                    <Wallet size={15} /> Or pay with your {BRAND.wallet} ({money(co.wallet.balance)} available)
+                    <Wallet size={15} /> Or pay with your ShopSphere Wallet ({money(co.wallet.balance)} available)
                   </button>
                 )}
               </div>
@@ -313,7 +312,7 @@ export default function CheckoutPage() {
           </div>
           {co.points ? (
             <div className="rounded-2xl bg-panel p-4 text-sm flex flex-col gap-1.5">
-              <p className="font-medium">{BRAND.points} · {co.points.balance.toLocaleString()}</p>
+              <p className="font-medium">ShopSphere points · {co.points.balance.toLocaleString()}</p>
               {co.points.used > 0 ? (
                 <p className="flex justify-between gap-2"><span className="text-muted">Using {co.points.used.toLocaleString()} (−{money(co.points.discount)})</span>
                   <button type="button" disabled={busy} onClick={() => change({ points_used: 0 })} className="font-medium underline">Remove</button></p>
@@ -328,7 +327,7 @@ export default function CheckoutPage() {
               ))}
             </div>
           ) : guest && (
-            <p className="text-sm text-muted">Create a {BRAND.name} account to earn {co.earn_points.toLocaleString()} points on orders like this.</p>
+            <p className="text-sm text-muted">Create a ShopSphere account to earn {co.earn_points.toLocaleString()} points on orders like this.</p>
           )}
           <div className="flex justify-between border-t border-line pt-4 text-lg font-semibold"><span>Total</span><span className="tabular-nums">{money(co.total)}</span></div>
           <p className="text-sm text-muted -mt-2">Arrives {niceDate(co.delivery.date)}</p>
@@ -344,7 +343,7 @@ export default function CheckoutPage() {
             <ShieldCheck size={14} className="shrink-0 mt-px" />
             {co.payment_path?.path === "vic"
               ? "You'll confirm this exact order with a simulated passkey. Nothing is charged until you do."
-              : `You're charged only when you place the order, after ${BRAND.name}'s payment security checks.`}
+              : "You're charged only when you place the order, after ShopSphere's payment security checks."}
           </p>
         </aside>
       </div>
@@ -359,7 +358,7 @@ function PaymentPathNote({ co }: { co: Checkout }) {
   if (!p || p.path === "none" || p.path === "wallet") return null;
   const text = p.path === "vic" ? "Visa agent payment: you approve with a passkey (simulated), then a one-time payment credential is used for this order only."
     : p.path === "vic_setup_required" ? "To pay with this Visa through agent payments, set it up once with a simulated passkey, or choose another card."
-    : `Standard card payment through ${BRAND.name}'s payment gateway (${p.issuer ?? "simulated issuer"}).`;
+    : `Standard card payment through ShopSphere's payment gateway (${p.issuer ?? "simulated issuer"}).`;
   return (
     <p className={cx("rounded-xl px-3 py-2 text-xs leading-relaxed", p.path === "vic" ? "bg-good-soft text-good"
       : p.path === "vic_setup_required" ? "bg-gold-soft text-gold" : "bg-panel text-muted")}>{text}</p>

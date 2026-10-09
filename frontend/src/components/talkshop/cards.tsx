@@ -11,7 +11,6 @@ import { AddressForm, CardForm, GuestDetailsForm } from "../shopsphere/CheckoutF
 import { Button, Field, Notice, Rating, Stepper, cx } from "../ui";
 import { useAuth } from "../../auth/AuthContext";
 import { RESUME_KEY } from "../../talkshop/TalkshopContext";
-import { BRAND } from "../../brand";
 
 type Act = (action: TalkAction & { label?: string }) => void;
 
@@ -41,7 +40,7 @@ export function RecommendationCards({ products, active, onAct }:
               <Button size="sm" variant={active ? "primary" : "secondary"} disabled={!active}
                 onClick={() => onAct({ type: "select", product_id: p.product_id, label: p.name })}>Select</Button>
               <Link to={`/p/${p.product_id}`} className="text-xs text-muted hover:text-ink inline-flex items-center gap-0.5">
-                View on {BRAND.short} <ArrowUpRight size={12} />
+                View on ShopSphere <ArrowUpRight size={12} />
               </Link>
             </div>
           </div>
@@ -109,7 +108,7 @@ export function CartUpdatedCard({ cart, lineId }: { cart: Cart; lineId: string }
   if (!line) return null;
   return (
     <Shell className="p-3">
-      <p className="flex items-center gap-1.5 text-xs font-semibold text-good mb-2"><Check size={14} /> Added to your {BRAND.name} cart</p>
+      <p className="flex items-center gap-1.5 text-xs font-semibold text-good mb-2"><Check size={14} /> Added to your ShopSphere cart</p>
       <div className="flex items-center gap-3">
         <div className="w-12 h-12 rounded-lg bg-photo overflow-hidden shrink-0">{line.image_url && <img src={line.image_url} alt="" className="h-full w-full object-cover" />}</div>
         <div className="min-w-0 flex-1">
@@ -201,7 +200,7 @@ export function CheckoutCountdown({ onPick }: { onPick: (c: { value: string; lab
 function PointsLine({ co, live, busy, onUse }: { co: Checkout; live: boolean; busy: boolean; onUse: (n: number) => void }) {
   const pts = co.points;
   if (!pts) {
-    return co.guest ? <p className="text-xs text-muted">Create a {BRAND.name} account to earn {co.earn_points.toLocaleString()} points on orders like this.</p> : null;
+    return co.guest ? <p className="text-xs text-muted">Create a ShopSphere account to earn {co.earn_points.toLocaleString()} points on orders like this.</p> : null;
   }
   return (
     <div className="flex flex-col gap-1 text-xs">
@@ -234,7 +233,7 @@ function PathNote({ co }: { co: Checkout }) {
   if (p === "vic_setup_required") return <p className="text-[11px] rounded-lg bg-gold-soft text-gold px-2.5 py-1.5 leading-snug">
     Set up Visa agent payments first (simulated passkey), or choose another card.</p>;
   if (p === "standard") return <p className="text-[11px] rounded-lg bg-panel text-muted px-2.5 py-1.5 leading-snug">
-    Standard card payment through {BRAND.name}'s gateway (no Visa agent token).</p>;
+    Standard card payment through ShopSphere's gateway (no Visa agent token).</p>;
   return null;
 }
 
@@ -318,7 +317,7 @@ export function ReviewOrderCard({ checkout: co, active, busy, onAct }:
         {co.payment_method && <PathNote co={co} />}
         {live && changing === "card" && (
           <Choices items={[
-              ...(co.wallet ? [{ id: "wallet", label: `${BRAND.wallet} · ${money(co.wallet.balance)}`, on: co.pay_with === "wallet" }] : []),
+              ...(co.wallet ? [{ id: "wallet", label: `ShopSphere Wallet · ${money(co.wallet.balance)}`, on: co.pay_with === "wallet" }] : []),
               ...co.saved_payment_methods.map((c) => ({ id: c.payment_method_id, label: c.display,
                 on: co.pay_with !== "wallet" && c.payment_method_id === co.payment_method?.payment_method_id })),
             ]}
@@ -469,13 +468,13 @@ export function SecureDetailsCard({ checkoutId, needs, guest, wallet, active, on
   const step = needs.guest ? "guest" : needs.address ? "address" : "payment";
   if (!active) {
     return <p className="self-start text-xs text-muted inline-flex items-center gap-1.5"><Lock size={12} />
-      {step === "guest" ? "Your details" : step === "address" ? "Shipping address" : "Card"} handled in {BRAND.name}'s secure form</p>;
+      {step === "guest" ? "Your details" : step === "address" ? "Shipping address" : "Card"} handled in ShopSphere's secure form</p>;
   }
   return (
     <Shell className="border-talk/50 shadow-card">
       <div className="px-4 py-3 bg-panel flex items-center justify-between gap-2">
         <p className="flex items-center gap-2 text-xs font-bold tracking-[0.16em]">
-          <ShieldCheck size={15} className="text-talk" /> {step === "payment" ? "SECURE PAYMENT" : `SECURE ${BRAND.name.toUpperCase()} CHECKOUT`}
+          <ShieldCheck size={15} className="text-talk" /> {step === "payment" ? "SECURE PAYMENT" : "SECURE SHOPSPHERE CHECKOUT"}
         </p>
         {(needs.address || needs.guest) && needs.payment && <span className="text-[11px] text-muted shrink-0">Step 1 of 2</span>}
       </div>
@@ -493,16 +492,16 @@ export function SecureDetailsCard({ checkoutId, needs, guest, wallet, active, on
           : <CardForm allowSave={!guest} onSaved={(c) => onAct({ type: "details_added", payment_method_id: c.payment_method_id, label: `Card added · ${c.display}` })} />}
         {step === "payment" && wallet && (
           <button type="button" disabled={!wallet.enough}
-            onClick={() => onAct({ type: "details_added", pay_with: "wallet", label: `Pay with ${BRAND.wallet}` })}
+            onClick={() => onAct({ type: "details_added", pay_with: "wallet", label: "Pay with ShopSphere Wallet" })}
             className="self-start text-sm font-medium hover:underline disabled:opacity-50 disabled:no-underline">
-            Or pay with your {BRAND.wallet} ({money(wallet.balance)} available)
+            Or pay with your ShopSphere Wallet ({money(wallet.balance)} available)
           </button>
         )}
         <p className="flex items-start gap-1.5 text-[11px] text-muted leading-snug">
           <ShieldCheck size={13} className="shrink-0" />
           {step !== "payment"
-            ? `This information is sent directly to ${BRAND.name} checkout and is not processed as chat content.`
-            : `Card details go directly to ${BRAND.name}'s payment partner and are replaced with a secure token. Talkshop only sees the card type and last 4 digits.`}
+            ? "This information is sent directly to ShopSphere checkout and is not processed as chat content."
+            : "Card details go directly to ShopSphere's payment partner and are replaced with a secure token. Talkshop only sees the card type and last 4 digits."}
         </p>
         <button type="button" onClick={() => onAct({ type: "cancel_checkout", label: "Not now" })}
           className="text-xs text-muted hover:text-ink">Not now</button>
@@ -657,7 +656,7 @@ export function ApprovalCard({ amount, payment, active, autoStart, onApprove }:
     <Shell className={cx("p-4 flex flex-col gap-2.5", active && "border-talk/50")}>
       <p className="flex items-center gap-2 text-sm font-semibold"><Fingerprint size={17} className="text-talk" /> Confirm with your passkey</p>
       <p className="text-xs text-muted leading-snug">
-        Approve {money(amount)} at {BRAND.name} with {payment ?? "your Visa"}. This approval covers this exact order only.
+        Approve {money(amount)} at ShopSphere with {payment ?? "your Visa"}. This approval covers this exact order only.
         <span className="block mt-1 text-faint">Simulated passkey authentication (demo, not a real Visa passkey).</span>
       </p>
       {active && <Button size="sm" variant="talk" onClick={onApprove}><Fingerprint size={14} /> Approve with passkey</Button>}
