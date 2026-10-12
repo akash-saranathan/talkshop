@@ -2,7 +2,7 @@
  *  server event as-is — prices, stock, totals and order ids are never
  *  computed here. Only the latest card of a kind is interactive. */
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ArrowUpRight, Bot, Check, CheckCircle2, CreditCard, Fingerprint, Loader2, Lock, MapPin, ShieldCheck, ShoppingBag, Truck, UserRound, XCircle } from "lucide-react";
 import type { OptionChoice, TalkAction, TalkEvent } from "../../api/talkshop";
 import { money, niceDate, type Cart, type Checkout, type Order, type Product, type TrackedOrder } from "../../api/shop";
@@ -510,68 +510,49 @@ export function SecureDetailsCard({ checkoutId, needs, guest, wallet, active, on
   );
 }
 
-export function SignInCard({ active, onGuest }: { active: boolean; onGuest?: () => void }) {
-  const { login, register, isCustomer, user } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  if (isCustomer) {
-    return <p className="self-start text-xs text-good inline-flex items-center gap-1.5"><Check size={13} /> Signed in as {user?.name}</p>;
-  }
+/** Shown when a non-member tries to buy. Browsing and Talkshop are open to
+ *  everyone; adding to cart and checkout need an eligible cardmember. Signing
+ *  in keeps this conversation, and Talkshop adds the chosen item afterwards. */
+export function SignInCard({ active, reason }: { active: boolean; reason?: string }) {
+  const { isCustomer, user } = useAuth();
+  const location = useLocation();
+  const next = encodeURIComponent(location.pathname + location.search);
+  const resume = () => { try { sessionStorage.setItem(RESUME_KEY, "add_to_cart"); } catch { /* private mode */ } };
   if (!active) return null;
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true); setError(null);
-    try {
-      // After sign-in the panel reloads this conversation and continues to checkout.
-      sessionStorage.setItem(RESUME_KEY, "checkout");
-      if (mode === "login") await login(email, password); else await register(name, email, password);
-    } catch (err) {
-      sessionStorage.removeItem(RESUME_KEY);
-      setError((err as Error).message);
-      setBusy(false);
-    }
-  };
-
+  if (reason === "not_eligible" && isCustomer) {
+    return (
+      <Shell className="border-talk/50 shadow-card p-4 flex flex-col gap-2.5">
+        <p className="flex items-center gap-2 text-sm font-semibold"><UserRound size={15} className="text-talk" /> Verify a Chase credit card</p>
+        <p className="text-xs text-muted leading-snug">
+          Signed in as {user?.name}. Buying is for Chase credit-card members: verify your card with its last four
+          digits (your account name and email must match your Chase account).
+        </p>
+        <Link to="/membership" onClick={resume}
+          className="inline-flex items-center justify-center h-10 rounded-full bg-talk text-white text-sm font-medium hover:opacity-90">
+          Verify my card
+        </Link>
+      </Shell>
+    );
+  }
   return (
     <Shell className="border-talk/50 shadow-card">
       <div className="px-4 py-3 bg-panel flex items-center gap-2">
-        <UserRound size={15} className="text-talk" /><p className="text-xs font-bold tracking-[0.16em]">SIGN IN TO CHECK OUT</p>
+        <UserRound size={15} className="text-talk" /><p className="text-xs font-bold tracking-[0.16em]">SIGN IN TO BUY</p>
       </div>
-      <form onSubmit={submit} className="p-4 flex flex-col gap-3">
-        <div className="grid grid-cols-2 rounded-full bg-panel p-1 text-xs font-medium">
-          {(["login", "register"] as const).map((m) => (
-            <button key={m} type="button" onClick={() => { setMode(m); setError(null); }}
-              className={cx("h-8 rounded-full", mode === m ? "bg-canvas shadow-card text-ink" : "text-muted")}>
-              {m === "login" ? "Log in" : "Create account"}
-            </button>
-          ))}
-        </div>
-        {mode === "register" && <Field label="Full name" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />}
-        <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
-        <Field label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8}
-          autoComplete={mode === "login" ? "current-password" : "new-password"} />
-        {error && <Notice>{error}</Notice>}
-        <Button type="submit" variant="talk" loading={busy}>{mode === "login" ? "Log in & continue" : "Create account & continue"}</Button>
-        {mode === "login" && (
-          <button type="button" onClick={() => { setEmail(DEMO.email); setPassword(DEMO.password); }} className="text-xs text-muted hover:text-ink">
-            Use demo account ({DEMO.email})
-          </button>
-        )}
-        <p className="text-[11px] text-muted text-center">Your cart and this conversation come with you.</p>
-        {onGuest && (
-          <>
-            <div className="flex items-center gap-3 text-[11px] text-muted"><span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" /></div>
-            <Button type="button" variant="secondary" onClick={onGuest}>Continue as guest</Button>
-            <p className="text-[11px] text-muted text-center -mt-1">No account needed. We'll email your confirmation.</p>
-          </>
-        )}
-      </form>
+      <div className="p-4 flex flex-col gap-2.5">
+        <p className="text-xs text-muted leading-snug">
+          ShopSphere checkout is for Chase credit-card members. Sign in, or create an account with the name, email and
+          last four digits on your Chase card. This conversation comes with you.
+        </p>
+        <Link to={`/login?next=${next}`} onClick={resume}
+          className="inline-flex items-center justify-center h-10 rounded-full bg-talk text-white text-sm font-medium hover:opacity-90">
+          Sign in as a cardmember
+        </Link>
+        <Link to={`/login?signup=1&next=${next}`} onClick={resume}
+          className="inline-flex items-center justify-center h-10 rounded-full border border-line-strong text-sm font-medium hover:border-ink">
+          New customer? Create an account
+        </Link>
+      </div>
     </Shell>
   );
 }

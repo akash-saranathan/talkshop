@@ -530,9 +530,9 @@ def test_talkshop_points_question_and_review_toggle(client, quiet_llm):
     ev = say(client, h, sid, action={"type": "update_checkout", "points_used": 1415})
     upd = first(ev, "checkout_updated")["checkout"]
     assert upd["points_discount"] == 14.15 and upd["total"] < co["total"]
-    vh, _ = visitor(client)                                      # Part 2: visitors can't reach Talkshop at all
-    assert client.post("/api/talkshop/turn", json={"session_id": "pts-vis1", "text": "my loyalty points?"},
-                       headers=vh).status_code == 403
+    vh, _ = visitor(client)                                      # visitors can chat, but points are for cardmembers
+    ev = say(client, vh, f"pts-{uuid.uuid4().hex[:6]}", text="my loyalty points?")
+    assert "points are for cardmembers" in first(ev, "message")["text"]
 
 
 # ── Live guardrail trace (info view) ─────────────────────────────────────────

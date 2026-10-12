@@ -1,6 +1,8 @@
 """
-ShopSphere catalog API. Part 2: the catalog is restricted to eligible
-cardmembers (require_cardmember on the whole router).
+ShopSphere catalog API. Browsing is open to everyone (guests and customers
+without an eligible card see regular prices). Member extras — offers and the
+points a purchase earns — are added only for eligible cardmembers. Cart,
+checkout, offers, rewards and payment stay cardmember-only (shop router).
 
   GET /api/products                          search + filters + sort
   GET /api/products/{id}                     product detail with every variant (SKU)
@@ -14,9 +16,9 @@ from sqlalchemy.orm import Session
 from backend.db.init_db import get_engine
 from backend.auth.dependencies import CurrentUser, get_current_user
 from backend.shop import catalog, offers
-from backend.shop.eligibility import require_cardmember
+from backend.shop import eligibility
 
-router = APIRouter(prefix="/api/products", tags=["products"], dependencies=[Depends(require_cardmember)])
+router = APIRouter(prefix="/api/products", tags=["products"])
 
 
 def get_db():
@@ -25,12 +27,18 @@ def get_db():
 
 
 def _member_offers(db: Session, user: CurrentUser):
+    """The member's offers, or None for a non-member (no member extras at all)."""
+    if eligibility.check(db, user) is not None:
+        return None
     return offers.entitled(db, user.user_id)
 
 
 def _with_member(d: dict, p, member_offers) -> dict:
     """Cardmember extras on a product card, computed by the server: the offers
     that apply and the points a purchase at list price would earn."""
+    if member_offers is None:
+        d["member"] = None
+        return d
     badges = offers.badges_for_product(member_offers, p.department, p.subcategory)
     bonus = sum(int(p.price * o.value) for o in member_offers
                 if o.kind == "bonus_points" and offers._matches(o, p.department, p.subcategory))

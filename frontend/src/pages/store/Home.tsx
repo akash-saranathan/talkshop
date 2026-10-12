@@ -17,10 +17,12 @@ const DEPT_TILES = [
   { slug: "electronics", label: "Electronics", blurb: "Audio, phones & laptops", query: { department: "electronics" } },
 ];
 
-/** The member landing page (Part 2): every price, offer and point comes from the server. */
+/** The landing page: member pricing for eligible cardmembers, a public version for
+ *  everyone else (browse + Talkshop; buying needs membership). Every price, offer
+ *  and point comes from the server. */
 export default function StoreHome() {
-  const { info } = useMember();
-  const m = info?.member;
+  const { info, eligible } = useMember();
+  const m = eligible ? info?.member : null;
   const [offers, setOffers] = useState<Offer[] | null>(null);
   const [recommended, setRecommended] = useState<Product[] | null>(null);
   const [arrivals, setArrivals] = useState<Product[] | null>(null);
@@ -29,13 +31,13 @@ export default function StoreHome() {
   const pickIds = new Set(picks.map((p) => p.product_id));
 
   useEffect(() => {
-    memberApi.offers().then(setOffers).catch(() => setOffers([]));
+    if (eligible) memberApi.offers().then(setOffers).catch(() => setOffers([]));
     shop.products({ category: "running_shoes", sort: "rating", limit: 4 }).then(setRecommended).catch(() => setRecommended([]));
     shop.products({ new: true, sort: "rating", limit: 8 }).then(setArrivals).catch(() => setArrivals([]));
     Promise.all(DEPT_TILES.map((t) => shop.products({ ...t.query, sort: "rating", limit: 1 })))
       .then((res) => setTiles(Object.fromEntries(DEPT_TILES.map((t, i) => [t.slug, res[i][0]]))))
       .catch(() => {});
-  }, []);
+  }, [eligible]);
 
   const firstName = m?.name.split(" ")[0] ?? "there";
   return (
@@ -46,23 +48,40 @@ export default function StoreHome() {
           <div className="absolute -right-24 -top-24 w-[460px] h-[460px] rounded-full bg-navy-2 opacity-70" aria-hidden />
           <div className="relative grid lg:grid-cols-[1.25fr_1fr] items-center gap-10 p-7 sm:p-12 lg:p-14">
             <div className="flex flex-col gap-5 max-w-xl">
-              <p className="text-[11px] font-semibold tracking-[0.24em] text-gold uppercase">Your cardmember marketplace</p>
+              <p className="text-[11px] font-semibold tracking-[0.24em] text-gold uppercase">
+                {eligible ? "Your cardmember marketplace" : "The ShopSphere marketplace"}</p>
               <h1 className="text-[34px] sm:text-5xl font-semibold tracking-tight leading-[1.06]">
-                Welcome back, {firstName}. Member pricing is on.
+                {eligible ? `Welcome back, ${firstName}. Member pricing is on.` : "Browse everything. Members buy with extra perks."}
               </h1>
               <p className="text-white/75 text-[16px] sm:text-[17px] leading-relaxed">
-                Exclusive offers, rewards on every order, and Talkshop AI to find it for you. You approve every payment.
+                {eligible ? "Exclusive offers, rewards on every order, and Talkshop AI to find it for you. You approve every payment."
+                  : "Ask Talkshop AI to find anything in the store. Chase credit-card members get member offers, rewards and checkout."}
               </p>
               <div className="flex flex-wrap gap-3 pt-1">
-                <Link to="/offers" className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-white text-navy text-[15px] font-semibold hover:opacity-90">
-                  See your offers <ArrowRight size={16} />
-                </Link>
+                {eligible ? (
+                  <Link to="/offers" className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-white text-navy text-[15px] font-semibold hover:opacity-90">
+                    See your offers <ArrowRight size={16} />
+                  </Link>
+                ) : (
+                  <Link to={info?.signed_in ? "/membership" : "/login"} className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-white text-navy text-[15px] font-semibold hover:opacity-90">
+                    {info?.signed_in ? "Verify a Chase card" : "Sign in as a cardmember"} <ArrowRight size={16} />
+                  </Link>
+                )}
                 <Link to="/c/shoes" className="inline-flex items-center h-12 px-6 rounded-full border border-white/30 text-[15px] font-medium hover:border-white">
                   Shop the marketplace
                 </Link>
               </div>
             </div>
-            {m && <MemberCard info={info!} />}
+            {m ? <MemberCard info={info!} /> : (
+              <div className="rounded-3xl bg-white/[0.06] border border-white/10 p-6 flex flex-col gap-3 text-sm">
+                <p className="font-semibold">Open to everyone</p>
+                <p className="text-white/75 flex gap-2"><Bot size={16} className="text-gold shrink-0 mt-0.5" /> Browse products and ask Talkshop AI</p>
+                <p className="font-semibold pt-2">For Chase credit-card members</p>
+                <p className="text-white/75 flex gap-2"><BadgePercent size={16} className="text-gold shrink-0 mt-0.5" /> Member offers and points on every order</p>
+                <p className="text-white/75 flex gap-2"><ShieldCheck size={16} className="text-gold shrink-0 mt-0.5" /> Cart, checkout and payments you approve</p>
+                {!info?.signed_in && <Link to="/login?signup=1" className="text-gold underline pt-1">New customer? Create an account</Link>}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -71,7 +90,8 @@ export default function StoreHome() {
       <section className="mx-auto max-w-[1400px] px-4 sm:px-6 mt-6 grid sm:grid-cols-3 gap-3">
         {[
           { icon: <BadgePercent size={18} />, title: "Member offers", text: "Discounts applied automatically at checkout" },
-          { icon: <Gift size={18} />, title: `${(m?.rewards_balance ?? 0).toLocaleString()} points`, text: "100 points = $1 off products (demo points)" },
+          { icon: <Gift size={18} />, title: m ? `${m.rewards_balance.toLocaleString()} points` : "Rewards points",
+            text: m ? "100 points = $1 off products (demo points)" : "Members earn 1 point per $1 (demo points)" },
           { icon: <ShieldCheck size={18} />, title: "You approve every payment", text: "Visa agent payments with passkey step-up (simulated)" },
         ].map((b) => (
           <div key={b.title} className="flex items-center gap-3 rounded-2xl border border-line px-5 py-4">
@@ -85,15 +105,25 @@ export default function StoreHome() {
       <section className="mx-auto max-w-[1400px] px-4 sm:px-6 mt-14">
         <div className="flex items-end justify-between mb-5">
           <div>
-            <p className="text-xs font-semibold tracking-[0.2em] text-gold uppercase">Exclusive to you</p>
+            <p className="text-xs font-semibold tracking-[0.2em] text-gold uppercase">{eligible ? "Exclusive to you" : "For cardmembers"}</p>
             <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1">Member offers</h2>
           </div>
-          <Link to="/offers" className="text-sm font-medium inline-flex items-center gap-1 hover:underline">All offers <ArrowRight size={14} /></Link>
+          {eligible && <Link to="/offers" className="text-sm font-medium inline-flex items-center gap-1 hover:underline">All offers <ArrowRight size={14} /></Link>}
         </div>
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {offers ? offers.map((o) => <OfferCard key={o.offer_id} offer={o} compact />)
-            : Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36" />)}
-        </div>
+        {eligible ? (
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {offers ? offers.map((o) => <OfferCard key={o.offer_id} offer={o} compact />)
+              : Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36" />)}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-line-strong p-6 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+            <p className="text-sm text-muted max-w-2xl">Members see their offers here, such as discounts on running shoes and
+              bonus points on clothing, applied automatically at checkout.</p>
+            <Link to={info?.signed_in ? "/membership" : "/login"} className="inline-flex items-center gap-2 h-11 px-5 rounded-full bg-btn text-btn-ink text-sm font-medium whitespace-nowrap">
+              {info?.signed_in ? "Verify a Chase card" : "Sign in to see offers"} <ArrowRight size={15} />
+            </Link>
+          </div>
+        )}
       </section>
 
       <TalkshopPicks />
@@ -103,7 +133,8 @@ export default function StoreHome() {
         <div className="flex items-end justify-between mb-6">
           <div>
             <p className="text-xs font-semibold tracking-[0.2em] text-muted uppercase">Recommended for you</p>
-            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1">Top-rated runners, now 15% off</h2>
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1">
+              {eligible ? "Top-rated runners, now 15% off" : "Top-rated runners"}</h2>
           </div>
           <span className="hidden sm:inline-flex items-center gap-1.5 text-sm text-talk"><Bot size={15} /> Or just ask Talkshop AI</span>
         </div>

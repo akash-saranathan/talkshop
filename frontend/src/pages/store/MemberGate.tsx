@@ -7,9 +7,10 @@ import { member as memberApi } from "../../api/member";
 import { Button, Field, Notice } from "../../components/ui";
 
 /**
- * What a guest (Persona D) or a signed-in customer without an eligible credit
- * card (Persona C) sees instead of the marketplace. No catalog data is loaded
- * here — the server refuses it anyway (403 LOGIN_REQUIRED / NO_ELIGIBLE_CARD).
+ * The membership page: shown to a guest (Persona D) or a customer without an
+ * eligible credit card (Persona C) on member-only pages (cart, checkout,
+ * orders, offers, rewards, account) and at /membership. Browsing and Talkshop
+ * stay open; buying needs an eligible cardmember (enforced by the server).
  */
 export default function MemberGate() {
   const { info, refresh } = useMember();
@@ -26,6 +27,12 @@ export default function MemberGate() {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const ineligible = info?.signed_in && info.code === "NO_ELIGIBLE_CARD";
+  if (info?.eligible) return (
+    <div className="mx-auto max-w-[900px] px-4 sm:px-6 py-16 text-center">
+      <p className="text-lg font-semibold">You're an eligible cardmember.</p>
+      <Link to="/" className="mt-3 inline-block underline">Back to the marketplace</Link>
+    </div>
+  );
 
   return (
     <div>
@@ -35,12 +42,12 @@ export default function MemberGate() {
           <div className="flex flex-col gap-5">
             <p className="text-[11px] font-semibold tracking-[0.24em] text-gold uppercase">ShopSphere cardmember marketplace</p>
             <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.08]">
-              {ineligible ? `Sorry, ${info?.member?.name ?? "there"}. This marketplace is for credit-card members.`
-                : "A members-only marketplace for eligible Chase credit-card holders."}
+              {ineligible ? `Almost there, ${info?.member?.name ?? "there"}. Buying is for credit-card members.`
+                : "Sign in as a cardmember to buy."}
             </h1>
             <p className="text-white/75 text-[17px] leading-relaxed max-w-xl">
               {ineligible ? info?.message
-                : "Member pricing, rewards on every purchase and Talkshop AI, an assistant that finds what you need and checks out only when you approve."}
+                : "Anyone can browse ShopSphere and ask Talkshop AI. Your cart, member offers, rewards and checkout are for eligible Chase credit-card members."}
             </p>
             {ineligible && (
               <form onSubmit={verify} className="rounded-2xl bg-white text-ink p-5 flex flex-col gap-3 max-w-md">
@@ -71,15 +78,18 @@ export default function MemberGate() {
                   </Link>
                 </>
               )}
+              <Link to="/" className="inline-flex items-center h-12 px-2 text-[15px] font-medium text-white/80 hover:text-white underline">
+                Keep browsing
+              </Link>
             </div>
           </div>
           <div className="rounded-3xl bg-white/[0.06] border border-white/10 p-6 flex flex-col gap-4">
-            <p className="text-sm font-semibold flex items-center gap-2"><LockKeyhole size={16} className="text-gold" /> Who can enter</p>
+            <p className="text-sm font-semibold flex items-center gap-2"><LockKeyhole size={16} className="text-gold" /> Who can buy</p>
             <ul className="flex flex-col gap-3 text-sm">
               {[
                 ["Chase credit-card member (Visa or Mastercard)", true],
                 ["Checking or savings account only", false],
-                ["Not signed in", false],
+                ["Not signed in (browse only)", false],
               ].map(([label, ok]) => (
                 <li key={String(label)} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.05] px-4 py-3">
                   <span className="text-white/85">{label}</span>

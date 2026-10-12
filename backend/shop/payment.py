@@ -81,6 +81,10 @@ async def confirm(user: CurrentUser, checkout_id: str, consent: bool, consent_mo
             "CONSENT_REQUIRED", "Payment needs your explicit go-ahead.", 400)
 
     with get_session() as db:
+        from backend.shop import eligibility       # second line of defence: only eligible cardmembers pay
+        code = eligibility.check(db, user)
+        if code:
+            raise checkout_service.CheckoutError(code, eligibility.MESSAGES[code], 403)
         co = checkout_service.get_checkout(db, user.user_id, checkout_id)
         if user.is_visitor and not co.guest_email:      # (guests can't reach the marketplace in Part 2)
             raise checkout_service.CheckoutError(

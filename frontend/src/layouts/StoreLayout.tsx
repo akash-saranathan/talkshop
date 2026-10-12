@@ -6,30 +6,22 @@ import { TalkshopProvider } from "../talkshop/TalkshopContext";
 import { useAuth } from "../auth/AuthContext";
 import { useMember } from "../member/MemberContext";
 import { Spinner } from "../components/ui";
-import MemberGate from "../pages/store/MemberGate";
 
 /**
  * Every ShopSphere page: header, the page itself, footer — with Talkshop AI
  * docked on the right. This is a layout route, so the panel (and its
  * conversation) stays mounted while the member moves between pages.
  *
- * Part 2: only eligible cardmembers get the marketplace and Talkshop. Guests
- * and checking-only customers see the gate page (the server refuses every
- * marketplace API for them anyway).
+ * Anyone can browse and use Talkshop to find products. The cart, checkout,
+ * member offers, rewards and payment are for eligible cardmembers: those pages
+ * show the membership page (RequireMember in App.tsx) and the server refuses
+ * those APIs for everyone else.
  */
 export default function StoreLayout() {
   const { user } = useAuth();
-  const { eligible, loading } = useMember();
+  const { loading } = useMember();
   if (loading) return <div className="ss-app min-h-screen"><Spinner /></div>;
-  if (!eligible) {
-    return (
-      <div className="ss-app min-h-screen flex flex-col">
-        <StoreHeader />
-        <main className="flex-1"><MemberGate /><StoreFooter /></main>
-      </div>
-    );
-  }
-  // Keyed by identity: each member gets their own conversation.
+  // Keyed by identity: signing in moves the conversation to the account.
   return (
     <TalkshopProvider key={user?.user_id ?? "anonymous"}>
       <div className="ss-app min-h-screen flex flex-col">

@@ -261,8 +261,8 @@ function Conversation({ ts }: { ts: ReturnType<typeof useTalkshopShared> }) {
               onSetup={() => setup(ev, card)} />;
           }
           case "login_required":
-            return <SignInCard key={i} active={it.index === lastLogin && lastReview < it.index && lastDetails < it.index}
-              onGuest={() => act({ type: "checkout", guest: true, label: "Continue as guest" })} />;
+            return <SignInCard key={i} reason={ev.reason}
+              active={it.index === lastLogin && lastReview < it.index && lastDetails < it.index && lastUser < it.index} />;
           default:
             return null;
         }

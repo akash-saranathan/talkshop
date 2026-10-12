@@ -29,6 +29,11 @@ function useTheme(): [boolean, () => void] {
   return [dark, () => setDark((d) => !d)];
 }
 
+const PUBLIC_NAV = [
+  { to: "/", label: "Marketplace", end: true },
+  { to: "/membership", label: "Become a member" },
+];
+
 const MEMBER_NAV = [
   { to: "/", label: "Marketplace", end: true },
   { to: "/offers", label: "Exclusive Offers" },
@@ -87,11 +92,9 @@ export default function StoreHeader() {
   return (
     <header ref={headerRef} className="sticky top-0 z-[60] bg-canvas/92 backdrop-blur border-b border-line">
       <div className="mx-auto max-w-[1400px] px-3 sm:px-6 h-16 flex items-center gap-1.5 sm:gap-4">
-        {eligible && (
-          <button className="lg:hidden -ml-1 p-2 text-ink" aria-label="Menu" onClick={() => setMenuOpen((o) => !o)}>
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
-        )}
+        <button className="lg:hidden -ml-1 p-2 text-ink" aria-label="Menu" onClick={() => setMenuOpen((o) => !o)}>
+          {menuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
         <Wordmark />
         <span className="hidden sm:inline-flex items-center rounded-full border border-gold/50 bg-gold-soft px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] uppercase text-gold">
           Cardmember
@@ -99,7 +102,7 @@ export default function StoreHeader() {
 
         <div className="flex-1" />
 
-        {eligible && (
+        {(
           <form onSubmit={submit} className="hidden md:flex items-center gap-2 h-10 w-56 xl:w-72 rounded-full bg-panel px-4 border border-transparent focus-within:border-line-strong">
             <Search size={15} className="text-muted shrink-0" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the marketplace"
@@ -181,12 +184,12 @@ export default function StoreHeader() {
         )}
       </div>
 
-      {/* Member navigation + departments (desktop) */}
-      {eligible && (
+      {/* Member navigation + departments (desktop). Non-members get the marketplace + a membership link. */}
+      {(
         <div className="hidden lg:block border-t border-line">
           <div className="mx-auto max-w-[1400px] px-6 flex items-center gap-6">
             <nav className="flex items-center gap-6" aria-label="Member">
-              {MEMBER_NAV.map((n) => <NavLink key={n.to} to={n.to} end={n.end} className={navLink}>{n.label}</NavLink>)}
+              {(eligible ? MEMBER_NAV : PUBLIC_NAV).map((n) => <NavLink key={n.to} to={n.to} end={n.end} className={navLink}>{n.label}</NavLink>)}
             </nav>
             <div className="flex-1" />
             <nav className="hidden xl:flex items-center gap-5" aria-label="Departments">
@@ -196,7 +199,7 @@ export default function StoreHeader() {
         </div>
       )}
 
-      {menuOpen && eligible && (
+      {menuOpen && (
         <div className="lg:hidden border-t border-line bg-canvas px-4 pb-4 max-h-[calc(100vh-4rem)] overflow-y-auto">
           <form onSubmit={submit} className="flex items-center gap-2 h-11 mt-3 rounded-full bg-panel px-4">
             <Search size={15} className="text-muted" />
@@ -207,7 +210,7 @@ export default function StoreHeader() {
               {agentPay?.status === "ACTIVE" ? " · agent pay on" : ""}</p>
           )}
           <nav className="flex flex-col mt-2">
-            {MEMBER_NAV.map((n) => (
+            {(eligible ? MEMBER_NAV : PUBLIC_NAV).map((n) => (
               <NavLink key={n.to} to={n.to} end={n.end}
                 className={({ isActive }) => cx("py-3 border-b border-line text-[15px]", isActive ? "font-semibold" : "text-ink-soft")}>{n.label}</NavLink>
             ))}
@@ -215,8 +218,10 @@ export default function StoreHeader() {
               <NavLink key={d.slug} to={`/c/${d.slug}`}
                 className={({ isActive }) => cx("py-2.5 border-b border-line text-[14px] pl-3", isActive ? "font-semibold" : "text-muted")}>{d.label}</NavLink>
             ))}
-            <Link to="/track" className="py-3 border-b border-line text-[15px] text-ink-soft">Track order</Link>
-            <button onClick={signOut} className="py-3 text-left text-[15px] text-ink-soft">Sign out</button>
+            {eligible && <Link to="/track" className="py-3 border-b border-line text-[15px] text-ink-soft">Track order</Link>}
+            {info?.signed_in
+              ? <button onClick={signOut} className="py-3 text-left text-[15px] text-ink-soft">Sign out</button>
+              : <Link to="/login" className="py-3 text-[15px] font-medium">Sign in or create an account</Link>}
           </nav>
         </div>
       )}

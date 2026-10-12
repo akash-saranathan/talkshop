@@ -98,11 +98,13 @@ def fake_llm(monkeypatch):
     monkeypatch.setattr(brain, "recommend", recommend)
 
 
-def test_visitor_cannot_browse_fill_a_cart_or_chat(client):
-    """Part 2 (replaces Phase 8's open browsing): every marketplace API refuses a visitor."""
+def test_visitor_can_browse_but_not_fill_a_cart(client):
+    """Part 2: a visitor browses the catalog (no member extras) and can chat with
+    Talkshop, but the cart and checkout are for eligible cardmembers."""
     h, _ = visitor(client)
-    for r in (client.get("/api/products", headers=h), client.get("/api/cart/lines", headers=h),
-              client.post("/api/cart/lines", json={"sku": "SSP002-ORANGE-9"}, headers=h),
-              client.post("/api/talkshop/turn", json={"session_id": "vis12345", "text": "hi"}, headers=h)):
+    assert client.get("/api/products", headers=h).status_code == 200
+    assert client.post("/api/talkshop/turn", json={"session_id": "vis12345", "text": "hi"}, headers=h).status_code == 200
+    for r in (client.get("/api/cart/lines", headers=h),
+              client.post("/api/cart/lines", json={"sku": "SSP002-ORANGE-9"}, headers=h)):
         assert r.status_code == 403 and r.json()["detail"]["code"] == "LOGIN_REQUIRED"
 

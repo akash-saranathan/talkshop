@@ -51,6 +51,8 @@ export type TalkAction =
   | { type: "go_ahead"; checkout_id: string; consent?: "typed"; instruction_id?: string }
   // Part 2: the member closed the passkey prompt (nothing approved); agent payments were just set up
   | { type: "approval_cancelled" } | { type: "agent_pay_ready" }
+  // Back after signing in / verifying a card: add the item chosen before
+  | { type: "add_to_cart" }
   // Order ID + email typed into the secure lookup card (not chat text)
   | { type: "track_order"; order_id: string; email: string }
   // A secure form saved the detail on ShopSphere; Talkshop gets only the id.

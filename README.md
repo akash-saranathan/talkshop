@@ -50,8 +50,8 @@ do this). `python -m backend.db.reset_demo --yes` (backend stopped) gives a fres
 |---|---|---|---|
 | **A** | Kaajal · `kaajal@shopsphere.demo` | Chase Visa credit •••• 4821 (agent token **ACTIVE**), Chase Mastercard •••• 0019 (issuer declines) | Full marketplace; Visa agent payments with passkey; 12,500 welcome points |
 | **B** | Marcus · `marcus@shopsphere.demo` | Chase Mastercard credit •••• 5510 | Marketplace; **standard** card path (no VIC token services) |
-| **C** | Priya · `priya@shopsphere.demo` | Chase checking •••• 7702 only | **Denied**: "not eligible" page; every marketplace API returns 403 `NO_ELIGIBLE_CARD` |
-| **D** | Guest (not signed in) | — | **Denied**: public gate page; APIs return 403 `LOGIN_REQUIRED` |
+| **C** | Priya · `priya@shopsphere.demo` | Chase checking •••• 7702 only | **Browse only**: products at regular prices and Talkshop to find things; cart, checkout, offers and points return 403 `NO_ELIGIBLE_CARD` ("Verify a Chase card to buy") |
+| **D** | Guest (not signed in) | — | **Browse only**: products and Talkshop; buying returns 403 `LOGIN_REQUIRED` and Talkshop shows a sign-in card. After signing in, the conversation carries on and the chosen item is added |
 | **E** | Elena · `elena@shopsphere.demo` | Chase Visa credit •••• 4002 (agent token **NOT_ENROLLED**) | Can browse; must set up agent payments (simulated passkey) before a Visa agent payment |
 
 ### New customers: create an account

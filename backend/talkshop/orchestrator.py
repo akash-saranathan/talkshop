@@ -331,6 +331,9 @@ async def _confirm_variant(t: Turn, lead: str = "") -> None:
     t.emit("variant_confirmed", sku=s.sku, product_id=s.product_id, name=product["name"], size=s.size,
            color=s.color, option_label=check["option_label"], image_url=sel["image_url"], price=product["price"])
     t.stage(Stage.VARIANT_CONFIRMED)
+    if not s.member_ok:
+        # Browsing and Talkshop are open to everyone; buying is for eligible cardmembers.
+        return _membership_needed(t, f"✓ {' · '.join(parts)} is in stock.")
     t.status("CartUp", "Adding to your ShopSphere cart…")
     try:
         cart, line_id = tools.add_to_cart(s.user_id, s.sku)
@@ -355,8 +358,27 @@ async def _confirm_variant(t: Turn, lead: str = "") -> None:
     t.stage(Stage.OFFER_CHECKOUT)
 
 
+def _membership_needed(t: Turn, lead: str = "") -> None:
+    """Non-members can browse and chat; adding to cart and buying need an eligible
+    cardmember. Talkshop says so and shows the sign-in card (no dead end)."""
+    s = t.s
+    if s.is_visitor:
+        t.say(f"{lead} To add it to your cart and buy, sign in as a Chase credit-card member or create an "
+              "account. This conversation comes with you.".strip())
+        reason = "sign_in"
+    else:
+        t.say(f"{lead} To buy, your account needs an eligible Chase credit card. Verify your card (just the last "
+              "four digits) and I'll add it to your cart.".strip())
+        reason = "not_eligible"
+    t.guard("CartUp", "Cardmember gate", "blocked",
+            "Browsing is open; cart, checkout and payment need an eligible cardmember", "UCP identity")
+    t.emit("login_required", reason=reason)
+
+
 async def _checkout(t: Turn, guest: bool = False) -> None:
     s = t.s
+    if not s.member_ok:
+        return _membership_needed(t)
     if s.is_visitor and not guest:
         # Browsing and the cart are open to everyone. At checkout a visitor
         # chooses: log in, create an account, or continue as a guest (Phase 10).
@@ -606,6 +628,10 @@ async def run_turn(user: CurrentUser, session_id: str, *, text: Optional[str] = 
                    image_base64: Optional[str] = None) -> AsyncIterator[dict]:
     s = state.get(user.user_id, session_id)
     s.is_visitor = user.is_visitor
+    from backend.db.session_utils import get_session
+    from backend.shop import eligibility
+    with get_session() as db:
+        s.member_ok = eligibility.check(db, user) is None
     if page is not None:
         s.page = page
     t = Turn(s)
@@ -654,6 +680,9 @@ async def _handle_action(t: Turn, user: CurrentUser, action: dict) -> None:
         await _choose_color(t, str(action.get("value")))
     elif kind == "checkout" and s.allows("checkout"):
         await _checkout(t, guest=bool(action.get("guest")))
+    elif kind == "add_to_cart" and s.sku and s.product_id and s.member_ok:
+        # Back after signing in: add the item chosen before (stock is checked again).
+        await _confirm_variant(t, "Welcome back!")
     elif kind == "keep_shopping":
         t.say("No problem — it's saved in your ShopSphere cart. What else can I find for you?")
         t.stage(Stage.IN_CART)
@@ -731,9 +760,9 @@ async def _handle_text(t: Turn, text: str) -> None:
     if parse.asks_about_points(text) and s.stage != Stage.PAYING:
         t.guard("VibeCheck", "Answered from records, not the AI", "info",
                 "Loyalty balance read from ShopSphere (customers only)", "UCP")
-        if s.is_visitor:
-            t.say("Loyalty points are for ShopSphere customers: create an account and you'll earn 1 point for every "
-                  "$1 you spend. 100 points = $1 off a later order.")
+        if not s.member_ok:
+            t.say("ShopSphere points are for cardmembers: sign in with an eligible Chase credit card and you'll earn "
+                  "1 point for every $1 you spend. 100 points = $1 off a later order.")
         else:
             bal = tools.points_balance(s.user_id)
             t.say(f"You have {bal:,} ShopSphere points, worth ${bal / 100:.2f}. You earn 1 point per $1 you spend, "

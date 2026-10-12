@@ -19,10 +19,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import CurrentUser, get_current_user
-from backend.shop.eligibility import require_cardmember
 from backend.talkshop import orchestrator, state
 
-router = APIRouter(dependencies=[Depends(require_cardmember)], tags=["talkshop"])
+# Open to every session: guests and non-eligible customers can search and get
+# recommendations. Adding to cart, checkout and payment are refused inside the
+# orchestrator (and by the cardmember-only shop services) for non-members.
+router = APIRouter(tags=["talkshop"])
 
 
 class TurnRequest(BaseModel):

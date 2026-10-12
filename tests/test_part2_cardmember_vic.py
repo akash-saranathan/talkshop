@@ -92,7 +92,9 @@ def code(r):
 
 # ── Identity and marketplace ────────────────────────────────────────────────
 
-PROTECTED = [("get", "/api/products"), ("get", "/api/products/SSP002"), ("get", "/api/offers"), ("get", "/api/rewards"),
+# Browsing the catalog and chatting with Talkshop are open to everyone (Oct 11);
+# these marketplace services stay cardmember-only.
+PROTECTED = [("get", "/api/offers"), ("get", "/api/rewards"),
              ("get", "/api/cart/lines"), ("get", "/api/me/payment-methods"), ("get", "/api/vic/status"),
              ("post", "/api/checkouts")]
 
@@ -112,8 +114,8 @@ def test_checking_only_customer_is_denied_everywhere(client):
     for method, url in PROTECTED:
         r = getattr(client, method)(url, headers=h, **({"json": {"line_ids": ["x"]}} if method == "post" else {}))
         assert r.status_code == 403 and code(r) == "NO_ELIGIBLE_CARD", url
-    r = client.post("/api/talkshop/turn", json={"session_id": "deny1234", "text": "running shoes"}, headers=h)
-    assert r.status_code == 403
+    products = client.get("/api/products", headers=h)                 # can browse, at regular prices
+    assert products.status_code == 200 and all(p["member"] is None for p in products.json())
 
 
 def test_guest_is_denied_everywhere(client):
@@ -123,12 +125,14 @@ def test_guest_is_denied_everywhere(client):
     for method, url in PROTECTED:
         r = getattr(client, method)(url, headers=h, **({"json": {"line_ids": ["x"]}} if method == "post" else {}))
         assert r.status_code == 403 and code(r) == "LOGIN_REQUIRED", url
+    assert client.get("/api/products", headers=h).json()[0]["member"] is None   # browse only, no member extras
     assert client.get("/api/products").status_code == 401             # no session at all
 
 
 def test_new_signup_without_a_card_is_not_eligible(client):
     h, _ = register_member(account_type="checking")
-    assert client.get("/api/products", headers=h).status_code == 403
+    assert client.get("/api/cart/lines", headers=h).status_code == 403
+    assert client.get("/api/products?limit=1", headers=h).json()[0]["member"] is None
 
 
 # ── Shopping ────────────────────────────────────────────────────────────────

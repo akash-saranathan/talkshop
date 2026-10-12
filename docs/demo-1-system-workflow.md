@@ -463,9 +463,13 @@ called, nothing is VIC compliant, agent tokens are not Visa Token Service tokens
 
 | Who | Server answer on every marketplace API |
 |---|---|
-| Signed-in member with an active, eligible Chase **credit card** (Visa or Mastercard fixture) | ✅ allowed |
-| Signed in, checking/savings only | 403 `NO_ELIGIBLE_CARD` |
-| Not signed in (visitor session) | 403 `LOGIN_REQUIRED` |
+| Signed-in member with an active, eligible Chase **credit card** (Visa or Mastercard fixture) | ✅ everything |
+| Signed in, checking/savings only | Browse + Talkshop; buying → 403 `NO_ELIGIBLE_CARD` |
+| Not signed in (visitor session) | Browse + Talkshop; buying → 403 `LOGIN_REQUIRED` |
+
+Since Oct 11 the catalog (`/api/products`) and Talkshop are open to every session; member extras (offers, points)
+appear only for eligible cardmembers. Talkshop's add-to-cart and checkout steps, the cart/checkout/profile/offers/
+rewards/VIC APIs and `payment.confirm` all check eligibility.
 
 `require_cardmember` (`backend/shop/eligibility.py`) guards the catalog, cart, profile, checkout, Talkshop, offers,
 rewards and `/api/vic/*` routers. `GET /api/member` is open so the gate page can say *why*. Demo 2's APIs

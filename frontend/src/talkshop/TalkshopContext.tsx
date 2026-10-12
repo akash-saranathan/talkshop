@@ -15,6 +15,7 @@ import type { Product } from "../api/shop";
 import { useCart } from "../store/cart";
 import { useTalkshop, type Page, type Talkshop } from "./useTalkshop";
 import { TALKSHOP_ASK_EVENT } from "./bridge";
+import { useMember } from "../member/MemberContext";
 
 const OPEN_KEY = "talkshop_panel_open";
 export const RESUME_KEY = "talkshop_resume";
@@ -43,6 +44,7 @@ function isDesktop() { return typeof window !== "undefined" && window.matchMedia
 
 export function TalkshopProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const { eligible } = useMember();
   const page = useMemo(() => pageFromLocation(location.pathname, location.search), [location.pathname, location.search]);
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -80,12 +82,17 @@ export function TalkshopProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ts.ready) return;
     try {
-      if (sessionStorage.getItem(RESUME_KEY) === "checkout") {
+      const resume = sessionStorage.getItem(RESUME_KEY);
+      if (resume === "checkout") {
         sessionStorage.removeItem(RESUME_KEY);
         ts.send({ action: { type: "checkout" } });
+      } else if (resume === "add_to_cart" && eligible) {
+        // Back from signing in (or verifying a card): add the item chosen before.
+        sessionStorage.removeItem(RESUME_KEY);
+        ts.send({ action: { type: "add_to_cart", label: "Add it to my cart" } });
       }
     } catch { /* private mode */ }
-  }, [ts.ready]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ts.ready, eligible]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // A fresh conversation follows the shopper: greet again for the new page
   // until they've actually said something.

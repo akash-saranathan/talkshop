@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Check, RotateCcw, ShieldCheck, Sparkles, Truck } from "lucide-react";
 import { money, niceDate, shop, ShopError, type Availability, type Product, type ProductDetail } from "../../api/shop";
 import ProductTile from "../../components/shopsphere/ProductTile";
 import { Badge, Button, Chip, Empty, Notice, Rating, Skeleton, Swatch } from "../../components/ui";
 import { useCart } from "../../store/cart";
 import { TALKSHOP_ENABLED, askTalkshop } from "../../talkshop/bridge";
+import { useMember } from "../../member/MemberContext";
 
 function deliveryDate(days: number) {
   const d = new Date();
@@ -14,6 +15,9 @@ function deliveryDate(days: number) {
 }
 
 export default function ProductPage() {
+  const { info, eligible } = useMember();          // browsing is open; buying is for eligible cardmembers
+  const navigate = useNavigate();
+  const location = useLocation();
   const { productId = "" } = useParams();
   const { setCart } = useCart();
   const [product, setProduct] = useState<ProductDetail | null | undefined>(undefined);
@@ -142,9 +146,16 @@ export default function ProductPage() {
           {selected?.available && selected.stock <= 5 && <p className="text-sm text-accent font-medium">Only {selected.stock} left</p>}
 
           <div className="flex flex-col sm:flex-row gap-3">
-            <Button size="lg" className="w-full sm:flex-1" onClick={add} loading={adding} disabled={!ready}>
-              {added ? <><Check size={17} /> Added to cart</> : !color || (hasSizes && !size) ? `Select a ${hasSizes && !size ? label.toLowerCase() : "colour"}` : "Add to cart"}
-            </Button>
+            {eligible ? (
+              <Button size="lg" className="w-full sm:flex-1" onClick={add} loading={adding} disabled={!ready}>
+                {added ? <><Check size={17} /> Added to cart</> : !color || (hasSizes && !size) ? `Select a ${hasSizes && !size ? label.toLowerCase() : "colour"}` : "Add to cart"}
+              </Button>
+            ) : (
+              <Button size="lg" className="w-full sm:flex-1"
+                onClick={() => navigate(info?.signed_in ? "/membership" : `/login?next=${encodeURIComponent(location.pathname)}`)}>
+                {info?.signed_in ? "Verify a Chase card to buy" : "Sign in as a cardmember to buy"}
+              </Button>
+            )}
             {TALKSHOP_ENABLED && (
               <Button size="lg" variant="talk" onClick={() => askTalkshop(product.product_id, product.name)}>
                 <Sparkles size={16} /> Ask Talkshop about this
