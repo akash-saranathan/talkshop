@@ -30,7 +30,7 @@ from sqlalchemy import update
 
 from backend.acp import delegated
 from backend.agents import payit
-from backend.agents.cartup import build_checkout, checkout_hash_for
+from backend.agents.cartup import build_cart_checkout, checkout_hash_for
 from backend.payment.loyalty_policy import decide_redemption, max_redeemable
 from backend.ap2.adapter import AP2Adapter
 from backend.ap2.models import AP2CartMandate, AP2PaymentMandate
@@ -165,14 +165,24 @@ def _trace_spending_check(trace: Trace, checkout: CheckoutObject, pm: Optional[d
 # ── 1. Checkout + order proposal ─────────────────────────────────────────────
 
 async def create_proposal(
-    *, user_id: str, is_talkshop_guest: bool, product_id: str, quantity: int = 1,
+    *, user_id: str, is_talkshop_guest: bool, product_id: str = "", quantity: int = 1,
+    items: Optional[list[tuple[str, int]]] = None,
     chat_session_id: Optional[str] = None, trusted_session_id: Optional[str] = None,
     payment_method_id: Optional[str] = None,
 ) -> dict:
+    """One checkout for one merchant. `items` is a list of (product_id, quantity); a
+    single product is the same as a one-item list."""
     trace = Trace()
-    product = merchant_catalog.get_product(product_id)
-    if product is None:
-        return _reject(trace, "PRODUCT_NOT_FOUND", "That product is no longer available.")
+    cart = items or [(product_id, quantity)]
+    products = []
+    for pid, _ in cart:
+        found = merchant_catalog.get_product(pid)
+        if found is None:
+            return _reject(trace, "PRODUCT_NOT_FOUND", "That product is no longer available.")
+        products.append(found)
+    if len({p.merchant_id for p in products}) > 1:
+        return _reject(trace, "MIXED_MERCHANTS", "Items from different merchants need separate checkouts.")
+    product = products[0]
     agent = _agent(product.merchant_id)
 
     trusted, decision = trust_sessions.require(user_id, product.merchant_id, SCOPE_CHECKOUT,
@@ -201,9 +211,9 @@ async def create_proposal(
             "note": "Merchant returned this customer's loyalty balance. A merchant reward, not a payment protocol.",
         }, direction="in")
 
-    checkout, error = await build_checkout(product, quantity, user_id)
+    checkout, error = await build_cart_checkout(list(zip(products, [qty for _, qty in cart])), user_id)
     if error:
-        return _reject(trace, error, "The merchant could not create a checkout for this item.")
+        return _reject(trace, error, "The merchant could not create a checkout for these items.")
 
     # Loyalty redemption starts at "use all eligible points" — the customer
     # can dial it down (or to card-only) via the proposal's points slider,
@@ -217,8 +227,7 @@ async def create_proposal(
             checkout.loyalty_points_redeemed = decision.points_redeemed
             checkout.loyalty_value = decision.value_redeemed
             checkout.amount_due = decision.amount_due
-            unit_price = round(checkout.subtotal / checkout.quantity, 2)
-            checkout.checkout_hash = checkout_hash_for(checkout, unit_price)
+            checkout.checkout_hash = checkout_hash_for(checkout)
             redemption = decision
             trace.add(agent, "CustomerAgent", "A2A", "loyalty_redemption_applied", {
                 "merchant": product.merchant_id, "points_redeemed": decision.points_redeemed,
@@ -313,8 +322,7 @@ async def apply_loyalty(
     checkout.loyalty_points_redeemed = decision.points_redeemed
     checkout.loyalty_value = decision.value_redeemed
     checkout.amount_due = decision.amount_due
-    unit_price = round(checkout.subtotal / checkout.quantity, 2)
-    checkout.checkout_hash = checkout_hash_for(checkout, unit_price)
+    checkout.checkout_hash = checkout_hash_for(checkout)
 
     with get_session() as db:
         db.query(MerchantCheckout).filter(MerchantCheckout.checkout_id == checkout_id).update(
@@ -448,6 +456,7 @@ def _order_payload(checkout: CheckoutObject, result: PaymentResult, order: dict,
         "transaction_id": result.transaction_id, "tracking_number": order["tracking_number"],
         "payment_method": pm_display,
         "points_earned": order["points_earned"], "loyalty_balance": order["loyalty_balance"],
+        "items": [line.model_dump(mode="json") for line in checkout.lines],
     }
 
 
@@ -762,8 +771,7 @@ async def reconsent(*, user_id: str, checkout_id: str, decision: str) -> dict:
     # YES: apply the new delivery date, re-bind the checkout, then authorize again from fresh consent.
     new_date = doc.get("pending_delivery_date")
     updated = checkout.model_copy(update={"delivery_date": new_date})
-    unit_price = round(updated.subtotal / updated.quantity, 2)
-    updated = updated.model_copy(update={"checkout_hash": checkout_hash_for(updated, unit_price)})
+    updated = updated.model_copy(update={"checkout_hash": checkout_hash_for(updated)})
     with get_session() as db:
         db.query(MerchantCheckout).filter(MerchantCheckout.checkout_id == checkout_id).update(
             {"status": "proposed", "checkout_hash": updated.checkout_hash, "document": updated.model_dump_json()},

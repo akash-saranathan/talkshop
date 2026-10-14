@@ -86,6 +86,9 @@ class Order(Base):
     status = Column(String(30), default="pending")
     transaction_id = Column(String(100))
     tracking_number = Column(String(50))
+    # JSON list of every item in the order (one order per merchant checkout). product_id
+    # above is the first item, so single-product readers keep working.
+    items_json = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
 
 

@@ -33,11 +33,11 @@ def confirm_paid_order(session: Session, checkout: CheckoutObject, result: Payme
     fields = trackit.confirm_order(checkout, result, user_id)
     insert_order_if_absent(session, fields)
 
-    # The purchased item is paid for — it shouldn't still show up as "in the
-    # cart" afterward. Only this one product/merchant row, never the rest
-    # of the cart (a multi-item checkout confirms each item separately).
+    # Every item in this checkout is paid for, so it leaves the cart. Only this
+    # merchant's rows for these products are removed, never other merchants' items.
+    purchased_ids = [line.product_id for line in checkout.lines] or [checkout.product_id]
     session.query(CartItem).filter(
-        CartItem.user_id == user_id, CartItem.product_id == checkout.product_id,
+        CartItem.user_id == user_id, CartItem.product_id.in_(purchased_ids),
         CartItem.merchant_id == checkout.merchant_id,
     ).delete(synchronize_session=False)
 

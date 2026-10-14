@@ -46,8 +46,16 @@ class TrustSessionRequest(BaseModel):
     demo: Optional[str] = None
 
 
-class CheckoutRequest(BaseModel):
+class CheckoutItemRequest(BaseModel):
     product_id: str
+    quantity: int = 1
+
+
+class CheckoutRequest(BaseModel):
+    # A cart is sent as `items` (one checkout for one merchant). The single-product
+    # fields are still accepted.
+    items: Optional[list[CheckoutItemRequest]] = None
+    product_id: str = ""
     quantity: int = 1
     chat_session_id: Optional[str] = None
     trusted_session_id: Optional[str] = None
@@ -154,7 +162,9 @@ async def open_trust_session(req: TrustSessionRequest, current_user: CurrentUser
 async def purchase_checkout(req: CheckoutRequest, current_user: CurrentUser = Depends(get_current_user)):
     result = await service.create_proposal(
         user_id=current_user.user_id, is_talkshop_guest=current_user.is_talkshop_guest,
-        product_id=req.product_id, quantity=req.quantity, chat_session_id=req.chat_session_id,
+        product_id=req.product_id, quantity=req.quantity,
+        items=[(item.product_id, item.quantity) for item in req.items] if req.items else None,
+        chat_session_id=req.chat_session_id,
         trusted_session_id=req.trusted_session_id, payment_method_id=req.payment_method_id)
     status = 200
     if result["status"] == "rejected":

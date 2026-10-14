@@ -66,6 +66,7 @@ def init_db(db_path: Path = DB_PATH):
     _ensure_column(engine, "users", "password_hash", "password_hash VARCHAR(255) NOT NULL DEFAULT ''")
     _ensure_column(engine, "users", "is_guest", "is_guest BOOLEAN NOT NULL DEFAULT 0")
     _ensure_column(engine, "orders", "tracking_number", "tracking_number VARCHAR(50)")
+    _ensure_column(engine, "orders", "items_json", "items_json TEXT")
     _ensure_column(engine, "products", "image_url", "image_url VARCHAR(500)")
     _ensure_column(engine, "loyalty_transactions", "merchant_id", "merchant_id VARCHAR(50)")
     _ensure_column(engine, "saved_payment_methods", "provider", "provider VARCHAR(20) DEFAULT 'card'")

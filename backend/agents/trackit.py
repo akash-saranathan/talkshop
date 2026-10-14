@@ -5,6 +5,7 @@ in the UI. Pure functions only — the router owns the actual DB write,
 matching the same division of labor as CartUp/GreenLight (agents contain
 domain logic, routers own persistence). No LLM.
 """
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -33,6 +34,7 @@ def confirm_order(
             "user_id": user_id,
             "merchant_id": checkout.merchant_id,
             "product_id": checkout.product_id,
+            "items_json": json.dumps([line.model_dump(mode="json") for line in checkout.lines]) if checkout.lines else None,
             "amount": payment_result.amount,
             "currency": payment_result.currency,
             "status": "confirmed",

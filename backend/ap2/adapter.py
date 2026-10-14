@@ -125,10 +125,11 @@ class AP2Adapter:
         ucp_session_id: str,
         intent_mandate_id: str,
         checkout_hash: str | None = None,
+        line_items: list[dict] | None = None,
     ) -> AP2CartMandate:
         """
         CartMandate — issued by the agent after product selection.
-        Binds the exact cart (product, quantity, totals) to a checkout_hash.
+        Binds the exact cart (every line item, quantity, totals) to a checkout_hash.
         Links back to the IntentMandate via intent_mandate_id.
         """
         mandate_id = f"urn:ap2:mandate:cart:{uuid.uuid4().hex}"
@@ -149,7 +150,7 @@ class AP2Adapter:
             "user_cart_confirmation_required": True,
             "cart_expiry": _expiry_iso(15),
             "merchant_name": product["merchant_name"],
-            "line_items": [{
+            "line_items": line_items or [{
                 "product_id": product["id"],
                 "title": product["title"],
                 "quantity": quantity,

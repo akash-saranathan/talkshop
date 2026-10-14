@@ -143,6 +143,8 @@ def _issue_checkout_mandates(checkout: CheckoutObject, product, session_id: Opti
         totals={"subtotal": checkout.subtotal, "fulfillment": checkout.shipping, "tax": checkout.tax, "total": checkout.total},
         ucp_session_id=checkout.checkout_id,
         intent_mandate_id="",
+        line_items=[{"product_id": line.product_id, "title": line.product_title, "quantity": line.quantity,
+                     "unit_price": line.unit_price} for line in checkout.lines] or None,
         checkout_hash=checkout.checkout_hash,
     )
     with _session() as session:
