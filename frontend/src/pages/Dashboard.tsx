@@ -22,6 +22,7 @@ interface Order {
   reason?: string;
   created_at: string | null;
   product_title: string | null;
+  items?: { product_title: string }[] | null;
   product_category: string | null;
   product_image_url: string | null;
   tracking_number: string | null;
@@ -347,7 +348,7 @@ export default function Dashboard() {
                     {/* Product + merchant */}
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-[var(--color-text)] truncate">
-                        {order.product_title ?? "—"}
+                        {order.items && order.items.length > 1 ? `${order.items.length} items` : (order.product_title ?? "—")}
                       </p>
                       <p className="text-[11px] text-[var(--color-text-muted)] truncate">{order.merchant}</p>
                     </div>

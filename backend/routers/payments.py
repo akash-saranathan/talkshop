@@ -378,6 +378,8 @@ async def list_orders(current_user: CurrentUser = Depends(get_current_user)):
                 "status": "paid" if is_paid else "blocked",
                 "reason": None if is_paid else _block_reason(session, order.order_id),
                 "created_at": order.created_at.isoformat() if order.created_at else None,
+                # Every item in a multi-item order (None for older single-item orders).
+                "items": json.loads(order.items_json) if order.items_json else None,
                 **_delivery_fields(order, product, cart_fallback),
             })
         return results

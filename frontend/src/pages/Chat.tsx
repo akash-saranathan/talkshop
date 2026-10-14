@@ -169,6 +169,17 @@ const AUTO_SECONDS = 5;
 
 // The Live / Story / Flow trace is kept per chat in this tab, so a refresh or a
 // switch back to the chat shows the same steps again.
+// Splits a cart into one list per merchant, keeping the cart order.
+function groupByMerchant(products: ProductData[]): ProductData[][] {
+  const byMerchant = new Map<string, ProductData[]>();
+  for (const product of products) {
+    const list = byMerchant.get(product.merchant_id) ?? [];
+    list.push(product);
+    byMerchant.set(product.merchant_id, list);
+  }
+  return [...byMerchant.values()];
+}
+
 const traceKey = (id: string) => `talkshop_trace_${id}`;
 function readTrace(id: string): ProtocolEvent[] {
   try { return JSON.parse(sessionStorage.getItem(traceKey(id)) ?? "[]") as ProtocolEvent[]; } catch { return []; }
@@ -453,7 +464,7 @@ export default function Chat() {
   // it directly without capturing a stale closure.
   const handleSendRef = useRef<((override?: string) => void) | null>(null);
   // Same pattern for doCheckoutSummary — avoids TDZ when handleSend references it.
-  const doCheckoutSummaryRef = useRef<((userText: string, product: ProductData, alreadyAdded?: boolean) => void) | null>(null);
+  const doCheckoutSummaryRef = useRef<((userText: string, product: ProductData, alreadyAdded?: boolean, group?: ProductData[]) => void) | null>(null);
   const attachCheckoutToActiveTurnRef = useRef<((turnId: string, product: ProductData) => void) | null>(null);
   const doAddToCartRef = useRef<((userText: string, product: ProductData) => void) | null>(null);
   const attachAddToCartToActiveTurnRef = useRef<((turnId: string, product: ProductData) => void) | null>(null);
@@ -858,9 +869,9 @@ export default function Chat() {
     if (isExplicitCheckoutPhrase(msg) && !lastRecommendedProductRef.current) {
       if (sessionCartItems.length > 0) {
         setInput("");
-        // Every item in the cart gets its own checkout — not just the first —
-        // same queue used by the silent auto-advance below.
-        checkoutQueueRef.current = sessionCartItems.map(cartItemToProduct);
+        // Every merchant's items in the cart are checked out — one checkout per
+        // merchant — using the same queue as the silent auto-advance below.
+        checkoutQueueRef.current = groupByMerchant(sessionCartItems.map(cartItemToProduct));
         advanceCheckoutQueue();
         return;
       }
@@ -1076,15 +1087,19 @@ export default function Chat() {
     } catch { /* noop */ }
   };
 
-  const requestProposal = useCallback(async (product: ProductData): Promise<{ checkoutData?: InlineCheckoutDataShape; error?: string; reason?: string }> => {
+  // One checkout for every item in `products` (all from one merchant).
+  const requestProposal = useCallback(async (products: ProductData[]): Promise<{ checkoutData?: InlineCheckoutDataShape; error?: string; reason?: string }> => {
     try {
       // The cart is the source of truth for quantity — a product carries no
       // quantity of its own, so look up whatever the customer last set via
       // the +/- stepper instead of always proposing a single unit.
-      const quantity = cartItemByProduct.get(product.product_id)?.quantity ?? 1;
+      const items = products.map((product) => ({
+        product_id: product.product_id,
+        quantity: cartItemByProduct.get(product.product_id)?.quantity ?? 1,
+      }));
       const res = await authFetch("/api/purchase/checkout", {
         method: "POST",
-        body: JSON.stringify({ product_id: product.product_id, quantity, chat_session_id: sessionIdRef.current }),
+        body: JSON.stringify({ items, chat_session_id: sessionIdRef.current }),
       });
       const data = await res.json().catch(() => ({}));
       appendServerEvents(data.events);
@@ -1169,7 +1184,10 @@ export default function Chat() {
     }
   }, [setLoyaltyBusy]);
 
-  const doCheckoutSummary = useCallback(async (userText: string, product: ProductData, alreadyAdded = false) => {
+  // `group` is every item checked out together (one merchant's cart). Without it,
+  // the single `product` is checked out on its own.
+  const doCheckoutSummary = useCallback(async (userText: string, product: ProductData, alreadyAdded = false, group?: ProductData[]) => {
+    const items = group?.length ? group : [product];
     setInput("");
     setPastedImage(null);
     setLoading(true);
@@ -1189,27 +1207,29 @@ export default function Chat() {
         recommendation: "",
         blocked: null,
         intent: {},
-        checkout: { phase: "setup" as const, product },
+        checkout: { phase: "setup" as const, product: items[0] },
       },
     ]);
 
     if (!alreadyAdded) {
-      try { await addToCart(product); } catch { /* the cart is a convenience; checkout doesn't depend on it */ }
+      for (const item of items) {
+        try { await addToCart(item); } catch { /* the cart is a convenience; checkout doesn't depend on it */ }
+      }
     }
-    const { checkoutData, error, reason } = await requestProposal(product);
+    const { checkoutData, error, reason } = await requestProposal(items);
     setTurns((prev) => prev.map((t) => {
       if (t.id !== turnId) return t;
       if (!checkoutData) {
-        return { ...t, steps: [], checkout: { phase: "failed" as const, product, error, errorReason: reason } };
+        return { ...t, steps: [], checkout: { phase: "failed" as const, product: items[0], error, errorReason: reason } };
       }
       return {
         ...t,
         steps: [{ id: "c1", message: `${checkoutData.merchant_name} — checkout ready, waiting for you to authorize payment`, status: "done" as const }],
-        checkout: { phase: "summary" as const, product, checkoutData, paymentMethodId: checkoutData.payment_method?.payment_method_id },
+        checkout: { phase: "summary" as const, product: items[0], checkoutData, paymentMethodId: checkoutData.payment_method?.payment_method_id },
       };
     }));
     if (checkoutData) {
-      persistCheckout(product, checkoutData, checkoutData.payment_method?.payment_method_id);
+      persistCheckout(items[0], checkoutData, checkoutData.payment_method?.payment_method_id);
     }
     setLoading(false);
   }, [requestProposal]);
@@ -1223,10 +1243,12 @@ export default function Chat() {
   // turn, one after another, advanced by advanceCheckoutQueue (called when
   // the timer fires below, and again from finishPurchase once each item's
   // flow reaches a terminal state).
-  const checkoutQueueRef = useRef<ProductData[]>([]);
+  // Each queue entry is one merchant's cart: every item from that merchant is checked
+  // out together, with one approval and one order.
+  const checkoutQueueRef = useRef<ProductData[][]>([]);
   const advanceCheckoutQueue = useCallback(() => {
-    const next = checkoutQueueRef.current.shift();
-    if (next) doCheckoutSummaryRef.current?.("proceed to checkout", next, true);
+    const group = checkoutQueueRef.current.shift();
+    if (group?.length) doCheckoutSummaryRef.current?.("proceed to checkout", group[0], true, group);
   }, []);
 
   // LLM-driven checkout: attaches checkout UI to the currently streaming turn
@@ -1243,7 +1265,7 @@ export default function Chat() {
     } : t));
 
     try { await addToCart(product); setCartCount((n) => n + 1); } catch { /* checkout doesn't depend on the cart */ }
-    const { checkoutData, error, reason } = await requestProposal(product);
+    const { checkoutData, error, reason } = await requestProposal([product]);
     setTurns((prev) => prev.map((t) => {
       if (t.id !== turnId) return t;
       const others = t.steps.filter((s) => s.id !== "ca1");
@@ -1598,7 +1620,8 @@ export default function Chat() {
     // this timer — adding a second item used to silently replace the first
     // in this slot, so it was never checked out at all.
     const queued = sessionCartItems.map(cartItemToProduct);
-    checkoutQueueRef.current = queued.length ? queued : [autoTimer.product];
+    const groups = groupByMerchant(queued);
+    checkoutQueueRef.current = groups.length ? groups : [[autoTimer.product]];
     advanceCheckoutQueue();
   }, [autoTimer, advanceCheckoutQueue]);
 

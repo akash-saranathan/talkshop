@@ -10,6 +10,7 @@ interface Order {
   amount: number;
   status: "paid" | "blocked";
   product_title: string | null;
+  items?: { product_title: string }[] | null;
   product_category: string | null;
   product_image_url: string | null;
   created_at: string | null;
@@ -112,7 +113,7 @@ export default function OrdersPanel({ collapsed, onToggleCollapse, width }: Prop
               )}
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium text-[var(--color-text)] truncate">
-                  {order.product_title ?? order.order_id}
+                  {order.items && order.items.length > 1 ? `${order.items.length} items` : (order.product_title ?? order.order_id)}
                 </p>
                 <p className="text-[11px] text-[var(--color-text-muted)]">
                   {formatDate(order.created_at)} · ${order.amount.toFixed(2)}

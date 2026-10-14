@@ -63,6 +63,8 @@ export interface CheckoutData {
   merchant_relationship?: "merchant_guest" | "merchant_member";
   talkshop_account?: "authenticated" | "talkshop_guest";
   payment_method?: PaymentMethod | null;
+  /** Every item in this checkout (one merchant's cart). One entry for a single product. */
+  lines?: CheckoutLineData[];
   /** VIC-inspired agent spending guardrail — the agent's delegated per-checkout cap. */
   agent_spending_limit?: number;
   spending_check?: "passed" | "blocked";
@@ -73,10 +75,23 @@ export interface CheckoutData {
   } | null;
 }
 
+export interface CheckoutLineData {
+  product_id: string;
+  product_title: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  size?: string | null;
+  color?: string | null;
+  image_url?: string | null;
+}
+
 export interface ConfirmedOrder {
   order_id: string;
   merchant_name: string;
   product_title: string;
+  /** Every item in the order. */
+  items?: CheckoutLineData[];
   size?: string | null;
   color?: string | null;
   total: number;
@@ -584,6 +599,20 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
           </div>
         </div>
 
+        {co.lines && co.lines.length > 1 && (
+          <div className="px-4 py-3 border-b border-[var(--color-border)] space-y-1">
+            <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{co.lines.length} items</p>
+            {co.lines.map((line) => (
+              <div key={line.product_id} className="flex justify-between gap-3 text-xs">
+                <span className="text-[var(--color-text)] truncate">
+                  {line.quantity} × {line.product_title}{line.size ? ` · Size ${line.size}` : ""}
+                </span>
+                <span className="shrink-0 text-[var(--color-text)]">${line.line_total.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="px-4 py-3 space-y-1.5 border-b border-[var(--color-border)]">
           <Row label="Subtotal" value={`$${co.subtotal.toFixed(2)}`} />
           <Row label="Shipping" value={co.shipping === 0 ? "FREE" : `$${co.shipping.toFixed(2)}`} accent={co.shipping === 0} />
@@ -770,8 +799,24 @@ function ConfirmedCard({ order }: { order: ConfirmedOrder }) {
         </div>
       </div>
       <div className="px-4 py-3 border-b border-[var(--color-border)] space-y-1">
-        <p className="text-sm font-medium text-[var(--color-text)]">{order.product_title}</p>
-        <p className="text-xs text-[var(--color-text-muted)]">{[order.size ? `Size ${order.size}` : null, order.color].filter(Boolean).join(" · ")}</p>
+        {order.items && order.items.length > 1 ? (
+          <>
+            <p className="text-sm font-medium text-[var(--color-text)]">{order.items.length} items</p>
+            {order.items.map((line) => (
+              <div key={line.product_id} className="flex justify-between gap-3 text-xs">
+                <span className="text-[var(--color-text)] truncate">
+                  {line.quantity} × {line.product_title}{line.size ? ` · Size ${line.size}` : ""}
+                </span>
+                <span className="shrink-0">${line.line_total.toFixed(2)}</span>
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-[var(--color-text)]">{order.product_title}</p>
+            <p className="text-xs text-[var(--color-text-muted)]">{[order.size ? `Size ${order.size}` : null, order.color].filter(Boolean).join(" · ")}</p>
+          </>
+        )}
         <div className="flex justify-between text-sm pt-1"><span className="text-[var(--color-text-muted)]">Order total</span><span className="font-semibold">${order.total.toFixed(2)}</span></div>
         {(order.loyalty_points_redeemed ?? 0) > 0 && (
           <div className="flex justify-between text-xs"><span className="text-[var(--color-text-muted)]">{order.merchant_name} points used</span>

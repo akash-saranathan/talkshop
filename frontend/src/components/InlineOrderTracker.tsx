@@ -19,6 +19,7 @@ interface Order {
   status: "paid" | "blocked";
   created_at: string | null;
   product_title: string | null;
+  items?: { product_title: string }[] | null;
   product_category: string | null;
   product_image_url: string | null;
   tracking_number: string | null;
@@ -119,7 +120,7 @@ function OrderRow({ order, defaultOpen }: { order: Order; defaultOpen: boolean }
         {/* Title + meta */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-[var(--color-text)] truncate leading-snug">
-            {order.product_title ?? order.order_id}
+            {order.items && order.items.length > 1 ? `${order.items.length} items` : (order.product_title ?? order.order_id)}
           </p>
           <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
             {order.merchant} · ${order.amount.toFixed(2)} · {formatDate(order.created_at)}
