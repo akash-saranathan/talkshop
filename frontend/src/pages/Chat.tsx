@@ -2214,7 +2214,15 @@ export default function Chat() {
                   <ChevronRight size={14} className="text-[var(--color-primary)]" />
                 </div>
               </button>
-              {/* Auto-advance countdown hidden — continues silently after a short delay. */}
+              {/* Countdown for items added from the product list (not tied to a chat turn). */}
+              {autoTimer?.stage === "cart" && autoTimer.turnId === SESSION_CART_TIMER_ID && (
+                <AutoStepBar
+                  label="Checking out"
+                  secondsLeft={autoTimer.secondsLeft}
+                  paused={autoTimer.paused}
+                  onPauseToggle={togglePauseAuto}
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>
