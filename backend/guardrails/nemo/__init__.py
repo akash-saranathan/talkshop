@@ -1,17 +1,13 @@
-"""NeMo Guardrails — commerce scope and credential policy for chat input.
+"""Commerce scope and credential guardrail for chat input.
 
-The policy lives in commerce.co / config.yml. Its only decision source is one
-direct Gemini classification call (classify_commerce_scope), made once per message.
+Two layers, in order:
+  1. Deterministic credential-keyword check (no LLM).
+  2. Commerce scope check: one direct Gemini classification call per message.
+     Fails closed: if the check errors or returns an unrecognised label, the
+     message is blocked, never let through.
 """
-from contextvars import ContextVar
-from pathlib import Path
 from typing import Optional
 
-_rails = None
-_CONFIG_DIR = Path(__file__).parent
-
-# Deterministic credential-request detector — runs BEFORE NeMo so it never
-# relies on LLM availability or semantic matching.
 _CREDENTIAL_KEYWORDS = [
     "card number", "card no", "card digit",
     "cvv", "cvc", "csc",
@@ -32,9 +28,12 @@ _BLOCKED_CREDENTIAL_MSG = (
     "What can I help you find today? 🔒"
 )
 
-# Must match the bot refusal wording in commerce.co
-_CREDENTIAL_REFUSAL = "I can't share or expose payment credentials"
-_SCOPE_REFUSAL = "I'm your personal shopping assistant"
+_OFF_TOPIC_MSG = (
+    "I'm your personal shopping assistant — I'm not able to help with that. "
+    "Ask me to find a product, compare prices, or check availability and I'll get right on it!"
+)
+
+_CHECK_FAILED_MSG = "I couldn't verify that request just now. Please try again."
 
 _VERDICTS = {"commerce_allowed", "off_topic", "credential_request"}
 _CLASSIFY_PROMPT = """Classify this message sent to a shopping assistant. Reply with exactly one label:
@@ -44,8 +43,6 @@ off_topic - anything else, such as weather, poems, code, homework or general kno
 
 Message: {text}"""
 
-_verdict_ctx: ContextVar[Optional[dict]] = ContextVar("nemo_verdict", default=None)
-
 
 async def classify_commerce_scope(text: str) -> str:
     from backend.config.llm import get_llm
@@ -54,39 +51,17 @@ async def classify_commerce_scope(text: str) -> str:
     if isinstance(content, list):
         content = "".join(b.get("text", "") for b in content if isinstance(b, dict))
     label = str(content).strip().strip("\"'.").lower()
-    verdict = label if label in _VERDICTS else "unknown"
-    holder = _verdict_ctx.get()
-    if holder is not None:
-        holder["verdict"] = verdict
-    return verdict
+    return label if label in _VERDICTS else "unknown"
 
 
-def get_rails():
-    """Lazy-load NeMo Guardrails. Cached after first call."""
-    global _rails
-    if _rails is not None:
-        return _rails
-    try:
-        from nemoguardrails import RailsConfig, LLMRails
-        from backend.config.llm import get_llm
-        config = RailsConfig.from_path(str(_CONFIG_DIR))
-        rails = LLMRails(config, llm=get_llm(temperature=0.0))
-        rails.register_action(classify_commerce_scope, "classify_commerce_scope")
-        _rails = rails
-    except Exception as e:
-        print(f"[WARNING] NeMo Guardrails unavailable: {e}. Running without input guardrails.")
-        _rails = None
-    return _rails
-
-
-def _result(allowed: bool, message: Optional[str], credential_check: str, nemo: str,
+def _result(allowed: bool, message: Optional[str], credential_check: str, scope: str,
             category: Optional[str] = None, error: Optional[str] = None) -> dict:
     return {
         "allowed": allowed,
         "message": message,
         "credential_check": credential_check,
-        "nemo": nemo,
-        "policy": "Commerce Scope",
+        "scope": scope,  # "pass" | "blocked" | "error" | "skipped"
+        "policy": "Commerce scope",
         "engine": "Gemini",
         "category": category,
         "error": error,
@@ -97,40 +72,26 @@ async def check_input_detailed(user_message: str, skip_scope: bool = False) -> d
     msg_lower = user_message.lower()
     for kw in _CREDENTIAL_KEYWORDS:
         if kw in msg_lower:
-            return _result(False, _BLOCKED_CREDENTIAL_MSG, "blocked", "not_run", "credential_request")
+            return _result(False, _BLOCKED_CREDENTIAL_MSG, "blocked", "skipped", "credential_request")
 
-    # Already in an active shopping conversation: a short reply like "anything is
-    # fine" or "no preference" is a follow-up answer, not an off-topic message, so
-    # the scope classifier is skipped (the credential check above still ran).
+    # Active shopping conversation: a short reply ("anything is fine") is a follow-up
+    # answer, so the scope call is skipped. Reported as "skipped", never as a PASS.
     if skip_scope:
-        return _result(True, None, "pass", "pass", "commerce_allowed")
+        return _result(True, None, "pass", "skipped", "commerce_allowed")
 
-    rails = get_rails()
-    if rails is None:
-        return _result(True, None, "pass", "unavailable")
-
-    holder: dict = {}
-    token = _verdict_ctx.set(holder)
     try:
-        response = await rails.generate_async(
-            messages=[{"role": "user", "content": user_message}],
-            options={"rails": {"input": True, "output": False}},
-        )
+        verdict = await classify_commerce_scope(user_message)
     except Exception as e:
-        return _result(True, None, "pass", "error", error=str(e)[:200])
-    finally:
-        _verdict_ctx.reset(token)
+        return _result(False, _CHECK_FAILED_MSG, "pass", "error", error=str(e)[:200])
 
-    content = response.response[0]["content"] if response.response else ""
-    verdict = holder.get("verdict")
-    if _CREDENTIAL_REFUSAL in content:
-        return _result(False, content, "pass", "blocked", "credential_request")
-    if _SCOPE_REFUSAL in content:
-        return _result(False, content, "pass", "blocked", "off_topic")
     if verdict == "commerce_allowed":
         return _result(True, None, "pass", "pass", "commerce_allowed")
-    return _result(True, None, "pass", "error", verdict or "no_verdict",
-                   error="classification did not complete")
+    if verdict == "credential_request":
+        return _result(False, _BLOCKED_CREDENTIAL_MSG, "pass", "blocked", "credential_request")
+    if verdict == "off_topic":
+        return _result(False, _OFF_TOPIC_MSG, "pass", "blocked", "off_topic")
+    return _result(False, _CHECK_FAILED_MSG, "pass", "error", verdict,
+                   error="classification did not return a known label")
 
 
 async def check_input(user_message: str) -> tuple[bool, Optional[str]]:

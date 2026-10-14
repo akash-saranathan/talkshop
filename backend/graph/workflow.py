@@ -152,23 +152,26 @@ async def input_guardrail(state: CommerceState) -> CommerceState:
                          direction="out", label="input_validation_pass",
                          detail={"framework": "custom", "checks": checks})
 
-    if nemo["nemo"] == "pass":
-        await _emit_protocol(state, source="NeMo Guardrails", target="CustomerAgent", protocol="internal",
-                             direction="out", label="nemo_pass",
-                             detail={"framework": "NeMo Guardrails", "policy": nemo["policy"],
-                                     "engine": nemo["engine"], "category": nemo["category"]})
-    elif nemo["nemo"] == "blocked":
-        await _emit_protocol(state, source="NeMo Guardrails", target="CustomerAgent", protocol="internal",
-                             direction="out", label="nemo_blocked",
-                             detail={"framework": "NeMo Guardrails", "policy": nemo["policy"],
-                                     "engine": nemo["engine"], "category": nemo["category"],
-                                     "response": nemo["message"]})
+    if nemo["scope"] == "pass":
+        await _emit_protocol(state, source="Guardrails", target="CustomerAgent", protocol="internal",
+                             direction="out", label="scope_pass",
+                             detail={"framework": "Guardrails", "policy": nemo["policy"],
+                                     "category": nemo["category"]})
+    elif nemo["scope"] == "blocked":
+        await _emit_protocol(state, source="Guardrails", target="CustomerAgent", protocol="internal",
+                             direction="out", label="scope_blocked",
+                             detail={"framework": "Guardrails", "policy": nemo["policy"],
+                                     "category": nemo["category"], "response": nemo["message"]})
         await _emit(state, "blocked", nemo["message"] or "Request blocked by safety guardrail")
         return {**state, "blocked": True, "error": nemo["message"]}
-    elif nemo["nemo"] == "error":
-        await _emit_protocol(state, source="NeMo Guardrails", target="CustomerAgent", protocol="internal",
-                             direction="out", label=f"nemo_{nemo['nemo']}",
-                             detail={"framework": "NeMo Guardrails", "error": nemo.get("error")})
+    elif nemo["scope"] == "error":
+        # Fail closed: a scope check that could not complete blocks the message.
+        await _emit_protocol(state, source="Guardrails", target="CustomerAgent", protocol="internal",
+                             direction="out", label="scope_error",
+                             detail={"framework": "Guardrails", "error": nemo.get("error")})
+        await _emit(state, "blocked", nemo["message"])
+        return {**state, "blocked": True, "error": nemo["message"]}
+    # "skipped": a follow-up inside an active shopping conversation. No scope card is shown.
 
     await _emit(state, "step_done", "VibeCheck — all clear, ready to shop!")
     return {**state, "blocked": False}

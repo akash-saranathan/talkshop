@@ -298,7 +298,8 @@ function PauseMarker({ label, status }: { label: string; status: NodeStatus }) {
 
 // ── Flow view ──────────────────────────────────────────────────────────────────
 
-function FlowView({ events, flowState, checkoutTotal, orderLabel, selectedStage, onSelectStage }: {
+// High-level flow: a fixed picture of the purchase, not built from live events.
+function FlowView(_props: {
   events: ProtocolEvent[];
   flowState: FlowState;
   checkoutTotal?: number;
@@ -306,75 +307,37 @@ function FlowView({ events, flowState, checkoutTotal, orderLabel, selectedStage,
   selectedStage: string | null;
   onSelectStage: (stage: string) => void;
 }) {
-  const pick = (stage: string) => ({ onClick: () => onSelectStage(stage), selected: selectedStage === stage });
-  const merchantNames = [...new Set(
-    events
-      .filter(e => e.protocol === "A2A" && e.label === "message/send")
-      .map(e => e.target.replace(/Agent$/i, "").trim())
-  )];
-  const merchantLabel = merchantNames.length > 0
-    ? merchantNames.join(" · ")
-    : "Merchant Agent";
-
-  const checkoutSubtitle = checkoutTotal
-    ? `$${checkoutTotal.toFixed(2)} · tax + shipping locked`
-    : "Cart · Tax · Shipping · Totals";
-
-  const orderSubtitle = orderLabel ?? "Order created";
-
-  const productCount = (() => {
-    const counts = events
-      .filter(e => e.label === "task_result")
-      .map(e => Number(e.detail?.product_count ?? 0));
-    const total = counts.reduce((a, b) => a + b, 0);
-    return total > 0 ? `${total} products found` : "Search results";
-  })();
-
-  const s = (id: string) => getStatus(id, flowState, events);
-
+  const steps: { title: string; detail: string; badge: string }[] = [
+    { title: "You ask a question", detail: "For example: Nike running shoes under $150", badge: "You" },
+    { title: "Agent connects to the merchant", detail: "Your agent connects to Nike's agent and shows its permission", badge: "A2A" },
+    { title: "Products returned", detail: "Nike's catalog returns matching products, checked before use", badge: "UCP" },
+    { title: "You select a product", detail: "Your agent asks Nike for a checkout", badge: "A2A" },
+    { title: "Checkout created", detail: "Nike locks the price, tax, shipping and delivery date", badge: "UCP" },
+    { title: "You approve", detail: "A signed record of the cart and of your approval", badge: "AP2" },
+    { title: "Payment permission", detail: "A single-use token for this amount is sent to Nike", badge: "ACP" },
+    { title: "Payment", detail: "Nike checks the token and approval, then the card is charged", badge: "PAYMENT" },
+    { title: "Order confirmed", detail: "Nike confirms the order to your agent", badge: "A2A" },
+  ];
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-      <div className="flex flex-col items-stretch">
-
-        {/* USER */}
-        <NodeBox label="You" subtitle="Shopping request" status={s("user")} icon={User} />
-
-        {/* A2A → Merchant */}
-        <ArrowConnector protocol="A2A" label="Agent Communication" status={s("arr-a2a")} />
-        <NodeBox label={merchantLabel} subtitle="Receives search request" simulated status={s("merchant")} icon={Store} {...pick("a2a")} />
-
-        {/* UCP Catalog → Products */}
-        <ArrowConnector protocol="UCP" label="Catalog" status={s("arr-ucp-cat")} />
-        <NodeBox label="Product Catalog" subtitle={productCount} status={s("products")} icon={Package} {...pick("catalog")} />
-
-        {/* Pause: product selection */}
-        <PauseMarker label="You select a product" status={s("pause-sel")} />
-
-        {/* UCP Checkout → Checkout */}
-        <ArrowConnector protocol="UCP" label="Checkout" status={s("arr-ucp-co")} />
-        <NodeBox label="Checkout Session" subtitle={checkoutSubtitle} status={s("checkout")} icon={ShieldCheck} {...pick("checkout")} />
-
-        {/* Pause: approve & pay */}
-        <PauseMarker label="You review & approve payment" status={s("pause-pay")} />
-
-        {/* AP2 → Authorization */}
-        <ArrowConnector protocol="AP2" label="Authorization" status={s("arr-ap2")} />
-        <NodeBox label="Payment Authorization" subtitle="Approval in UI (browser step)" status={s("authz")} icon={Lock} {...pick("authz")} />
-
-        {/* ACP → Delegated Payment */}
-        <ArrowConnector protocol="ACP" label="Delegated Payment" status={s("arr-acp")} />
-        <NodeBox label="Delegated Payment" subtitle="GreenLight DPAT token (REST)" status={s("delpay")} icon={CreditCard} {...pick("acp")} />
-
-        {/* → PSP */}
-        <ArrowConnector protocol={null} label={null} status={s("arr-psp")} />
-        <NodeBox label="PSP" subtitle="Payment execution (REST)" simulated status={s("psp")} icon={Zap} {...pick("payment")} />
-
-        {/* → Order */}
-        <ArrowConnector protocol={null} label={null} status={s("arr-order")} />
-        <NodeBox label="Order" subtitle={orderLabel ? orderSubtitle : "Confirmed"} status={s("order")} icon={CheckCircle2} {...pick("order")} />
-
+    <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+      <p className="text-[10px] text-center text-[var(--color-text-muted)] mb-3">High-level flow: one step per part of the purchase</p>
+      <div className="flex flex-col items-stretch max-w-sm mx-auto">
+        {steps.map((s, i) => (
+          <div key={s.title}>
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 flex items-start gap-3">
+              <span className="w-6 h-6 shrink-0 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold grid place-items-center">{i + 1}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-[11px] font-semibold text-[var(--color-text)]">{s.title}</p>
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--color-primary-bg)] text-[var(--color-primary)]">{s.badge}</span>
+                </div>
+                <p className="text-[10px] text-[var(--color-text-muted)] leading-snug">{s.detail}</p>
+              </div>
+            </div>
+            {i < steps.length - 1 && <div className="text-center text-[var(--color-text-muted)] text-xs leading-none py-1">↓</div>}
+          </div>
+        ))}
       </div>
-      {selectedStage && <StageDetail stage={selectedStage} events={events} />}
     </div>
   );
 }
@@ -405,6 +368,13 @@ const PROTO_THEME: Record<string, { badge: string; badgeText: string; border: st
   SECURITY:   { badge: "bg-amber-600",  badgeText: "text-white", border: "border-l-amber-500",  iconBg: "bg-amber-100",  iconText: "text-amber-700"  },
 };
 
+// Merchant name taken from the event itself, e.g. "NikeAgent" -> "Nike". Never hard-coded.
+function merchantName(ev: ProtocolEvent): string {
+  const other = ev.source.startsWith("Customer") ? ev.target : ev.source;
+  const name = other.replace(/Agent$/i, "");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 function toCard(ev: ProtocolEvent): NarrativeCard {
   const d = ev.detail ?? {};
   switch (ev.label) {
@@ -414,29 +384,25 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         what: "Custom checks: empty input, length, profanity, malformed text, payment credential keywords." };
     case "input_validation_pass":
       return { icon: <ShieldCheck size={14} />, protocol: "guardrails", status: "ok",
-        headline: "Custom input checks passed ✓", what: "Every custom input check ran and passed." };
+        headline: "Security checks passed", what: "Your message passed the input checks." };
     case "input_blocked":
       return { icon: <ShieldX size={14} />, protocol: "guardrails", status: "fail",
         headline: "Blocked by custom input check",
         what: `Check that failed: ${String(d.check ?? "input")}.` };
-    case "nemo_pass":
+    case "scope_pass":
       return { icon: <ShieldCheck size={14} />, protocol: "guardrails", status: "ok",
-        headline: "NeMo Guardrails · Commerce Scope: PASS",
-        what: "Policy evaluated by NeMo Guardrails. Classification engine: Gemini.",
+        headline: "Shopping request: PASS",
+        what: "Your request is about shopping.",
         highlight: `Category: ${String(d.category ?? "commerce_allowed")}` };
-    case "nemo_blocked":
+    case "scope_blocked":
       return { icon: <ShieldX size={14} />, protocol: "guardrails", status: "fail",
-        headline: "NeMo Guardrails · Commerce Scope: BLOCK",
-        what: "Policy evaluated by NeMo Guardrails. Classification engine: Gemini.",
+        headline: "Shopping request: BLOCK",
+        what: "Not a shopping request, or it asks for card details.",
         highlight: `Category: ${String(d.category ?? "")}` };
-    case "nemo_unavailable":
-      return { icon: <AlertTriangle size={14} />, protocol: "guardrails", status: "warn",
-        headline: "NeMo Guardrails not executed",
-        what: "NeMo was unavailable, so only the custom input checks ran." };
-    case "nemo_error":
-      return { icon: <AlertTriangle size={14} />, protocol: "guardrails", status: "warn",
-        headline: "NeMo Guardrails error",
-        what: "NeMo raised an error, so the semantic check did not complete." };
+    case "scope_error":
+      return { icon: <ShieldX size={14} />, protocol: "guardrails", status: "fail",
+        headline: "Shopping check did not finish",
+        what: "Request stopped for safety. Nothing was searched or charged." };
     case "intent_extraction":
       return { icon: <Bot size={14} />, protocol: "guardrails", status: "progress",
         headline: "Gemini extracting intent",
@@ -457,8 +423,8 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         d.max_price && `Max: $${d.max_price}`,
       ].filter(Boolean);
       return { icon: <CheckCircle2 size={14} />, protocol: "guardrails", status: "ok",
-        headline: "Intent validated",
-        what: "Guardrails AI confirmed the structured intent. Merchant agents will be queried.",
+        headline: "Request understood",
+        what: "Brand, type, size and price were identified.",
         highlight: parts.length ? parts.join("  ·  ") : undefined };
     }
     case "merchant_routing": {
@@ -486,17 +452,17 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
       const count = Number(d.product_count ?? 0);
       const merchant = String(d.merchant ?? ev.target.replace(/Agent$/i, ""));
       return { icon: <Package size={14} />, protocol: "UCP", status: "ok",
-        headline: `UCP Catalog returned ${count} products`,
-        what: `${merchant.charAt(0).toUpperCase() + merchant.slice(1)}'s UCP Catalog responded with ${count} matching product${count !== 1 ? "s" : ""}.` };
+        headline: `${merchantName(ev)} found ${count} products`,
+        what: "Matching products from the merchant's catalog." };
     }
     case "task_result": {
       const count = Number(d.product_count ?? 0);
       const merchant = String(d.merchant ?? ev.source.replace(/Agent$/i, ""));
       return { icon: <Package size={14} />, protocol: "A2A", status: count > 0 ? "ok" : "warn",
-        headline: `A2A ← ${merchant.charAt(0).toUpperCase() + merchant.slice(1)}: ${count} products`,
+        headline: "Products checked",
         what: count > 0
-          ? `A2A task result received. ${merchant.charAt(0).toUpperCase() + merchant.slice(1)} agent returned ${count} products.`
-          : `${merchant} agent found no matching products.` };
+          ? "Each product was checked before use."
+          : `${merchantName(ev)} found no matching products.` };
     }
     case "intent_mandate_signed":
       return { icon: <Lock size={14} />, protocol: "AP2", status: "ok",
@@ -555,8 +521,8 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     }
     case "order_created":
       return { icon: <Package size={14} />, protocol: "REST", status: "ok",
-        headline: "Order recorded",
-        what: "The merchant's order service created the order.",
+        headline: "Order created",
+        what: `${merchantName(ev)} created your order.`,
         highlight: d.order_id ? `Order ${String(d.order_id)}` : undefined };
     case "POST /shared_payment/issued_tokens": {
       const c = d.constraints as Record<string, unknown> | undefined;
@@ -579,18 +545,18 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     // ── Demo 2: agent trust ──
     case "a2a_connect":
       return { icon: <Zap size={14} />, protocol: "A2A", status: "ok",
-        headline: `Customer Agent → ${ev.target.replace(/Agent$/i, "")} Agent`,
-        what: "A2A-style connection: agent card discovered, capabilities exchanged. In-process in this POC.",
+        headline: `Customer agent connected to ${merchantName(ev)}`,
+        what: `${merchantName(ev)} shared what its agent can do.`,
         highlight: Array.isArray(d.skills) ? `Skills: ${(d.skills as string[]).join(", ")}` : undefined };
     case "agent_identity_received":
       return { icon: <User size={14} />, protocol: "TRUST", status: "progress",
-        headline: "Customer agent presents its credential",
-        what: "Identity, platform and the customer's delegation, signed by Talkshop.",
+        headline: "Customer agent sent its credential",
+        what: "Shows who the agent is and what you allowed it to do.",
         highlight: `${String(d.agent_id ?? "")} · ${String(d.talkshop_account ?? "")}` };
     case "agent_identity_verified":
       return { icon: <ShieldCheck size={14} />, protocol: "TRUST", status: "ok",
-        headline: "✓ Customer agent identity verified",
-        what: "Registered agent, expected platform, valid signature, not expired. Deterministic checks — no LLM." };
+        headline: `${merchantName(ev)} verified the Customer agent`,
+        what: "The agent is registered and its signature is valid." };
     case "agent_identity_failed":
       return { icon: <ShieldX size={14} />, protocol: "TRUST", status: "fail",
         headline: "Trust validation failed",
@@ -598,22 +564,27 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         highlight: d.failed_check ? `Failed: ${String(d.failed_check)}` : undefined };
     case "delegation_verified":
       return { icon: <ShieldCheck size={14} />, protocol: "TRUST", status: "ok",
-        headline: "✓ Customer delegation verified",
-        what: "The customer granted this agent permission to shop. The merchant sees a pseudonymous customer ref only.",
+        headline: `${merchantName(ev)} confirmed you gave permission`,
+        what: "The agent may shop for you. The merchant only sees a customer code.",
         highlight: d.customer_ref ? String(d.customer_ref) : undefined };
     case "scope_verified":
       return { icon: <ShieldCheck size={14} />, protocol: "TRUST", status: "ok",
-        headline: "✓ Scope verified",
-        what: "Requested action and merchant are inside the delegated scope.",
+        headline: `${merchantName(ev)} confirmed the action is allowed`,
+        what: "Search, checkout and payment are within your permission.",
         highlight: Array.isArray(d.granted_scopes) ? (d.granted_scopes as string[]).join(" · ") : undefined };
     case "trusted_agent_session_created":
       return { icon: <Lock size={14} />, protocol: "TRUST", status: "ok",
-        headline: "Trusted session established",
+        headline: `${merchantName(ev)} opened a trusted session`,
         what: d.merchant_relationship === "merchant_guest"
-          ? "Known to Talkshop, guest to the merchant. Checkout and payment are now allowed."
-          : "Checkout and payment are now allowed.",
+          ? `You are a guest at ${merchantName(ev)}.`
+          : `You are a ${merchantName(ev)} member.`,
         highlight: d.trusted_session_id ? String(d.trusted_session_id) : undefined };
     case "trusted_session_verified":
+      if (d.action === "checkout:create") {
+        return { icon: <User size={14} />, protocol: "A2A", status: "ok",
+          headline: "You selected a product",
+          what: `The Customer agent sent the checkout request to ${merchantName(ev)}.` };
+      }
       return { icon: <ShieldCheck size={14} />, protocol: "TRUST", status: "ok",
         headline: `Trusted session re-checked for ${String(d.action ?? "")}`,
         what: d.credential_signature_valid === true
@@ -636,8 +607,10 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         : credential === "points" ? "paid entirely with loyalty points — no card needed"
         : "awaiting secure payment entry";
       return { icon: <ShieldCheck size={14} />, protocol: "SECURITY", status: blocked ? "fail" : "ok",
-        headline: blocked ? "Agent spending guardrail: blocked" : "Agent spending guardrail: passed",
-        what: `Checks the amount actually due (after any loyalty redemption) against the agent's delegated spending limit, and reports the payment credential's protected status: ${credLabel}.`,
+        headline: blocked ? "Spending limit: blocked" : "Spending limit: passed",
+        what: blocked
+          ? "Amount is over the limit. Nothing charged."
+          : "Amount is within the limit.",
         highlight: `${amount} of ${limit} limit` };
     }
     case "agent_spending_limit_exceeded":
@@ -646,17 +619,27 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         what: "Checked before any AP2/ACP/DPAT work ran, so nothing was signed or charged.",
         highlight: `$${Number(d.checkout_amount ?? 0).toFixed(2)} over the $${Number(d.agent_spending_limit ?? 0).toFixed(2)} limit` };
     // ── Demo 2: checkout and consent ──
+    // Loyalty is a local lookup of the customer's points at Nike, not a network message.
+    case "loyalty_balance":
+      return { icon: <Package size={14} />, protocol: "internal", status: "ok",
+        headline: `Your ${merchantName(ev)} points: ${Number(d.balance ?? 0).toLocaleString()}`,
+        what: "You can choose whether to use them." };
+    case "loyalty_redemption_applied":
+      return { icon: <Package size={14} />, protocol: "internal", status: "ok",
+        headline: "Points applied",
+        what: "Points lower the amount charged to your card.",
+        highlight: `${Number(d.points_redeemed ?? 0).toLocaleString()} points · −$${Number(d.value_redeemed ?? 0).toFixed(2)}` };
     case "checkout_created": {
       const t = d.totals as Record<string, number> | undefined;
-      return { icon: <Package size={14} />, protocol: "UCP", status: "ok",
-        headline: `Checkout created · ${t ? `$${t.total.toFixed(2)}` : ""}`,
-        what: "UCP-style checkout from the merchant: authoritative price, tax, shipping and delivery.",
+      return { icon: <Package size={14} />, protocol: "A2A", status: "ok",
+        headline: `${merchantName(ev)} created your checkout: ${t ? `$${t.total.toFixed(2)}` : ""}`,
+        what: "Price, tax, shipping and delivery date are fixed.",
         highlight: d.delivery_date ? `Delivery ${String(d.delivery_date)}` : undefined };
     }
     case "ap2_checkout_bound":
       return { icon: <Lock size={14} />, protocol: "AP2", status: "ok",
-        headline: "AP2 checkout bound",
-        what: "Cart evidence binds product, quantity, merchant and total to the checkout hash. Not a spending authorization." };
+        headline: "Cart saved for approval",
+        what: "This is the exact cart you will approve." };
     case "order_proposal":
       return { icon: <Pause size={14} />, protocol: "HUMAN", status: "ok",
         headline: "Order proposal shown",
@@ -664,8 +647,8 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         highlight: d.payment_method ? String(d.payment_method) : undefined };
     case "customer_consent_received":
       return { icon: <User size={14} />, protocol: "HUMAN", status: "ok",
-        headline: d.consent_mode === "auto_countdown" ? "Auto-authorized after the 10 s countdown" : "Payment authorized",
-        what: "The customer authorized this exact checkout, total and payment method.",
+        headline: d.consent_mode === "auto_countdown" ? "Approved automatically" : "You approved the order",
+        what: "Exact total and card confirmed.",
         highlight: typeof d.total === "number" ? `$${(d.total as number).toFixed(2)} · ${String(d.payment_method ?? "")}` : undefined };
     case "customer_consent_rejected":
       return { icon: <ShieldX size={14} />, protocol: "HUMAN", status: "fail",
@@ -673,8 +656,8 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         what: "Nothing was authorized.", highlight: Array.isArray(d.mismatched) ? `Mismatch: ${(d.mismatched as string[]).join(", ")}` : undefined };
     case "ap2_payment_authorization":
       return { icon: <Lock size={14} />, protocol: "AP2", status: "ok",
-        headline: "AP2 authorization evidence created",
-        what: "Created only after the customer authorizes payment. Proves the customer approved this checkout and amount." };
+        headline: "Approval saved",
+        what: "A signed record of your approval." };
     case "ap2_evidence_verified":
       return { icon: <CheckCircle2 size={14} />, protocol: "AP2", status: "ok",
         headline: "AP2 evidence verified by the merchant", what: "Cart and payment evidence match the checkout and the token." };
@@ -683,12 +666,12 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
         headline: "AP2 evidence rejected", what: "The evidence did not match this checkout." };
     case "acp_token_issued":
       return { icon: <CreditCard size={14} />, protocol: "ACP", status: "ok",
-        headline: "Scoped payment credential issued",
-        what: "ACP-style single-use token bound to merchant, checkout, amount, currency and expiry. The agent never sees the card.",
+        headline: "One-time payment permission created",
+        what: `For ${merchantName(ev)}, this amount only. Expires in 15 minutes. Your card details are never shared.`,
         highlight: typeof d.max_amount_cents === "number" ? `Max $${((d.max_amount_cents as number) / 100).toFixed(2)} · ${String(d.currency ?? "")}` : undefined };
     case "acp_token_verified":
       return { icon: <CheckCircle2 size={14} />, protocol: "ACP", status: "ok",
-        headline: "✓ Merchant + amount verified", what: "Signature, merchant, checkout binding, amount, currency and expiry checked." };
+        headline: `${merchantName(ev)} checked the payment`, what: "The permission and your approval match this order." };
     case "acp_token_rejected":
       return { icon: <ShieldX size={14} />, protocol: "ACP", status: "fail",
         headline: "Payment token rejected", what: "The charge did not match the token's scope.",
@@ -726,15 +709,15 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     }
     case "psp_result":
       return { icon: <CreditCard size={14} />, protocol: "PAYMENT", status: d.status === "success" ? "ok" : "fail",
-        headline: d.status === "success" ? "Payment authorized" : "Payment declined",
-        what: "Mock card processor.", highlight: d.payment_method ? String(d.payment_method) : undefined };
+        headline: d.status === "success" ? "Payment processed" : "Payment declined",
+        what: "Card charged (simulated). All checks passed first.", highlight: d.payment_method ? String(d.payment_method) : undefined };
     case "payment_rejected":
       return { icon: <ShieldX size={14} />, protocol: "PAYMENT", status: "fail",
         headline: "Payment stopped", what: "No charge and no order.", highlight: `Reason: ${String(d.reason ?? "")}` };
     case "order_confirmed":
       return { icon: <CheckCircle2 size={14} />, protocol: "A2A", status: "ok",
-        headline: `${ev.source.replace(/Agent$/i, "")} Agent → Customer Agent: ORDER_CONFIRMED`,
-        what: "The merchant returns the authoritative order.", highlight: d.order_id ? `Order ${String(d.order_id)}` : undefined };
+        headline: `${merchantName(ev)} confirmed your order`,
+        what: "Your order is confirmed.", highlight: d.order_id ? `Order ${String(d.order_id)}` : undefined };
     default:
       return { icon: <Activity size={14} />, protocol: ev.protocol || "internal", status: "ok",
         headline: ev.label.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
@@ -812,9 +795,9 @@ function NarrativeFeed({ events }: { events: ProtocolEvent[] }) {
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-      {events.map((ev, i) => {
+      {visibleLiveEvents(events).map((ev, i, shown) => {
         const card = toCard(ev);
-        const settled = i < events.length - 1;
+        const settled = i < shown.length - 1;
         return <LiveRow key={i} ev={ev} card={settled && card.status === "progress" ? { ...card, status: "ok" } : card} index={i} />;
       })}
     </div>
@@ -897,179 +880,99 @@ function buildStory(all: ProtocolEvent[]): StoryRow[] {
   const last = (...labels: string[]) => { const f = find(...labels); return f.length ? f[f.length - 1] : undefined; };
 
   const routing = last("merchant_routing");
-  const merchants = ((routing?.detail.merchants as string[] | undefined) ?? []).map(cap);
-  const merchant = merchants[0] ?? "Merchant";
+  const merchant = cap(((routing?.detail.merchants as string[] | undefined) ?? [])[0] ?? "Merchant");
 
   const rows: StoryRow[] = [];
   const add = (key: string, title: string, status: RowStatus, lines: string[], events: ProtocolEvent[]) =>
     rows.push({ key, title, status, lines, events });
 
-  // INPUT
-  const inputFail = last("input_blocked", "nemo_blocked");
-  const inputOk = last("input_validation_pass", "nemo_pass");
-  add("input", "Input", inputFail ? "fail" : inputOk ? "ok" : "upcoming",
-    inputFail ? ["Blocked by a security check"] : inputOk ? ["Security checks passed"] : [],
-    find("input_check", "input_validation_pass", "input_blocked", "nemo_pass", "nemo_blocked", "nemo_error"));
+  // 1. Your request
+  const requestFail = last("input_blocked", "scope_blocked", "scope_error");
+  const requestOk = last("input_validation_pass", "scope_pass");
+  add("request", "Your request", requestFail ? "fail" : requestOk ? "ok" : "upcoming",
+    requestFail ? ["Stopped by a safety check"] : requestOk ? ["Safe and about shopping"] : [],
+    find("input_check", "input_validation_pass", "input_blocked", "scope_pass", "scope_blocked", "scope_error"));
 
-  // INTENT
+  // 2. Understood
   const schema = last("schema_valid");
   const intent = (schema?.detail.intent ?? {}) as Record<string, unknown>;
-  const intentText = [intent.brand, String(intent.category ?? "").replace(/_/g, " "),
-    intent.max_price ? `under $${intent.max_price}` : null, intent.size ? `size ${intent.size}` : null]
-    .filter(Boolean).join(" · ");
-  const intentEv = find("intent_extraction", "schema_valid");
-  add("intent", "Intent", intentEv.length ? "ok" : "upcoming",
-    intentEv.length ? [intentText || "Shopping intent extracted", "What you want — not permission to spend"] : [], intentEv);
+  const understood = find("intent_extraction", "schema_valid");
+  const described = [intent.brand, String(intent.category ?? "").replace(/_/g, " ")].filter(Boolean).join(" ");
+  add("understood", "Understood", understood.length ? "ok" : "upcoming",
+    understood.length ? [described || "Product request identified"] : [], understood);
 
-  // ROUTING
-  add("routing", "Routing", routing ? "ok" : "upcoming",
-    routing ? [`${merchants.join(", ")} selected`, String(routing.detail.reason ?? "")].filter(Boolean) : [], find("merchant_routing"));
+  // 3. Merchant
+  add("merchant", "Merchant", routing ? "ok" : "upcoming",
+    routing ? [`${merchant} selected`] : [], find("merchant_routing"));
 
-  // A2A connect
-  const connect = find("a2a_connect");
-  add("a2a-out", "A2A", connect.length ? "ok" : "upcoming",
-    connect.length ? [`Customer Agent → ${merchant} Agent`, "A2A-style, in-process"] : [], connect);
-
-  // AGENT TRUST
-  const trustEvents = find("agent_identity_received", "agent_identity_verified", "agent_identity_failed",
-    "delegation_verified", "scope_verified", "trusted_agent_session_created");
-  const trustFail = last("agent_identity_failed");
+  // 4. Trust
   const session = last("trusted_agent_session_created");
-  const trustLines = trustFail
-    ? [`✗ ${String(trustFail.detail.reason ?? "Trust validation failed")}`, "No catalog, checkout or payment"]
-    : session
-      ? ["✓ Identity verified", "✓ Delegation verified", "✓ Scope verified",
-         `Trusted session · ${session.detail.merchant_relationship === "merchant_guest" ? `guest with ${merchant}` : `${merchant} member`}`]
-      : [];
-  add("trust", "Agent trust", trustFail ? "fail" : session ? "ok" : "upcoming", trustLines, trustEvents);
+  const trustFail = last("agent_identity_failed");
+  add("trust", "Trust", trustFail ? "fail" : session ? "ok" : "upcoming",
+    trustFail ? [`${merchant} could not verify your agent`]
+      : session ? [`${merchant} verified your agent and your permission`,
+          session.detail.merchant_relationship === "merchant_guest" ? "You are a guest" : "You are a member"]
+      : [],
+    find("a2a_connect", "agent_identity_received", "agent_identity_verified", "agent_identity_failed",
+         "delegation_verified", "scope_verified", "trusted_agent_session_created"));
 
-  // UCP catalog
+  // 5. Products
   const catalog = last("catalog_results");
-  add("ucp", "UCP", catalog ? "ok" : "upcoming",
-    catalog ? [`Catalog queried · ${catalog.detail.product_count} variants`] : [], find("catalog_search", "catalog_results", "boundary_check", "task_result"));
+  add("products", "Products", catalog ? "ok" : "upcoming",
+    catalog ? [`${merchant} found ${catalog.detail.product_count} products`, "Each product checked before use"] : [],
+    find("catalog_search", "catalog_results", "boundary_check", "task_result"));
 
-  // HUMAN: product selected
+  // 6. Checkout
   const checkout = last("checkout_created");
-  add("select", "Human", checkout ? "ok" : "upcoming", checkout ? ["✓ Product selected"] : [], []);
-
-  // CHECKOUT
   const totals = (checkout?.detail.totals ?? {}) as Record<string, number>;
+  const spend = last("agent_spending_check", "agent_spending_limit_exceeded");
+  const pointsEv = last("loyalty_redemption_applied", "loyalty_choice_applied");
+  const pts = Number(pointsEv?.detail.points_redeemed ?? 0);
+  const overLimit = spend?.label === "agent_spending_limit_exceeded" || spend?.detail.status === "blocked";
   add("checkout", "Checkout", checkout ? "ok" : "upcoming",
-    checkout ? [`Total ${money(totals.total)}`, checkout.detail.delivery_date ? `Delivery ${checkout.detail.delivery_display ?? checkout.detail.delivery_date}` : ""].filter(Boolean) : [],
-    find("trusted_session_verified", "trusted_session_rejected", "checkout_created", "order_proposal"));
+    checkout ? [
+      `${merchant} created your checkout: ${money(totals.total)}`,
+      pts > 0 ? `${pts.toLocaleString()} points applied` : "",
+      spend ? (overLimit ? "Over the spending limit" : "Within the spending limit") : "",
+    ].filter(Boolean) : [],
+    find("trusted_session_verified", "loyalty_balance", "loyalty_redemption_applied", "loyalty_choice_applied",
+         "checkout_created", "agent_spending_check", "agent_spending_limit_exceeded"));
 
-  // LOYALTY — only appears once a member merchant's balance has been read
-  const loyaltyBalanceEv = last("loyalty_balance");
-  if (loyaltyBalanceEv) {
-    const redeemedEv = last("loyalty_redemption_applied", "loyalty_choice_applied");
-    const settledEv = last("loyalty_settlement");
-    const pts = Number((redeemedEv ?? settledEv)?.detail.points_redeemed ?? 0);
-    const value = Number((redeemedEv ?? settledEv)?.detail.value_redeemed ?? 0);
-    add("loyalty", "Loyalty", pts > 0 ? "ok" : "upcoming",
-      pts > 0
-        ? [`✓ ${pts.toLocaleString()} points applied (−${money(value)})`,
-           settledEv ? "Order fully covered by points — no card charge" : ""].filter(Boolean)
-        : [`${Number(loyaltyBalanceEv.detail.balance ?? 0).toLocaleString()} pts available · none applied yet`],
-      find("loyalty_balance", "loyalty_redemption_applied", "loyalty_choice_applied", "loyalty_settlement"));
-  }
+  // 7. Approval
+  const approved = last("customer_consent_received");
+  const approvalFail = last("customer_consent_rejected");
+  const approvalRecord = last("ap2_payment_authorization");
+  add("approval", "Your approval", approvalFail ? "fail" : approved ? "ok" : checkout ? "paused" : "upcoming",
+    approvalFail ? ["Approval did not match the checkout"]
+      : approved ? ["You approved the order", approvalRecord ? "Approval saved" : ""].filter(Boolean)
+      : checkout ? ["Waiting for you to approve"] : [],
+    find("ap2_checkout_bound", "customer_consent_received", "customer_consent_rejected", "ap2_payment_authorization"));
 
-  // AP2
-  const bound = last("ap2_checkout_bound");
-  const evidence = last("ap2_payment_authorization");
-  const ap2Fail = last("ap2_evidence_rejected");
-  add("ap2", "AP2", ap2Fail ? "fail" : bound ? "ok" : "upcoming",
-    [bound ? "✓ Checkout bound" : "", evidence ? "✓ Consent recorded as authorization evidence" : "",
-     ap2Fail ? "✗ Evidence did not match" : ""].filter(Boolean),
-    find("ap2_checkout_bound", "ap2_payment_authorization", "ap2_evidence_verified", "ap2_evidence_rejected"));
-
-  // SECURITY — protected payment credential + agent spending guardrail.
-  // Only appears once a checkout proposal exists (never before a product is
-  // selected), and updates live as loyalty changes, approval happens and
-  // payment resolves.
-  const spendCheck = last("agent_spending_check");
-  const spendBlocked = last("agent_spending_limit_exceeded");
-  if (spendCheck || spendBlocked) {
-    const amt = Number((spendBlocked ?? spendCheck)!.detail.checkout_amount ?? 0);
-    const limit = Number((spendBlocked ?? spendCheck)!.detail.agent_spending_limit ?? 500);
-    const blocked = !!spendBlocked;
-    const credential = String(spendCheck?.detail.payment_credential ?? "pending");
-    const credentialLine = credential === "tokenized"
-      ? `✓ Payment credential protected — tokenized${spendCheck?.detail.payment_method_display ? ` (${spendCheck.detail.payment_method_display})` : ""}`
-      : credential === "points" ? "✓ Paid entirely with loyalty points — no card needed"
-      : "Awaiting secure payment entry";
-    const sigEv = last("trusted_session_verified", "trusted_session_rejected");
-    const sigValid = sigEv?.detail.credential_signature_valid as boolean | null | undefined;
-    const signatureLine = sigValid === true ? "✓ Cryptographic authorization verified"
-      : sigValid === false ? "✗ Cryptographic authorization failed"
-      : "Cryptographic authorization pending";
-    const approvalEv = last("customer_consent_received", "reconsent_received");
-    const approvalFailEv = last("customer_consent_rejected");
-    const paymentOkEv = last("psp_result");
-    const paymentFailEv = last("payment_rejected");
-    const orderEv = last("order_created");
-    const approvalLine = approvalFailEv ? "✗ Approval did not match the checkout"
-      : approvalEv ? "✓ User approved"
-      : "⏳ User approval required";
-    const authLine = blocked ? "✗ Payment blocked — spending limit exceeded"
-      : paymentFailEv ? "✗ Payment blocked — nothing charged"
-      : (orderEv || paymentOkEv?.detail.status === "success") ? "✓ Payment authorized"
-      : approvalEv ? "⏳ Payment authorizing…"
-      : "⏳ Payment authorization pending";
-    add("security", "Security", blocked || approvalFailEv || paymentFailEv || sigValid === false ? "fail" : "ok",
-      [
-        `Checkout amount ${money(amt)} · Agent spending limit ${money(limit)}`,
-        credentialLine,
-        blocked ? "✗ Spending limit: blocked" : "✓ Spending limit: passed",
-        signatureLine,
-        approvalLine,
-        authLine,
-        "Card number & CVC never leave the browser — not seen by the agent, the LLM, or stored on this app's servers",
-      ],
-      find("agent_spending_check", "agent_spending_limit_exceeded", "trusted_session_verified", "trusted_session_rejected",
-           "customer_consent_received", "customer_consent_rejected", "psp_result", "payment_rejected", "order_created"));
-  }
-
-  // HUMAN: GO AHEAD (and re-consent)
-  const consent = last("customer_consent_received", "reconsent_received");
-  const consentFail = last("customer_consent_rejected");
-  const paused = last("reconsent_required");
-  const cancelled = last("checkout_cancelled");
-  const goStatus: RowStatus = consentFail || cancelled ? "fail"
-    : paused && !last("reconsent_received") ? "paused" : consent ? "ok" : "upcoming";
-  add("goahead", "Human", goStatus,
-    [consent ? (consent.detail.consent_mode === "auto_countdown" ? "✓ Auto-authorized (10 s countdown)" : "✓ Payment authorized") : "", last("condition_changed") ? `Delivery changed → ${last("condition_changed")!.detail.new_display ?? last("condition_changed")!.detail.new}` : "",
-     last("reconsent_received") ? "✓ Re-consented to the new terms" : paused ? "Waiting for YES / NO" : "",
-     cancelled ? "Cancelled — nothing charged" : "", consentFail ? "✗ Approval did not match the checkout" : ""].filter(Boolean),
-    find("customer_consent_received", "customer_consent_rejected", "condition_changed", "reconsent_required",
-         "reconsent_received", "delegated_token_invalidated", "checkout_cancelled"));
-
-  // ACP
-  const issued = last("acp_token_issued");
-  const acpOk = last("acp_token_verified");
-  const acpFail = last("acp_token_rejected");
-  add("acp", "ACP", acpFail ? "fail" : issued ? "ok" : "upcoming",
-    [issued ? "✓ Scoped payment credential issued" : "", acpOk ? "✓ Merchant + amount verified" : "",
-     acpFail ? "✗ Charge outside the token's scope" : ""].filter(Boolean),
-    find("acp_token_issued", "acp_token_verified", "acp_token_rejected", "demo_tampered_charge"));
-
-  // PAYMENT
-  const checks = last("payment_checks");
+  // 8. Payment
+  const token = last("acp_token_issued");
   const psp = last("psp_result");
-  const payFail = last("payment_rejected");
-  add("payment", "Payment", payFail ? "fail" : psp?.detail.status === "success" ? "ok" : "upcoming",
-    [checks ? `✓ ${checks.detail.passed}/${checks.detail.total} deterministic checks` : "",
-     psp?.detail.status === "success" ? "✓ Authorized" : "",
-     payFail ? `✗ Rejected: ${String(payFail.detail.reason)} · no charge, no order` : ""].filter(Boolean),
-    find("internal_dpat_issued", "payment_checks", "psp_result", "payment_rejected"));
+  const pointsOnly = last("loyalty_settlement");
+  const paymentFail = last("payment_rejected", "acp_token_rejected", "ap2_evidence_rejected");
+  const paid = psp?.detail.status === "success";
+  const paymentLines = paymentFail ? ["Payment stopped", "Nothing charged"]
+    : pointsOnly ? ["Paid with points, no card charge"]
+    : [
+        token ? "One-time payment permission created" : "",
+        last("acp_token_verified") ? `${merchant} checked the permission and your approval` : "",
+        paid ? "Card charged" : "",
+      ].filter(Boolean);
+  add("payment", "Payment", paymentFail ? "fail" : paid || pointsOnly ? "ok" : approved ? "paused" : "upcoming",
+    paymentLines,
+    find("acp_token_issued", "acp_token_verified", "acp_token_rejected", "ap2_evidence_verified", "ap2_evidence_rejected",
+         "payment_checks", "psp_result", "payment_rejected", "loyalty_settlement"));
 
-  // MERCHANT order
+  // 9. Order
   const order = last("order_created");
-  add("order", merchant, order ? "ok" : "upcoming", order ? [`✓ Order created · ${order.detail.order_id}`] : [], find("order_created"));
-
-  // A2A back
   const confirmed = last("order_confirmed");
-  add("a2a-in", "A2A", confirmed ? "ok" : "upcoming",
-    confirmed ? [`${merchant} Agent → Customer Agent`, "ORDER_CONFIRMED"] : [], find("order_confirmed"));
+  add("order", "Order", order ? "ok" : "upcoming",
+    confirmed ? [`${merchant} confirmed your order`, `Order ${String(order?.detail.order_id ?? "")}`]
+      : order ? [`${merchant} created your order`] : [],
+    find("order_created", "order_confirmed"));
 
   return rows;
 }
@@ -1229,6 +1132,42 @@ function StageDetail({ stage, events }: { stage: string; events: ProtocolEvent[]
       </div>
     </div>
   );
+}
+
+// Live view only: demo-only, progress and redundant cards are hidden for the client demo.
+// Story and Flow still read the full event list. Failure cards are never hidden here.
+const LIVE_HIDDEN_LABELS = new Set<string>([
+  // demo-only scenarios (delivery change, tampered charge, bad credential)
+  "agent_identity_failed", "demo_tampered_charge", "acp_token_rejected", "condition_changed",
+  "reconsent_required", "reconsent_received", "delegated_token_invalidated", "checkout_cancelled",
+  // progress cards that are superseded by their result card
+  "input_check", "intent_extraction", "message/send", "catalog_search",
+  // redundant or internal: the single "Products checked" card replaces the boundary check
+  "agent_identity_received", "internal_dpat_issued", "boundary_check",
+  // merged into the approval and payment cards, so one AP2 card and no separate 12/12 card
+  "payment_checks", "ap2_evidence_verified",
+  // the checkout card and the approval card already say the checkout is waiting for you
+  "order_proposal",
+]);
+
+// Repeated on every points-slider move: show only the latest state.
+const LIVE_LATEST_ONLY_LABELS = new Set<string>(["loyalty_choice_applied", "agent_spending_check", "ap2_checkout_bound"]);
+
+function visibleLiveEvents(events: ProtocolEvent[]): ProtocolEvent[] {
+  const lastIndex = new Map<string, number>();
+  events.forEach((ev, i) => {
+    if (LIVE_LATEST_ONLY_LABELS.has(ev.label)) lastIndex.set(ev.label, i);
+  });
+  // The redemption card is stale once the customer has changed the points choice.
+  const pointsChanged = events.some((ev) => ev.label === "loyalty_choice_applied");
+  return events.filter((ev, i) => {
+    if (LIVE_HIDDEN_LABELS.has(ev.label)) return false;
+    if (ev.label === "loyalty_redemption_applied" && pointsChanged) return false;
+    // the merchant's payment re-check is folded into "Nike verified the token and your approval"
+    if (ev.label === "trusted_session_verified" && ev.detail?.action === "payment:execute") return false;
+    if (LIVE_LATEST_ONLY_LABELS.has(ev.label)) return lastIndex.get(ev.label) === i;
+    return true;
+  });
 }
 
 function LiveRow({ ev, card, index }: { ev: ProtocolEvent; card: NarrativeCard; index: number }) {

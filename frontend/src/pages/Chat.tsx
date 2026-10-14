@@ -15,6 +15,7 @@ import ProtocolTracePanel, { type ProtocolEvent } from "../components/ProtocolTr
 import ThemeToggle from "../components/ThemeToggle";
 import InlineCheckout, { type AutoState, type InlineCheckoutData, type CheckoutData as InlineCheckoutDataShape, type PaymentMethod, type CardInput, type ProcessingStep, type ConfirmedOrder } from "../components/InlineCheckout";
 import InlineOrderTracker from "../components/InlineOrderTracker";
+import AutoStepBar from "../components/AutoStepBar";
 import { useAuth } from "../auth/AuthContext";
 import { getProductVisual } from "../utils/productVisual";
 import { tokenizeCard } from "../utils/mockTokenizer";
@@ -164,7 +165,14 @@ function isAddToCartPhrase(text: string): boolean {
 }
 
 // Inline cart card — shown in chat after add-to-cart or when user asks to view cart.
-const AUTO_SECONDS = 3;
+const AUTO_SECONDS = 5;
+
+// The Live / Story / Flow trace is kept per chat in this tab, so a refresh or a
+// switch back to the chat shows the same steps again.
+const traceKey = (id: string) => `talkshop_trace_${id}`;
+function readTrace(id: string): ProtocolEvent[] {
+  try { return JSON.parse(sessionStorage.getItem(traceKey(id)) ?? "[]") as ProtocolEvent[]; } catch { return []; }
+}
 const SESSION_CART_TIMER_ID = "session-cart";
 
 interface AutoTimer extends AutoState {
@@ -264,8 +272,14 @@ function InlineCartCard({
           View Cart
         </button>
       </div>
-      {/* Auto-advance countdown hidden: the flow continues silently after a
-          short delay (no visible timer). */}
+      {auto && onPauseToggle && (
+        <AutoStepBar
+          label="Checking out"
+          secondsLeft={auto.secondsLeft}
+          paused={auto.paused}
+          onPauseToggle={onPauseToggle}
+        />
+      )}
     </motion.div>
   );
 }
@@ -450,6 +464,9 @@ export default function Chat() {
   // callbacks (avoids stale-closure bugs); currentSessionId mirrors it so
   // the sidebar can reactively highlight the active thread.
   const sessionIdRef = useRef<string>(crypto.randomUUID());
+  useEffect(() => {
+    try { sessionStorage.setItem(traceKey(sessionIdRef.current), JSON.stringify(protocolEvents.slice(-400))); } catch { /* noop */ }
+  }, [protocolEvents]);
   const [currentSessionId, setCurrentSessionId] = useState<string>(sessionIdRef.current);
   const closeStream = useRef<(() => void) | null>(null);
   const activeTurnId = useRef<string | null>(null);
@@ -674,6 +691,7 @@ export default function Chat() {
   // longer exists (deleted, or belonged to a session that never got saved).
   const loadSession = useCallback(async (id: string) => {
     switchToSession(id);
+    setProtocolEvents(readTrace(id));
     try {
       const messages = await getSessionMessages(id);
       const rawTurns = messagesToTurns(messages);
