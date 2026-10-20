@@ -24,11 +24,12 @@ from backend.models.product import NormalizedProduct
 UCP_CHECKOUT_SESSIONS_URL = "http://localhost:8000/ucp/checkout-sessions"
 
 
-async def _lock_totals_via_ucp(lines: list[dict]) -> Optional[dict]:
+async def _lock_totals_via_ucp(lines: list[dict], merchant_id: str, member_token: Optional[str]) -> Optional[dict]:
     """Real HTTP POST to the UCP checkout-session endpoint. Returns the
     {type: amount} totals map, or None if the merchant's checkout service
-    didn't respond (connection error, timeout, bad response)."""
-    payload = {"items": lines, "currency": "USD"}
+    didn't respond (connection error, timeout, bad response). The member token,
+    when the customer is linked, goes with the request; the merchant checks it."""
+    payload = {"items": lines, "currency": "USD", "merchant_id": merchant_id, "member_token": member_token}
     try:
         async with httpx.AsyncClient(timeout=6.0) as client:
             resp = await client.post(UCP_CHECKOUT_SESSIONS_URL, json=payload)
@@ -84,11 +85,13 @@ async def build_cart_checkout(
         delivery_days_per_line.append(inv.get("delivery_days") or product.delivery_days or 5)
 
     # Lock totals — real UCP checkout-session call, not an in-process calc.
+    from backend.merchants import account_link
+    merchant_id = next(iter(merchant_ids))
     totals = await _lock_totals_via_ucp([
         {"product_id": line.product_id, "title": line.product_title, "unit_price": line.unit_price,
          "quantity": line.quantity, "image_url": line.image_url}
         for line in lines
-    ])
+    ], merchant_id, account_link.member_token(user_id, merchant_id))
     if totals is None:
         return None, "ucp_checkout_session_failed"
     subtotal, shipping, tax, total = totals["subtotal"], totals["fulfillment"], totals["tax"], totals["total"]

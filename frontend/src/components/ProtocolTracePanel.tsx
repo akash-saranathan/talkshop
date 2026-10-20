@@ -622,8 +622,28 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     // Loyalty is a local lookup of the customer's points at Nike, not a network message.
     case "loyalty_balance":
       return { icon: <Package size={14} />, protocol: "internal", status: "ok",
-        headline: `Your ${merchantName(ev)} points: ${Number(d.balance ?? 0).toLocaleString()}`,
-        what: "You can choose whether to use them." };
+        headline: "Points checked",
+        what: `${merchantName(ev)} reports ${(Number(d.balance ?? 0) - Number(d.pending ?? 0)).toLocaleString()} points available and ${Number(d.pending ?? 0).toLocaleString()} pending.` };
+    case "account_linked":
+      return { icon: <CheckCircle2 size={14} />, protocol: "LINK", status: "ok",
+        headline: `${merchantName(ev)} account linked`,
+        what: "The merchant confirmed your membership. Points and your saved card are now available at this merchant." };
+    case "no_account_found":
+      return { icon: <ShieldX size={14} />, protocol: "LINK", status: "warn",
+        headline: "No account found",
+        what: `${merchantName(ev)} has no account for that email. Continuing as a guest.` };
+    case "card_on_file_verified":
+      return { icon: <CheckCircle2 size={14} />, protocol: "PAYMENT", status: "ok",
+        headline: `${merchantName(ev)} checked the saved card`,
+        what: "This merchant, this checkout, this amount, single use." };
+    case "card_on_file_rejected":
+      return { icon: <ShieldX size={14} />, protocol: "PAYMENT", status: "fail",
+        headline: `${merchantName(ev)} rejected the saved card`,
+        what: "The charge did not match the card on file's limits." };
+    case "card_on_file_charged":
+      return { icon: <CreditCard size={14} />, protocol: "PAYMENT", status: "ok",
+        headline: `${merchantName(ev)} charged saved card •••• ${String(d.last4 ?? "")} via its PSP`,
+        what: "The merchant's own card on file, through its payment provider. Same limits as before." };
     case "loyalty_redemption_applied":
       return { icon: <Package size={14} />, protocol: "internal", status: "ok",
         headline: "Points applied",

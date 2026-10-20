@@ -17,17 +17,14 @@ REGISTERED_AGENTS = {
     credentials.CUSTOMER_AGENT_ID: {"platform_id": credentials.PLATFORM_ID, "key_ids": [credentials.KEY_ID]},
 }
 
-# Customers each merchant already has an account for, by the pseudonymous
-# customer_ref the platform shares. Seeded from the demo profile: John Carter
-# is a member at Nike/Zara/Fossil, a guest at Adidas/H&M/Casio.
-from backend.config.demo_profile import DEMO_USER_ID, member_merchants
-
-_DEMO_REF = credentials.customer_ref(DEMO_USER_ID)
-MERCHANT_MEMBERS: dict[str, set[str]] = {m: {_DEMO_REF} for m in member_merchants()}
-
-
-def merchant_relationship(merchant_id: str, customer_ref: str) -> MerchantRelationship:
-    return "merchant_member" if customer_ref in MERCHANT_MEMBERS.get(merchant_id, set()) else "merchant_guest"
+def merchant_relationship(merchant_id: str, customer_ref: str, member_token: Optional[str] = None) -> MerchantRelationship:
+    # customer_ref is kept so existing callers still line up; membership is decided by the token.
+    """Member only when the merchant accepts the member token sent with the request.
+    No token, or a token the merchant did not issue, is a guest."""
+    from backend.merchants import account_link
+    if account_link.validate_token(merchant_id, member_token):
+        return "merchant_member"
+    return "merchant_guest"
 
 
 class AgentTrustService:

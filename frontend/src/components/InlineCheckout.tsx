@@ -69,7 +69,7 @@ export interface CheckoutData {
   agent_spending_limit?: number;
   spending_check?: "passed" | "blocked";
   loyalty?: {
-    balance: number; is_member: boolean; merchant_name: string;
+    balance: number; pending?: number; is_member: boolean; merchant_name: string;
     points_redeemed?: number; value_redeemed?: number; amount_due?: number; fully_covered?: boolean;
     max_redeemable?: number;
   } | null;
@@ -142,6 +142,7 @@ interface Props extends InlineCheckoutData {
   isTalkshopGuest: boolean;
   onPaymentMethodChange: (paymentMethodId: string) => void;
   onAddCard: (card: CardInput) => Promise<string | null>;  // resolves to an error message, or null
+  onLinkAccount?: () => void;                              // opens the simulated merchant sign-in (guest checkout)
   onConnectPayPal?: () => Promise<string | null>;          // mocked PayPal handoff; resolves to error, or null
   /** Customer dragged the points slider — recomputes amount due and re-binds the checkout. */
   onApplyLoyalty?: (points: number) => void;
@@ -560,7 +561,8 @@ function LoyaltySlider({ co, onApplyLoyalty }: { co: CheckoutData; onApplyLoyalt
 
 function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
   const { product, checkoutData: co, paymentMethods, paymentMethodId,
-    onPaymentMethodChange, onAddCard, onConnectPayPal, onApplyLoyalty, loyaltyBusy, onGoAhead, onCancel, auto, onPauseToggle, onPauseAuto } = props;
+    onPaymentMethodChange, onAddCard, onConnectPayPal, onApplyLoyalty, loyaltyBusy, onGoAhead, onCancel, auto, onPauseToggle, onPauseAuto,
+    onLinkAccount } = props;
   const [showPayModal, setShowPayModal] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   // Saved methods are merchant-scoped: only this merchant's methods are offered.
@@ -595,6 +597,12 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
               <p className="mt-1 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800/40">
                 <UserCheck size={11} /> Guest checkout with {co.merchant_name} · your Talkshop account stays private
               </p>
+            )}
+            {merchantGuest && onLinkAccount && (
+              <button onClick={onLinkAccount}
+                className="mt-1.5 text-xs font-medium text-[var(--color-primary)] hover:underline">
+                Link your {co.merchant_name} account
+              </button>
             )}
           </div>
         </div>
@@ -637,6 +645,11 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
           </div>
         )}
 
+        {co.loyalty && co.loyalty.is_member && (
+          <p className="px-4 pt-3 text-xs text-[var(--color-text-muted)]">
+            {co.loyalty.pending ?? 0} points pending, {co.loyalty.balance} available
+          </p>
+        )}
         {co.loyalty && co.loyalty.is_member && (
           <LoyaltySlider co={co} onApplyLoyalty={onApplyLoyalty} />
         )}

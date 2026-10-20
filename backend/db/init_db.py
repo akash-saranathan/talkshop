@@ -65,6 +65,7 @@ def init_db(db_path: Path = DB_PATH):
     Base.metadata.create_all(engine)
     _ensure_column(engine, "users", "password_hash", "password_hash VARCHAR(255) NOT NULL DEFAULT ''")
     _ensure_column(engine, "users", "is_guest", "is_guest BOOLEAN NOT NULL DEFAULT 0")
+    _ensure_column(engine, "loyalty_points", "pending_points", "pending_points INTEGER NOT NULL DEFAULT 0")
     _ensure_column(engine, "orders", "tracking_number", "tracking_number VARCHAR(50)")
     _ensure_column(engine, "orders", "items_json", "items_json TEXT")
     _ensure_column(engine, "products", "image_url", "image_url VARCHAR(500)")

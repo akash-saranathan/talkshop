@@ -6,6 +6,7 @@ import re
 import uuid
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 import httpx
 
@@ -95,7 +96,7 @@ def search_agent_checked(agent, intent: A2AIntent) -> tuple[list[NormalizedProdu
     return check_merchant_response(agent.merchant_id, products)
 
 
-async def _a2a_message_send(agent, intent: A2AIntent) -> list[dict]:
+async def _a2a_message_send(agent, intent: A2AIntent, member_token: Optional[str] = None) -> list[dict]:
     """One real JSON-RPC 2.0 message/send call to the merchant's own A2A HTTP
     endpoint (POST /a2a/{merchant}) — the same endpoint backend/routers/a2a.py
     serves and backend/a2a/merchants/*.py's handle_message() answers. Returns
@@ -104,7 +105,8 @@ async def _a2a_message_send(agent, intent: A2AIntent) -> list[dict]:
     unreachable never crashes the caller."""
     payload = {
         "jsonrpc": "2.0", "method": "message/send", "id": f"req_{uuid.uuid4().hex[:10]}",
-        "params": {"intent": intent.model_dump(), "message": {"contextId": f"ctx_{uuid.uuid4().hex[:8]}"}},
+        "params": {"intent": intent.model_dump(), "member_token": member_token,
+                   "message": {"contextId": f"ctx_{uuid.uuid4().hex[:8]}"}},
     }
     try:
         async with httpx.AsyncClient(timeout=A2A_REQUEST_TIMEOUT_SECONDS) as client:
@@ -119,14 +121,15 @@ async def _a2a_message_send(agent, intent: A2AIntent) -> list[dict]:
         return []
 
 
-async def search_agent_over_a2a(agent, intent: A2AIntent) -> tuple[list[NormalizedProduct], list[dict]]:
+async def search_agent_over_a2a(agent, intent: A2AIntent, member_token: Optional[str] = None) -> tuple[list[NormalizedProduct], list[dict]]:
     """Same contract and result shape as search_agent_checked, but the actual
     merchant search travels over a real HTTP request to that merchant's A2A
     endpoint instead of an in-process agent.search() call."""
-    matches = await _a2a_message_send(agent, intent)
+    matches = await _a2a_message_send(agent, intent, member_token)
     if not matches and intent.category:
         matches = await _a2a_message_send(agent, A2AIntent(raw_query=intent.raw_query, brand=intent.brand,
-                                                           max_price=intent.max_price, size=intent.size))
+                                                           max_price=intent.max_price, size=intent.size),
+                                             member_token)
     products = [p for product in matches for p in _to_products(agent, product, product["variants"])]
     return check_merchant_response(agent.merchant_id, products)
 

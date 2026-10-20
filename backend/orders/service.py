@@ -52,7 +52,9 @@ def confirm_paid_order(session: Session, checkout: CheckoutObject, result: Payme
     merchant_id = checkout.merchant_id
     from backend.trust.credentials import customer_ref
     from backend.trust.verifier import merchant_relationship
-    is_member = merchant_relationship(merchant_id, customer_ref(user_id)) == "merchant_member"
+    from backend.merchants import account_link
+    is_member = merchant_relationship(merchant_id, customer_ref(user_id),
+                                      account_link.member_token(user_id, merchant_id)) == "merchant_member"
     if not is_member:
         return {"points_earned": 0, "loyalty_balance": 0, "points_redeemed": 0,
                 "tracking_number": fields.get("tracking_number")}

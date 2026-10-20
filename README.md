@@ -20,19 +20,20 @@ phased plan and what's done vs. still open; summary of what changed:
 - **No login screen.** The app opens straight into chat as one persistent
   demo identity (John Carter), bootstrapped automatically
   (`POST /api/auth/demo-session`) instead of a login form.
-- **Merchant-scoped customer status.** Being "a customer" is now a
-  `(user, merchant)` fact, not global — John is a member at Nike/Zara/Fossil
-  (saved card + loyalty points) and a guest everywhere else, each
-  independently.
+- **Merchant-scoped customer status.** Being "a customer" is a
+  `(user, merchant)` fact, not global. Every merchant starts unlinked, so
+  checkouts begin as guest. A customer links a merchant account once through a
+  simulated merchant sign-in (email, one-time code, approve sharing). The
+  merchant then issues a member token, checks it on every call, and decides
+  member or guest from it. John has accounts at Nike/Zara/Fossil.
 - **Secure payment entry.** Card number/CVC are tokenized entirely in the
   browser — only a `{brand, last4, expiry}` reference reaches the backend.
   A mocked "Connect PayPal" flow (signed-in account, funding-source choice,
   no credentials) produces the same kind of opaque reference.
-- **Merchant-specific loyalty, redeemed automatically.** Points are tracked
-  per merchant and spent with no extra click — the agent decides
-  points-only / points+card / card-only from a standing reward preference,
-  and the AP2/ACP/guardrail amount reflects whatever's left after
-  redemption (skipping the card rails entirely when points cover it all).
+- **Merchant-specific loyalty.** Points are tracked per merchant. The merchant
+  reports available and pending points, applies the points the customer
+  chooses, and returns the discount and the new total. The approval covers
+  that total. Points covering the whole order skip the card rails.
 - Hidden visible countdowns (silent ~3s auto-advance instead), fixed
   several chat auto-scroll gaps, clearer demo-scenario/error wording, a
   guardrail fix for false-blocking short follow-up replies, and Dashboard
@@ -185,13 +186,18 @@ Discovery (VibeCheck → SneakPeek) runs as a [LangGraph](https://github.com/lan
 ### Auth & identity
 - No login screen — opens straight into chat as one persistent demo
   identity (JWT session bootstrapped automatically on load)
-- Customer status is merchant-scoped: a `(user, merchant)` relationship,
-  not one global flag — the demo identity is a member at some merchants
-  (saved card + loyalty points) and a guest at others
+- Customer status is merchant-scoped: a `(user, merchant)` link, not one
+  global flag. Merchants start unlinked. Linking runs in a simulated merchant
+  sign-in pop-up; the merchant issues a member token and validates it on each
+  call (trust check, search, checkout, points, payment).
+- Linked members with a saved card are charged by the merchant's card on file
+  through its own provider, with no agent-side token. Guests use the ACP token.
 - Guest/non-member checkout uses client-side-tokenized card entry or a
   mocked PayPal connect; the method is forgotten after that purchase
-- Loyalty points: merchant-scoped, 1 pt per $1 earned on a member
-  purchase, redeemed automatically (no extra click) against future orders
+- Loyalty points: merchant-scoped, 1 pt per $1 earned on a member purchase.
+  The customer chooses how many to apply; the merchant returns the discount.
+- Settings (profile menu): demo controls to see and unlink linked accounts,
+  reset links, and reset demo points
   at that same merchant
 
 ---

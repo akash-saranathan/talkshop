@@ -40,10 +40,18 @@ class CheckoutSessionRequest(BaseModel):
     quantity: int = 1
     currency: str = "USD"
     image_url: Optional[str] = None
+    # Linked customers send the member token for this merchant; the merchant checks it.
+    merchant_id: Optional[str] = None
+    member_token: Optional[str] = None
 
 
 @router.post("/checkout-sessions", response_model=UCPCheckoutSession)
 def create_checkout_session(req: CheckoutSessionRequest) -> UCPCheckoutSession:
+    if req.member_token is not None:
+        from fastapi import HTTPException
+        from backend.merchants import account_link
+        if not account_link.validate_token(req.merchant_id or "", req.member_token):
+            raise HTTPException(status_code=403, detail="Member token is not valid for this merchant")
     items = req.items or [CheckoutItem(product_id=req.product_id or "", title=req.title or "",
                                        unit_price=req.unit_price or 0.0, quantity=req.quantity,
                                        image_url=req.image_url)]

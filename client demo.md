@@ -92,7 +92,8 @@ Open **Live** and read each card when it appears. Pause after each stage.
 **Card: "Nike opened a trusted session"**
 - **Say:** "Nike records that this agent passed its checks. It also records whether you are a member or a guest. This card says 'You are a guest at Nike' in this demo."
 - **Why:** checkout and payment need this record. Membership decides whether you get points or a saved card.
-- **If asked: "How does Nike know I'm a member?"** In the demo, membership is a seeded list. In production, you link your Nike account once, and Nike checks its own records. Your name and email are never sent.
+- **If asked: "How does Nike know I'm a member?"** Every merchant starts unlinked, so a new checkout is a guest checkout. The customer links the Nike account once: a "Link your Nike account" button opens a sign-in pop-up, the customer enters their email and a one-time code, and approves sharing. Nike checks its own member records and returns a member token. From then on, Nike decides member or guest from that token. Your name and email are never sent to the chat.
+- **If asked: "What if I'm not a Nike member?"** The sign-in says "No account found", and the customer can continue as a guest. In the demo, only John's email has a Nike account.
 
 ### Stage 3: Products
 
@@ -112,13 +113,13 @@ Open **Live** and read each card when it appears. Pause after each stage.
 - **Why:** choosing a product is not the same as paying. This separation matters.
 - **If asked: "Does selecting it charge me?"** No. Nothing is charged until you approve, later on.
 
-**Card: "Your Nike points: 985"** (members only)
-- **Say:** "Nike tells us how many points you have, so you can choose whether to use them."
+**Card: "Points checked"** (members only)
+- **Say:** "Nike tells us how many points are available and how many are pending. You choose whether to use the available ones."
 - **Why:** points belong to Nike, so Nike's figure is the one that counts.
-- **If asked: "Where does this number come from?"** In this demo, from our loyalty table, which stands in for Nike's records.
+- **If asked: "Where does this number come from?"** In this demo, Nike's answer comes from a stand-in for Nike's records. Nike also does the points-to-dollar conversion and returns the new total.
 
 **Card: "Points applied"** (if you did not change the points slider)
-- **Say:** "These points reduce what your card is charged. Ten points are worth one dollar in this demo."
+- **Say:** "Nike applies these points and returns the new total, which is what the approval covers. Ten points are worth one dollar in this demo."
 
 **Card: "Nike created your checkout: $140.65"**
 - **Say:** "Nike locks the price, tax, shipping and delivery date. This is the UCP checkout. The figure you see now is the figure you'll approve. Nike sets it, not our agent."
@@ -142,7 +143,7 @@ Open **Live** and read each card when it appears. Pause after each stage.
 **Card: "You approved the order"**
 - **Say:** "This is the step that matters most. I click Authorize Payment. My approval is tied to this exact total, this card and this checkout."
 - **Why:** the agent cannot pay on its own. You approve, every time.
-- **If asked: "What if the countdown runs out?"** It only auto-approves if you do nothing. You can pause or cancel it. In this demo, the countdown is shown before the cart moves on.
+- **If asked: "What if the countdown runs out?"** The countdown only opens the checkout summary. It never approves payment. You can pause it, or press "Proceed now" to skip the wait. Payment still needs your Authorize Payment click.
 
 **Card: "Approval saved"**
 - **Say:** "A signed record of your approval is created now. It says you approved this exact cart, this amount and this card."
@@ -201,8 +202,8 @@ Use this when the client asks why we need several protocols.
 
 **About trust and identity**
 - **Who checks that the chatbot is genuine?** The merchant does, with a signature check that only Talkshop can make.
-- **Who checks that I'm a customer?** A separate check. The merchant looks up a customer code in its own member records. Your name and email are not used.
-- **Is the customer check real?** In the demo it's seeded data. In production it is an account link you approve once.
+- **Who checks that I'm a customer?** The merchant does. It checks the member token it issued when you linked your account. Your name and email are not sent to the chat.
+- **Is the customer check real?** In the demo, the merchant's member records, the sign-in code and the tokens are stand-ins in our backend. In production, you link your account once and the merchant checks its own records.
 - **What can the agent do without asking me?** Search. It cannot pay without your approval, and every payment has a limit and a single use.
 
 **About the AI**
@@ -317,11 +318,11 @@ Each product is checked before the agent uses it. The price must be above zero. 
 **You selected a product**
 Your agent asks the merchant for a checkout. Nike checks the permission again before it creates anything. This check is in the backend. The card shows the request.
 
-**Your [Merchant] points: [balance]** (members only)
-Your points balance at the merchant, so you can choose whether to use them. In the demo, the number comes from our loyalty table.
+**Points checked** (members only)
+The merchant's answer: points available and pending. In the demo, the merchant's answer comes from a stand-in for its records.
 
 **Points applied** (only if you did not change the points slider)
-Points lower the amount charged to your card. 10 points = $1 in this demo.
+The merchant applies the points and returns the discount and the new total. The approval covers that total. 10 points = $1 in this demo.
 
 **[Merchant] created your checkout: $[total]**
 The merchant locks the price, tax, shipping and delivery date. Sent over HTTP to the merchant's checkout endpoint (UCP). If the cart has several items, this one checkout covers all of them.
@@ -513,7 +514,11 @@ MCP (Model Context Protocol) is a standard way for an AI system to call a set of
 
 **C. Member, all points.** The points cover the whole order. The amount due is $0, so there is no token, no processor and no payment checks. The merchant's loyalty record settles the order.
 
-**D. Guest (for example, Adidas).** No points, no saved card. The card is entered at a secure step. The trust card says "You are a guest at [Merchant]".
+**D. Guest (for example, Adidas, or a Nike customer who has not linked).** No points, no saved card. The card is entered at a secure step. The checkout offers "Link your [Merchant] account". The trust card says "You are a guest at [Merchant]".
+
+**E. Linked member.** After the sign-in pop-up, the checkout is re-checked as a member, with points and the saved card. The saved card is charged by the merchant through its own payment provider, with no Talkshop token.
+
+**F. Several items, two merchants.** Items are split by merchant. Each merchant gets its own checkout, its own approval, its own payment and its own order. A member at one merchant and a guest at another is handled separately.
 
 **E. Several items, one merchant.** One checkout, one approval, one payment, one order listing every item.
 
@@ -538,7 +543,9 @@ Yes. The order is: input checks, scope check, intent, merchant selection, trust,
 
 ## 12. Presenter notes
 
-- **Countdown:** after an item is added from the product list, the cart strip shows "Checking out in 5s" with a Pause button. This needs checking in the browser before the demo.
+- **Countdown:** after an item is added from the product list, the cart strip shows "Checking out in 5s" with Pause and Proceed now buttons. Pause freezes it; Resume restarts it at 5 seconds. Proceed now opens the checkout summary at once. Neither button approves payment.
+- **Settings:** the profile menu has a Settings panel with the demo controls: linked accounts (with Unlink), "Reset demo links", and "Reset demo points". Keep these off the main screen during the talk.
+- **Sign-in code:** the demo one-time code is fixed. Say so if the client asks how it works.
 - **Card fields:** the browser may fill in saved card details. The form starts empty in the app. Use a private window if you need it blank.
 - **Slow AI message:** "The AI service is responding slowly" means Gemini did not answer in time. Wait a moment and try again.
 - **Loyalty card title:** the points choice card still reads "Loyalty Choice Applied". Rename it to "You chose points" if you want it simpler.

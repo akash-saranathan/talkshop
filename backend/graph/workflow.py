@@ -363,7 +363,9 @@ async def _run_a2a_sidecar(state: CommerceState, intent: ShoppingIntent) -> None
                              protocol="UCP", direction="out", label="catalog_search",
                              detail={"merchant": ag.merchant_id, "query": intent.category})
         t0 = time.perf_counter()
-        products, checks = await merchant_catalog.search_agent_over_a2a(ag, a2a_intent)
+        from backend.merchants import account_link
+        member_token = account_link.member_token(state.get("user_id") or "", ag.merchant_id)
+        products, checks = await merchant_catalog.search_agent_over_a2a(ag, a2a_intent, member_token)
         duration_ms = round((time.perf_counter() - t0) * 1000, 1)
         await _emit_protocol(state, source="UCPCatalog", target=f"{ag.merchant_name}Agent",
                              protocol="UCP", direction="in", label="catalog_results",

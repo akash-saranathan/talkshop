@@ -16,6 +16,7 @@ build/
 
 # DB (generated at runtime)
 backend/db/commerce.db
+*.db-journal
 
 # Node
 frontend/node_modules/

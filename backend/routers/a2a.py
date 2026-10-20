@@ -60,6 +60,14 @@ def message_send(merchant: str, request: A2ARequest) -> A2AResponse:
             error={"code": -32601, "message": f"Method '{request.method}' not found"},
         )
 
+    # A member token is checked by the merchant on each request; a token it did not issue is refused.
+    member_token = request.params.get("member_token")
+    if member_token is not None:
+        from backend.merchants import account_link
+        if not account_link.validate_token(merchant, member_token):
+            return A2AResponse(jsonrpc="2.0", id=request.id,
+                               error={"code": -32001, "message": "Member token is not valid for this merchant"})
+
     # Intent is passed in params.intent; fall back to empty intent if missing
     intent_data = request.params.get("intent", {})
     intent = ShoppingIntent(

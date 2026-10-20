@@ -6,6 +6,8 @@ import { streamChat, getSessionMessages, attachImage, type AgentEvent, type Prod
 import { getCart, addToCart, removeFromCart, updateCartItemQuantity, type CartItemData } from "../api/cart";
 import { authFetch } from "../api/client";
 import ProductCard from "../components/ProductCard";
+import LinkAccountModal from "../components/LinkAccountModal";
+import DemoControls from "../components/DemoControls";
 import SkeletonProductCard from "../components/SkeletonProductCard";
 import CompareModal from "../components/CompareModal";
 import CartDrawer from "../components/CartDrawer";
@@ -227,12 +229,14 @@ function InlineCartCard({
   onViewCart,
   auto,
   onPauseToggle,
+  onProceedNow,
 }: {
   addedProduct?: ProductData;
   cartItems: import("../api/cart").CartItemData[];
   onViewCart: () => void;
   auto?: AutoState;
   onPauseToggle?: () => void;
+  onProceedNow?: () => void;
 }) {
   const visual = addedProduct ? getProductVisual(addedProduct.title, addedProduct.category) : null;
   const VisualIcon = visual?.icon;
@@ -318,6 +322,7 @@ function InlineCartCard({
           secondsLeft={auto.secondsLeft}
           paused={auto.paused}
           onPauseToggle={onPauseToggle}
+          onProceedNow={onProceedNow}
         />
       )}
     </motion.div>
@@ -460,6 +465,9 @@ export default function Chat() {
   const [productCardResetKey, setProductCardResetKey] = useState(0);
   // Turns whose top 5 has been expanded to the full list with "See others".
   const [expandedTurnIds, setExpandedTurnIds] = useState<Set<string>>(new Set());
+  // The checkout waiting on a simulated merchant sign-in, and the Settings panel.
+  const [linkTarget, setLinkTarget] = useState<{ turnId: string; product: ProductData; merchantId: string; merchantName: string } | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const [sessionCartIds, setSessionCartIds] = useState<Set<string>>(new Set());
   const [sessionCartItems, setSessionCartItems] = useState<CartItemData[]>([]);
   const [cartPanelOpen, setCartPanelOpen] = useState(false);
@@ -1678,6 +1686,10 @@ export default function Chat() {
 
   const togglePauseAuto = () =>
     setAutoTimer((a) => (a && (a.paused ? { ...a, paused: false, secondsLeft: AUTO_SECONDS } : { ...a, paused: true })));
+  // Proceed now: end the wait at once. The same path as the countdown reaching zero;
+  // it opens the checkout summary and does not authorise payment.
+  const proceedNowAuto = () =>
+    setAutoTimer((a) => (a ? { ...a, paused: false, secondsLeft: 0 } : a));
 
   useEffect(() => {
     if (!autoTimer || autoTimer.paused) return;
@@ -1981,6 +1993,12 @@ export default function Chat() {
                     <p className="text-sm font-semibold text-[var(--color-text)] truncate">{user?.name}</p>
                     <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">{user?.email}</p>
                   </div>
+                  <button
+                    onClick={() => { setShowProfile(false); setShowSettings(true); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-[var(--color-text)] hover:bg-[var(--color-primary-bg)]"
+                  >
+                    Settings
+                  </button>
                   {/* Loyalty points hidden for now — a single global balance is
                       misleading once loyalty becomes merchant-specific; rebuilt
                       per-merchant in a later step. */}
@@ -1989,6 +2007,36 @@ export default function Chat() {
             </div>
           </div>
         </header>
+
+        {showSettings && <DemoControls onClose={() => setShowSettings(false)} />}
+        {linkTarget && (
+          <LinkAccountModal
+            merchantId={linkTarget.merchantId}
+            merchantName={linkTarget.merchantName}
+            onClose={() => setLinkTarget(null)}
+            onEvents={(events) => appendServerEvents(events as ProtocolEvent[])}
+            onLinked={async () => {
+              const target = linkTarget;
+              setLinkTarget(null);
+              // Re-price the same checkout as a member. No chat message, no new search.
+              // Re-check the whole cart for this merchant, not just the one product.
+              const cartForMerchant = sessionCartItems.filter((i) => i.merchant_id === target.merchantId);
+              const items = (cartForMerchant.length > 0 ? cartForMerchant : [target.product]) as unknown as ProductData[];
+              const { checkoutData, error, reason } = await requestProposal(items);
+              setTurns((prev) => prev.map((t) => {
+                if (t.id !== target.turnId) return t;
+                if (!checkoutData) {
+                  return { ...t, checkout: { phase: "failed" as const, product: target.product, error, errorReason: reason } };
+                }
+                return { ...t, checkout: { phase: "summary" as const, product: target.product, checkoutData,
+                  paymentMethodId: checkoutData.payment_method?.payment_method_id } };
+              }));
+              if (checkoutData) {
+                persistCheckout(target.product, checkoutData, checkoutData.payment_method?.payment_method_id);
+              }
+            }}
+          />
+        )}
 
         {/* Content area */}
         <div
@@ -2097,6 +2145,7 @@ export default function Chat() {
                         onViewCart={() => setShowCartDrawer(true)}
                         auto={autoTimer?.turnId === turn.id && autoTimer.stage === "cart" ? autoTimer : undefined}
                         onPauseToggle={togglePauseAuto}
+                        onProceedNow={proceedNowAuto}
                       />
                     )}
 
@@ -2108,6 +2157,13 @@ export default function Chat() {
                         isTalkshopGuest={isGuest}
                         onPaymentMethodChange={(id) => selectPaymentMethod(turn.id, id)}
                         onAddCard={(card) => addCard(turn.id, card)}
+                        onLinkAccount={() => {
+                          const p = turn.checkout?.product;
+                          const co = turn.checkout?.checkoutData;
+                          if (p && co) {
+                            setLinkTarget({ turnId: turn.id, product: p, merchantId: co.merchant_id, merchantName: co.merchant_name });
+                          }
+                        }}
                         onConnectPayPal={() => connectPayPal(turn.id)}
                         onApplyLoyalty={(points) => scheduleApplyLoyalty(turn.id, points)}
                         loyaltyBusy={loyaltyBusyTurns.has(turn.id)}
@@ -2312,6 +2368,7 @@ export default function Chat() {
                   secondsLeft={autoTimer.secondsLeft}
                   paused={autoTimer.paused}
                   onPauseToggle={togglePauseAuto}
+                  onProceedNow={proceedNowAuto}
                 />
               )}
             </motion.div>

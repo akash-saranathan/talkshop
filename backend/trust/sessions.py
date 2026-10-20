@@ -12,6 +12,7 @@ from typing import Optional
 
 from backend.db.schema import TrustedAgentSessionRow
 from backend.db.session_utils import get_session
+from backend.merchants import account_link
 from backend.trust.models import AgentCredential, TrustDecision, TrustedAgentSession
 from backend.trust.verifier import merchant_relationship, trust_service
 
@@ -34,7 +35,8 @@ def establish(
         customer_agent=credential.identity.agent_id,
         merchant_id=merchant_id,
         customer_ref=grant.customer_ref,
-        merchant_relationship=merchant_relationship(merchant_id, grant.customer_ref),
+        merchant_relationship=merchant_relationship(merchant_id, grant.customer_ref,
+                                                    account_link.member_token(grant.user_id, merchant_id)),
         talkshop_account=grant.talkshop_account,
         scopes=grant.scopes,
         max_amount=grant.max_amount,

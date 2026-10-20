@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey,
-    Integer, String, Text, func
+    Integer, String, Text, UniqueConstraint, func
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -332,8 +332,24 @@ class LoyaltyPoints(Base):
     user_id = Column(String(50), nullable=False, index=True)
     merchant_id = Column(String(50), index=True)
     balance = Column(Integer, nullable=False, default=0)
+    pending_points = Column(Integer, nullable=False, default=0)  # part of balance not yet spendable
     lifetime_points = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class MerchantAccountLink(Base):
+    """A Talkshop customer's linked account at one merchant. Holds the simulated
+    member token the merchant issued at linking; no row means unlinked (guest)."""
+    __tablename__ = "merchant_account_links"
+    __table_args__ = (UniqueConstraint("user_id", "merchant_id", name="uq_link_user_merchant"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(50), nullable=False, index=True)
+    merchant_id = Column(String(50), nullable=False)
+    merchant_email = Column(String(255), nullable=False)
+    link_token = Column(String(120), nullable=False, unique=True)
+    expires_at = Column(DateTime, nullable=False)
+    linked_at = Column(DateTime, server_default=func.now())
 
 
 class LoyaltyTransaction(Base):
