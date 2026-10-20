@@ -58,7 +58,7 @@ const PIPELINE: {
   { id: "VibeCheck",   label: "VibeCheck",   role: "Orchestrator",     icon: Shield,      color: "#6366f1", detail: "Parses intent, validates safety, classifies message type" },
   { id: "SneakPeek",  label: "SneakPeek",   role: "Product Search",   icon: Search,      color: "#0ea5e9", detail: "Queries merchant APIs, normalises, filters & ranks products" },
   { id: "CartUp",     label: "CartUp",      role: "Cart & Checkout",  icon: ShoppingBag, color: "#f59e0b", detail: "Builds cart entry, creates checkout session with merchant" },
-  { id: "GreenLight", label: "GreenLight",  role: "Authorization",    icon: Key,         color: "#10b981", detail: "Issues DPAT token — single-use, scoped, card never exposed" },
+  { id: "GreenLight", label: "GreenLight",  role: "Authorization",    icon: Key,         color: "#10b981", detail: "Issues the single-use payment token — scoped, card never exposed" },
   { id: "PayIt",      label: "PayIt",       role: "Payment",          icon: CreditCard,  color: "#8b5cf6", detail: "Executes payment with 12-point guardrail check" },
   { id: "TrackIt",    label: "TrackIt",     role: "Order Tracker",    icon: Package,     color: "#ef4444", detail: "Confirms order, updates audit log, sends notification" },
 ];
@@ -129,7 +129,7 @@ function getAgentOutput(id: AgentId, steps: Step[], products?: ProductData[], in
   if (id === "GreenLight") {
     const step = mine.find((s) => s.message.toLowerCase().includes("greenlight"));
     if (step) {
-      rows.push({ label: "DPAT token",  value: step.status === "done" ? "Issued" : "Generating…", ok: step.status === "done" });
+      rows.push({ label: "Payment token", value: step.status === "done" ? "Issued" : "Generating…", ok: step.status === "done" });
       rows.push({ label: "Scope",       value: "Single merchant · 1 use" });
       rows.push({ label: "TTL",         value: "15 minutes" });
       rows.push({ label: "Card data",   value: "Never transmitted", ok: true });
@@ -143,7 +143,7 @@ function getAgentOutput(id: AgentId, steps: Step[], products?: ProductData[], in
     if (step) {
       rows.push({ label: "Payment",    value: step.status === "done" ? "Processed" : "Processing…", ok: step.status === "done" });
       rows.push({ label: "Guardrails", value: "12 / 12 passed", ok: true });
-      rows.push({ label: "Method",     value: "DPAT-authorised card" });
+      rows.push({ label: "Method",     value: "Authorised card" });
     } else {
       rows.push({ label: "Status", value: "Awaiting authorization token" });
     }

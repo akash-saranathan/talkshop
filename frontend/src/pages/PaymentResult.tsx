@@ -99,7 +99,7 @@ export default function PaymentResult() {
               </div>
               {state.tokenId && (
                 <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">DPAT Token</span>
+                  <span className="text-[var(--color-text-muted)]">Payment token</span>
                   <span className="font-mono text-xs text-emerald-600 break-all max-w-[200px] text-right">{state.tokenId}</span>
                 </div>
               )}
@@ -116,7 +116,7 @@ export default function PaymentResult() {
             <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 mb-6 flex items-start gap-2 text-left">
               <Shield size={14} className="text-emerald-600 mt-0.5 shrink-0" />
               <p className="text-xs text-emerald-700">
-                Payment processed through DPAT authorization. Card credentials were never exposed to the agent.
+                Payment processed with your approved payment token. Card credentials were never exposed to the agent.
               </p>
             </div>
           </>

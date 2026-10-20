@@ -92,6 +92,18 @@ class Order(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class ChatState(Base):
+    """Per-chat state the page needs to show again after a reload or on another
+    device: the Live/Story/Flow events, the confirmed order card and any checkout
+    still waiting for approval. One row per chat session."""
+    __tablename__ = "chat_state"
+
+    session_id = Column(String(64), primary_key=True)
+    user_id = Column(String(50), nullable=False)
+    state = Column(Text, nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class Wallet(Base):
     """Per-user mock stored-value balance — separate from the payment-method
     vault (data/mock_wallet.json); this is what actually draws down on a

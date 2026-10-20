@@ -12,6 +12,7 @@ from backend.routers import a2a as a2a_router
 from backend.routers import generic_chat as generic_chat_router
 from backend.routers import purchase as purchase_router
 from backend.routers import ucp as ucp_router
+from backend.routers import chat_state as chat_state_router
 from backend.config.llm import resolve_llm
 from backend.observability.tracing import init_tracing
 from backend.mcp.server import mcp as mcp_server
@@ -66,6 +67,7 @@ app.include_router(a2a_router.router)
 app.include_router(generic_chat_router.router)
 app.include_router(purchase_router.router)
 app.include_router(ucp_router.router)
+app.include_router(chat_state_router.router)
 app.mount("/mcp", mcp_asgi_app)  # real MCP Streamable HTTP transport (see mcp_asgi_app above)
 
 

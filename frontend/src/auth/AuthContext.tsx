@@ -38,10 +38,12 @@ function readGuestProfile(): Pick<User, "name" | "email"> | null {
 // card) in this tab's sessionStorage so navigating to Cart and back resumes
 // it. Any login/logout wipes that, so every sign-in starts on a fresh chat
 // and nothing carries over between accounts. Past chats stay in the sidebar.
+// The saved Live/Story/Flow trace is kept: it is only reachable through a chat ID,
+// and a new sign-in starts on a fresh chat, so it never shows up for another account.
 function clearChatSessionState() {
   try {
     Object.keys(sessionStorage)
-      .filter((k) => k.startsWith("talkshop_"))
+      .filter((k) => k.startsWith("talkshop_") && !k.startsWith("talkshop_trace_"))
       .forEach((k) => sessionStorage.removeItem(k));
   } catch { /* noop */ }
 }

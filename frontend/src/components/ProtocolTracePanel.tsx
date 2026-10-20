@@ -314,7 +314,7 @@ function FlowView(_props: {
     { title: "You select a product", detail: "Your agent asks Nike for a checkout", badge: "A2A" },
     { title: "Checkout created", detail: "Nike locks the price, tax, shipping and delivery date", badge: "UCP" },
     { title: "You approve", detail: "A signed record of the cart and of your approval", badge: "AP2" },
-    { title: "Payment permission", detail: "A single-use token for this amount is sent to Nike", badge: "ACP" },
+    { title: "Payment permission", detail: "Your agent sends a delegated payment request to the payment provider, which returns a single-use token for this amount", badge: "ACP" },
     { title: "Payment", detail: "Nike checks the token and approval, then the card is charged", badge: "PAYMENT" },
     { title: "Order confirmed", detail: "Nike confirms the order to your agent", badge: "A2A" },
   ];
@@ -489,16 +489,16 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     case "ap2_payment_mandate":
       return { icon: <Lock size={14} />, protocol: "AP2", status: "ok",
         headline: "AP2 payment mandate issued",
-        what: "Points at the DPAT authorization that approval created.",
-        highlight: d.payment_ref ? `DPAT ${String(d.payment_ref)}` : undefined };
+        what: "Records the approval you gave for this exact checkout.",
+        highlight: d.payment_ref ? `Ref ${String(d.payment_ref)}` : undefined };
     case "acp_spt_issued":
       return { icon: <CreditCard size={14} />, protocol: "ACP", status: "ok",
-        headline: "ACP shared payment token issued",
-        what: "Derived from the DPAT authorization, with the same amount, currency and expiry.",
+        headline: "Payment token issued",
+        what: "Carries the same amount, currency and expiry as your approval.",
         highlight: d.maximum_amount_cents ? `Max $${(Number(d.maximum_amount_cents) / 100).toFixed(2)} · ${String(d.currency ?? "")}` : undefined };
     case "acp_spt_verified":
       return { icon: <CheckCircle2 size={14} />, protocol: "ACP", status: "ok",
-        headline: "ACP token verified before payment",
+        headline: "Payment token verified before payment",
         what: "Signature, amount, currency, expiry and seller checked." };
     case "payment_guardrails": {
       const checks = Array.isArray(d.checks) ? d.checks as Array<{ status: string }> : [];
@@ -528,14 +528,14 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
       const c = d.constraints as Record<string, unknown> | undefined;
       const max = c?.maximum_amount ? `$${(Number(c.maximum_amount) / 100).toFixed(2)}` : "checkout total";
       return { icon: <CreditCard size={14} />, protocol: "ACP", status: "progress",
-        headline: "ACP issuing delegated payment token",
-        what: "ACP: minting a single-use token for delegated payment. Your card data never leaves your browser.",
+        headline: "Payment token being issued",
+        what: "A single-use token for this amount. Your card data never leaves your browser.",
         highlight: `Capped at ${max} · Single-use` };
     }
     case "dpat_issued":
       return { icon: <CreditCard size={14} />, protocol: "REST", status: "ok",
-        headline: "GreenLight DPAT token issued",
-        what: "Single-use DPAT token returned by POST /api/authorizations/approve.",
+        headline: "Single-use token issued",
+        what: "Single-use token returned by the approval step.",
         highlight: d.token_id ? `Token ${String(d.token_id).slice(0, 14)}…` : undefined };
     case "payment_executed":
       return { icon: <CheckCircle2 size={14} />, protocol: "REST", status: d.status === "success" ? "ok" : "warn",
@@ -616,7 +616,7 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     case "agent_spending_limit_exceeded":
       return { icon: <ShieldX size={14} />, protocol: "SECURITY", status: "fail",
         headline: "Blocked — agent spending limit exceeded",
-        what: "Checked before any AP2/ACP/DPAT work ran, so nothing was signed or charged.",
+        what: "Checked before any AP2 or payment token work ran, so nothing was signed or charged.",
         highlight: `$${Number(d.checkout_amount ?? 0).toFixed(2)} over the $${Number(d.agent_spending_limit ?? 0).toFixed(2)} limit` };
     // ── Demo 2: checkout and consent ──
     // Loyalty is a local lookup of the customer's points at Nike, not a network message.
@@ -699,13 +699,13 @@ function toCard(ev: ProtocolEvent): NarrativeCard {
     // ── Demo 2: payment and order ──
     case "internal_dpat_issued":
       return { icon: <Lock size={14} />, protocol: "PAYMENT", status: "ok",
-        headline: "Internal enforcement token (DPAT)",
-        what: "The verified delegated authorization is mapped to our internal single-use token. Not an industry protocol." };
+        headline: "Internal enforcement check",
+        what: "The verified approval is checked against the payment rules. Not an industry protocol." };
     case "payment_checks": {
       const failed = Number(d.total ?? 0) - Number(d.passed ?? 0);
       return { icon: <ShieldCheck size={14} />, protocol: "PAYMENT", status: failed ? "fail" : "ok",
         headline: `${String(d.passed)}/${String(d.total)} deterministic payment checks`,
-        what: "Run on the internal DPAT before the processor is allowed to charge." };
+        what: "Run before the processor is allowed to charge." };
     }
     case "psp_result":
       return { icon: <CreditCard size={14} />, protocol: "PAYMENT", status: d.status === "success" ? "ok" : "fail",
@@ -1015,7 +1015,7 @@ function StoryView({ events }: { events: ProtocolEvent[] }) {
       {buildStory(events).map((row) => <StoryRowView key={row.key} row={row} />)}
       <p className="text-[9px] text-[var(--color-text-muted)] pt-1 leading-relaxed">
         Protocol-style POC: A2A-style agent messages (in-process), UCP-style catalog and checkout, AP2-style authorization
-        evidence, ACP-style scoped token. DPAT is internal enforcement, not an industry protocol. No card data is ever shown here.
+        evidence, scoped payment token. Internal enforcement is not an industry protocol. No card data is ever shown here.
       </p>
     </div>
   );
@@ -1030,7 +1030,7 @@ const STAGE_TITLE: Record<string, string> = {
   catalog: "UCP Catalog",
   checkout: "UCP Checkout",
   authz: "AP2 — authorization evidence",
-  acp: "ACP — scoped payment token",
+  acp: "Payment token",
   payment: "Payment",
   order: "Order",
 };

@@ -316,7 +316,7 @@ function SecurePaymentModal({
                     value={numberFocused ? card.number : (card.number ? maskNumber(card.number) : "")}
                     onFocus={() => setNumberFocused(true)} onBlur={() => setNumberFocused(false)}
                     onChange={(e) => setCard({ ...card, number: formatCardNumber(e.target.value) })}
-                    className={inputCls + " pr-16 font-mono tracking-wide"} autoComplete="off" />
+                    className={inputCls + " pr-16 font-mono tracking-wide"} autoComplete="new-password" name="secure-card-number" data-lpignore="true" />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[var(--color-text-muted)]">{brand}</span>
                 </div>
               </div>
@@ -324,13 +324,13 @@ function SecurePaymentModal({
                 <div className="flex-1">
                   <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">Expiry</label>
                   <input type="text" inputMode="numeric" maxLength={5} placeholder="MM/YY" value={card.expiry}
-                    onChange={(e) => setCard({ ...card, expiry: formatExpiry(e.target.value) })} className={inputCls} autoComplete="off" />
+                    onChange={(e) => setCard({ ...card, expiry: formatExpiry(e.target.value) })} className={inputCls} autoComplete="new-password" name="secure-card-expiry" data-lpignore="true" />
                 </div>
                 <div className="flex-1">
                   <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">CVC</label>
                   <div className="relative">
                     <input type={showCvc ? "text" : "password"} inputMode="numeric" maxLength={4} placeholder="···" value={card.cvc}
-                      onChange={(e) => setCard({ ...card, cvc: e.target.value.replace(/\D/g, "") })} className={inputCls + " pr-9"} autoComplete="off" />
+                      onChange={(e) => setCard({ ...card, cvc: e.target.value.replace(/\D/g, "") })} className={inputCls + " pr-9"} autoComplete="new-password" name="secure-card-code" data-lpignore="true" />
                     <button type="button" onClick={() => setShowCvc((v) => !v)} tabIndex={-1}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
                       {showCvc ? <EyeOff size={14} /> : <Eye size={14} />}

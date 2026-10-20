@@ -85,7 +85,7 @@ export interface ChatAction {
 
 export interface ChatCallbacks {
   onStep: (event: AgentEvent) => void;
-  onRecommendation: (text: string, products: ProductData[], action?: ChatAction) => void;
+  onRecommendation: (text: string, products: ProductData[], action?: ChatAction, more?: ProductData[]) => void;
   onBlocked: (message: string) => void;
   onError: (message: string) => void;
   onDone: () => void;
@@ -115,14 +115,17 @@ export function streamChat(message: string, sessionId: string, callbacks: ChatCa
           callbacks.onStep(event);
           break;
         case "recommendation": {
-          const recData = event.data as { products?: ProductData[]; action?: ChatAction } | ProductData[];
+          const recData = event.data as { products?: ProductData[]; action?: ChatAction; more?: ProductData[] } | ProductData[];
           const recProducts = Array.isArray(recData)
             ? (recData as ProductData[])
             : ((recData as { products?: ProductData[] })?.products ?? []);
           const recAction = Array.isArray(recData)
             ? undefined
             : (recData as { action?: ChatAction })?.action;
-          callbacks.onRecommendation(event.message, recProducts, recAction);
+          const recMore = Array.isArray(recData)
+            ? []
+            : ((recData as { more?: ProductData[] })?.more ?? []);
+          callbacks.onRecommendation(event.message, recProducts, recAction, recMore);
           break;
         }
         case "blocked":

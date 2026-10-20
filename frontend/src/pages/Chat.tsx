@@ -96,6 +96,8 @@ interface Turn {
   image?: string;
   steps: Step[];
   products: ProductData[];
+  // The rest of the same results, shown when the user clicks "See others" (no new search).
+  moreProducts?: ProductData[];
   recommendation: string;
   blocked: string | null;
   intent: SimpleIntent;
@@ -178,6 +180,33 @@ function groupByMerchant(products: ProductData[]): ProductData[][] {
     byMerchant.set(product.merchant_id, list);
   }
   return [...byMerchant.values()];
+}
+
+// Saved on the backend per chat: the trace, the confirmed order card and any checkout
+// still waiting for approval. Lets the page show them again after a reload or on another device.
+type SavedChatState = {
+  events?: ProtocolEvent[];
+  /** Agent Pipeline steps across the chat (every turn's steps, in order). */
+  steps?: Turn["steps"];
+  confirmedOrder?: { order: ConfirmedOrder; product: ProductData } | null;
+  pendingCheckout?: { product: ProductData; checkoutData: InlineCheckoutDataShape; paymentMethodId?: string } | null;
+};
+
+async function fetchChatState(id: string): Promise<SavedChatState | null> {
+  try {
+    const res = await authFetch(`/api/chat-state/${id}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.state ?? null) as SavedChatState | null;
+  } catch {
+    return null;
+  }
+}
+
+async function pushChatState(id: string, state: SavedChatState): Promise<void> {
+  try {
+    await authFetch(`/api/chat-state/${id}`, { method: "PUT", body: JSON.stringify({ state }) });
+  } catch { /* best effort: the local copy still works in this tab */ }
 }
 
 const traceKey = (id: string) => `talkshop_trace_${id}`;
@@ -367,7 +396,7 @@ function humanizeStep(message: string): string | null {
     if (found) {
       const n = parseInt(found[1]);
       if (n === 0) return null;
-      return `Found ${n} option${n !== 1 ? "s" : ""} across ${found[2]} store${found[2] !== "1" ? "s" : ""}!`;
+      return `Found ${n} product${n !== 1 ? "s" : ""} across ${found[2]} store${found[2] !== "1" ? "s" : ""}!`;
     }
     const top = message.match(/top (\d+) picks/i);
     if (top) {
@@ -429,6 +458,8 @@ export default function Chat() {
   const [sessionCartCount, setSessionCartCount] = useState(0);
   // Incrementing this forces ProductCards to remount and reset their qty state after payment.
   const [productCardResetKey, setProductCardResetKey] = useState(0);
+  // Turns whose top 5 has been expanded to the full list with "See others".
+  const [expandedTurnIds, setExpandedTurnIds] = useState<Set<string>>(new Set());
   const [sessionCartIds, setSessionCartIds] = useState<Set<string>>(new Set());
   const [sessionCartItems, setSessionCartItems] = useState<CartItemData[]>([]);
   const [cartPanelOpen, setCartPanelOpen] = useState(false);
@@ -478,6 +509,28 @@ export default function Chat() {
   useEffect(() => {
     try { sessionStorage.setItem(traceKey(sessionIdRef.current), JSON.stringify(protocolEvents.slice(-400))); } catch { /* noop */ }
   }, [protocolEvents]);
+  // The chat whose saved messages and cards have finished loading in this tab. The
+  // backend save only runs for that chat, so a half-loaded chat never overwrites its
+  // saved state with an empty or another chat's content.
+  const loadedSessionRef = useRef<string>(sessionIdRef.current);
+  useEffect(() => {
+    const id = sessionIdRef.current;
+    if (loadedSessionRef.current !== id) return;
+    if (protocolEvents.length === 0 && turns.length === 0) return;
+    const confirmed = [...turns].reverse().find((t) => t.checkout?.phase === "confirmed")?.checkout;
+    const pending = [...turns].reverse().find((t) => t.checkout?.phase === "summary")?.checkout;
+    const state: SavedChatState = {
+      events: protocolEvents.slice(-400),
+      steps: turns.flatMap((t) => t.steps).slice(-200),
+      confirmedOrder: confirmed?.order ? { order: confirmed.order, product: confirmed.product } : null,
+      pendingCheckout: pending?.checkoutData
+        ? { product: pending.product, checkoutData: pending.checkoutData, paymentMethodId: pending.paymentMethodId }
+        : null,
+    };
+    const timer = setTimeout(() => { void pushChatState(id, state); }, 800);
+    return () => clearTimeout(timer);
+  }, [protocolEvents, turns]);
+
   const [currentSessionId, setCurrentSessionId] = useState<string>(sessionIdRef.current);
   const closeStream = useRef<(() => void) | null>(null);
   const activeTurnId = useRef<string | null>(null);
@@ -688,6 +741,7 @@ export default function Chat() {
     setLoading(false);
     activeTurnId.current = null;
     switchToSession(crypto.randomUUID());
+    loadedSessionRef.current = sessionIdRef.current;
     setTurns([]);
     setProtocolEvents([]);
     setSessionCartCount(0);
@@ -706,13 +760,21 @@ export default function Chat() {
     try {
       const messages = await getSessionMessages(id);
       const rawTurns = messagesToTurns(messages);
+      // Saved on the backend, so it also works in a new tab or on another device.
+      const remote = await fetchChatState(id);
+      // Messages do not carry their steps, so the saved Agent Pipeline steps go back on
+      // the first restored turn. The pipeline lists every turn's steps in order.
+      if (remote?.steps?.length && rawTurns.length) rawTurns[0].steps = remote.steps;
 
       // Restore confirmed order or in-progress checkout saved before navigation
       try {
-        const orderSaved   = JSON.parse(sessionStorage.getItem(`talkshop_order_${id}`) ?? "null");
-        const checkoutSaved = JSON.parse(sessionStorage.getItem(`talkshop_checkout_${id}`) ?? "null");
+        const localOrder    = JSON.parse(sessionStorage.getItem(`talkshop_order_${id}`) ?? "null");
+        const localCheckout = JSON.parse(sessionStorage.getItem(`talkshop_checkout_${id}`) ?? "null");
+        // This tab's copy first, then the copy saved on the backend.
+        const orderSaved    = localOrder?.order ? localOrder : (remote?.confirmedOrder ?? null);
+        const checkoutSaved = localCheckout?.checkoutData ? localCheckout : (remote?.pendingCheckout ?? null);
 
-        if (orderSaved?.orderId && orderSaved.product) {
+        if (orderSaved?.order && orderSaved.product) {
           // Hide the search-results products for the ordered product
           for (const t of rawTurns) {
             if (t.products.some((p) => p.product_id === orderSaved.product.product_id)) {
@@ -757,10 +819,13 @@ export default function Chat() {
         }
       } catch { /* noop — always show at least the DB messages */ }
 
+      if (remote?.events?.length) setProtocolEvents(remote.events);
       setTurns(rawTurns);
+      loadedSessionRef.current = id;
     } catch {
       switchToSession(crypto.randomUUID());
       setTurns([]);
+      loadedSessionRef.current = sessionIdRef.current;
     }
   }, [switchToSession]);
 
@@ -950,14 +1015,26 @@ export default function Chat() {
           return turn;
         });
       },
-      onRecommendation: (text, prods, action) => {
+      onRecommendation: (text, prods, action, more) => {
         const capturedId = activeTurnId.current;
-        // Set products immediately
-        setTurns((prev) => prev.map((t) =>
-          t.id === capturedId ? { ...t, products: prods } : t
-        ));
+        if (action?.type === "show_more") {
+          // "See others": add the rest of the same results to the turn that showed the top 5.
+          const shownTurn = [...turnsRef.current].reverse().find((t) => t.products.length > 0);
+          if (shownTurn) {
+            setTurns((prev) => prev.map((t) => t.id === shownTurn.id ? {
+              ...t,
+              products: [...t.products, ...prods.filter((p) => !t.products.some((q) => q.product_id === p.product_id))],
+            } : t));
+            setExpandedTurnIds((prev) => new Set(prev).add(shownTurn.id));
+          }
+        } else {
+          // Set products immediately
+          setTurns((prev) => prev.map((t) =>
+            t.id === capturedId ? { ...t, products: prods, moreProducts: more ?? [] } : t
+          ));
+        }
         // Remember the top-ranked product so affirmative replies ("yes", "ok") can trigger checkout.
-        if (prods.length > 0) {
+        if (prods.length > 0 && action?.type !== "show_more") {
           lastRecommendedProductRef.current = prods[0];
           setPendingCheckoutProduct(prods[0]);
         }
@@ -1366,9 +1443,9 @@ export default function Chat() {
   const GO_AHEAD_STEPS = [
     "Recording your payment authorization for this exact checkout",
     "AP2 authorization evidence",
-    "ACP scoped payment token",
+    "Payment token",
     "Merchant verifies agent, token and evidence",
-    "Internal DPAT · 12 payment checks",
+    "12 payment checks",
     "Merchant creates your order",
   ];
   const STEP_FOR_LABEL: Record<string, number> = {
@@ -2135,6 +2212,20 @@ export default function Chat() {
                               </div>
                             ))}
                           </div>
+                          {(turn.moreProducts?.length ?? 0) > 0 && !expandedTurnIds.has(turn.id) && (
+                            <button
+                              onClick={() => {
+                                setTurns((prev) => prev.map((t) => t.id === turn.id ? {
+                                  ...t,
+                                  products: [...t.products, ...(t.moreProducts ?? []).filter((p) => !t.products.some((q) => q.product_id === p.product_id))],
+                                } : t));
+                                setExpandedTurnIds((prev) => new Set(prev).add(turn.id));
+                              }}
+                              className="self-start text-xs font-medium px-3 py-1.5 rounded-full border border-[var(--color-primary)] text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-colors"
+                            >
+                              See others
+                            </button>
+                          )}
                         </div>
                       );
                     })()}

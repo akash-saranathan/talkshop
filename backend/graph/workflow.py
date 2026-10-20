@@ -395,7 +395,8 @@ async def mcp_product_search(state: CommerceState) -> CommerceState:
     products = [p for p in products if p.merchant_id in trusted]
     stats = {**stats, "returned": len(products), "trusted_merchants": sorted(trusted)}
 
-    total = stats["total_found"]
+    # Count distinct products (one per title and merchant), not size-and-colour rows.
+    total = len({(p.title.lower(), p.merchant_id) for p in products})
     await _emit(state, "step_done", f"SneakPeek — found {total} products across {len(stats['merchants'])} stores", stats)
     return {**state, "raw_products": [p.model_dump() for p in products], "stats": stats}
 
@@ -418,6 +419,26 @@ async def deterministic_filter(state: CommerceState) -> CommerceState:
     return {**state, "filtered_products": filtered}
 
 
+_SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"]
+
+
+def _size_order(size: str) -> tuple[int, object]:
+    """Numeric sizes sort by value (6, 7, ... 12); letter sizes sort S, M, L, XL."""
+    if size.isdigit():
+        return (0, int(size))
+    return (1, _SIZE_ORDER.index(size) if size in _SIZE_ORDER else len(_SIZE_ORDER))
+
+
+def _full_list_text(products: list[dict]) -> str:
+    """One line per product: name, merchant, colours, sizes and price."""
+    lines = [f"All {len(products)} products found:"]
+    for i, p in enumerate(products, 1):
+        colours = ", ".join(p.get("colours") or []) or (p.get("color") or "")
+        sizes = ", ".join(p.get("sizes") or []) or (p.get("size") or "")
+        lines.append(f"{i}. {p['title']} ({p.get('merchant_name', '')}) · {colours} · sizes {sizes} · ${p['price']:.2f}")
+    return "\n".join(lines)
+
+
 async def rank_products_node(state: CommerceState) -> CommerceState:
     if state.get("blocked") or state.get("chitchat") or state.get("awaiting_followup") or state.get("product_followup"):
         return state
@@ -434,9 +455,23 @@ async def rank_products_node(state: CommerceState) -> CommerceState:
             seen_keys.add(key)
             deduped.append(p)
     top5 = deduped[:5]
-    top10 = deduped[:10]
-    # Persist up to 10 so "show more" requests can surface products 6-10 without a new search
-    session_state.save_ranked_products(state["session_id"], [p.model_dump() for p in top10])
+    # Keep every distinct product so "see others" shows the rest of the same results, with no new search.
+    # Each product carries all the colours and sizes found for it.
+    colours: dict[tuple[str, str], set[str]] = {}
+    sizes: dict[tuple[str, str], set[str]] = {}
+    for p in ranked:
+        key = (p.title.lower(), p.merchant_id)
+        colours.setdefault(key, set()).add(p.color or "")
+        sizes.setdefault(key, set()).add(p.size or "")
+    saved = []
+    for p in deduped:
+        key = (p.title.lower(), p.merchant_id)
+        saved.append({
+            **p.model_dump(),
+            "colours": sorted(c for c in colours[key] if c),
+            "sizes": sorted((s for s in sizes[key] if s), key=_size_order),
+        })
+    session_state.save_ranked_products(state["session_id"], saved)
     await _emit(state, "step_done", f"SneakPeek — top {len(top5)} picks ready for you", [p.model_dump() for p in top5])
     return {**state, "ranked_products": top5}
 
@@ -487,9 +522,9 @@ async def generate_recommendation(state: CommerceState) -> CommerceState:
         all_products = session_state.get_ranked_products(state["session_id"])
         text, action = await vibecheck.answer_product_question_with_action(state["user_message"], all_products[:5])
         if action and action.get("type") == "show_more":
-            # Return products 6-10 (or all if fewer than 6 stored)
-            extra = all_products[5:] if len(all_products) > 5 else all_products
-            await _emit(state, "recommendation", text, {"products": extra, "action": action})
+            # "See others": the rest of the same results, with a full list of colours, sizes and prices.
+            extra = all_products[5:]
+            await _emit(state, "recommendation", _full_list_text(all_products), {"products": extra, "action": action})
         else:
             await _emit(state, "recommendation", text, {"products": [], "action": action})
         return {**state, "recommendation_text": text}
@@ -508,7 +543,12 @@ async def generate_recommendation(state: CommerceState) -> CommerceState:
         # So a bare "yes" on the next turn can apply this suggestion
         # directly — see the extract_intent node's affirmative short-circuit.
         session_state.save_context(state["session_id"], state["intent"].model_dump(mode="json"), pending_suggestion)
-    await _emit(state, "recommendation", text, [p.model_dump() for p in state["ranked_products"]])
+    # Top 5 are shown; the rest of the same results travel with them so "See others" needs no new request.
+    all_saved = session_state.get_ranked_products(state["session_id"])
+    await _emit(state, "recommendation", text, {
+        "products": [p.model_dump() for p in state["ranked_products"]],
+        "more": all_saved[5:],
+    })
     return {**state, "recommendation_text": text}
 
 

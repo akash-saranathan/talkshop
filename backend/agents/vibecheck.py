@@ -350,7 +350,7 @@ Rules for action (IMPORTANT -- add_to_cart and checkout are DIFFERENT):
 - "remove [it/this/first/...] from cart", "delete from cart", "take it out",
   "remove it", "remove this" -> remove_from_cart with product_idx
 - "show more", "see more", "more options", "what else", "show others",
-  "any more?", "other options" -> show_more
+  "any more?", "other options", "see others", "list all", "show all", "all options", "all of them" -> show_more
 - "it"/"this"/"that"/"first one" = product_idx 0; "second" = 1; "third" = 2
 - Pure questions (specs, comparisons, recommendations) -> action: null
 """

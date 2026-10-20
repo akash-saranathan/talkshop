@@ -26,8 +26,11 @@ def get_llm(temperature: float = 0.1):
         # Bounded, not tight: Gemini sometimes takes ~30 s on a single call, which a 20 s
         # deadline cut off (504 DEADLINE_EXCEEDED). Without any limit, one stuck call used to
         # retry 6 times with growing back-off and leave the chat spinning for minutes.
+        # 2 retries (not 1) because Gemini's intermittent 503/504s are often transient enough
+        # that a second attempt a few seconds later succeeds -- confirmed by hand: a direct
+        # call failed with 503, the identical call seconds later succeeded.
         timeout=45,
-        max_retries=1,
+        max_retries=2,
     )
 
 
