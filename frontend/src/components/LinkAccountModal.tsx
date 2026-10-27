@@ -26,6 +26,7 @@ export default function LinkAccountModal({ merchantId, merchantName, onClose, on
     const res = await startLink(merchantId, email);
     setBusy(false);
     if (res.ok) {
+      setNoAccount(false);
       setStep("code");
       setMessage(res.message);
     } else {
@@ -108,21 +109,18 @@ export default function LinkAccountModal({ merchantId, merchantName, onClose, on
         )}
 
         <div className="flex justify-end gap-2">
-          {noAccount ? (
-            <button className={btnPrimary} onClick={onClose}>Continue as guest</button>
-          ) : (
-            <>
-              <button className={btnGhost} onClick={onClose} disabled={busy}>Cancel</button>
-              {step === "email" && (
-                <button className={btnPrimary} onClick={submitEmail} disabled={busy || !email.trim()}>Continue</button>
-              )}
-              {step === "code" && (
-                <button className={btnPrimary} onClick={submitCode} disabled={busy || code.length !== 6}>Continue</button>
-              )}
-              {step === "approve" && (
-                <button className={btnPrimary} onClick={approve} disabled={busy}>Approve sharing</button>
-              )}
-            </>
+          <button className={btnGhost} onClick={onClose} disabled={busy}>Cancel</button>
+          {noAccount && (
+            <button className={btnGhost} onClick={onClose}>Continue as guest</button>
+          )}
+          {step === "email" && (
+            <button className={btnPrimary} onClick={submitEmail} disabled={busy || !email.trim()}>Continue</button>
+          )}
+          {step === "code" && (
+            <button className={btnPrimary} onClick={submitCode} disabled={busy || code.length !== 6}>Continue</button>
+          )}
+          {step === "approve" && (
+            <button className={btnPrimary} onClick={approve} disabled={busy}>Approve sharing</button>
           )}
         </div>
       </div>

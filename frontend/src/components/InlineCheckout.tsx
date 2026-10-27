@@ -351,7 +351,7 @@ function SecurePaymentModal({
                 className="flex-1 py-2.5 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40">Cancel</button>
               <button type="submit" disabled={busy}
                 className="flex-[2] py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold hover:bg-[var(--color-primary-dark)] disabled:opacity-60 flex items-center justify-center gap-2">
-                {busy ? <Loader size={13} className="animate-spin" /> : <Lock size={13} />} Save card
+                {busy ? <Loader size={13} className="animate-spin" /> : <Lock size={13} />} Use this card
               </button>
             </div>
           </form>
@@ -598,10 +598,10 @@ function ProposalCard(props: Props & { checkoutData: CheckoutData }) {
                 <UserCheck size={11} /> Guest checkout with {co.merchant_name} · your Talkshop account stays private
               </p>
             )}
-            {merchantGuest && onLinkAccount && (
+            {onLinkAccount && (
               <button onClick={onLinkAccount}
                 className="mt-1.5 text-xs font-medium text-[var(--color-primary)] hover:underline">
-                Link your {co.merchant_name} account
+                {merchantGuest ? `Link your ${co.merchant_name} account` : `Link another account`}
               </button>
             )}
           </div>

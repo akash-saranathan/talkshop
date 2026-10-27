@@ -202,7 +202,7 @@ async def create_proposal(
             f"{merchant_catalog_name(product.merchant_id)} could not verify this shopping agent's credentials, so the checkout was not authorized. Nothing was charged."))
     trace.add(agent, "CustomerAgent", "TRUST", "trusted_session_verified",
               {"action": SCOPE_CHECKOUT, "trusted_session_id": trusted.session_id,
-               "merchant_relationship": trusted.merchant_relationship,
+               "merchant_relationship": account_link.relationship(user_id, product.merchant_id),
                "credential_signature_valid": _signature_check(decision)}, direction="in")
 
     # Merchant-scoped loyalty: a member merchant returns this customer's balance.
@@ -274,7 +274,7 @@ async def create_proposal(
         "delivery_display": _pretty_date(checkout.delivery_date),
         "image_url": product.image_url,
         "trusted_session_id": trusted.session_id,
-        "merchant_relationship": trusted.merchant_relationship,
+        "merchant_relationship": account_link.relationship(user_id, product.merchant_id),
         "talkshop_account": "talkshop_guest" if is_talkshop_guest else "authenticated",
         "payment_method": pm,
         "agent_spending_limit": AGENT_SPENDING_LIMIT,

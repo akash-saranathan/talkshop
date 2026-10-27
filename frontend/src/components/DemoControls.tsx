@@ -40,7 +40,7 @@ export default function DemoControls({ onClose, onChanged }: Props) {
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Demo controls</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Demo settings (not for customers)</p>
           <p className="text-xs font-medium text-[var(--color-text)] mb-1">Linked accounts</p>
           <ul className="flex flex-col gap-1.5">
             {links.map((l) => (
