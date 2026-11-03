@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.db.init_db import init_db, run as seed_db
 from backend.routers import auth, merchants, products, chat, authorizations, payments, cart, compare, loyalty
@@ -17,6 +18,8 @@ from backend.routers import merchant_link as merchant_link_router
 from backend.config.llm import resolve_llm
 from backend.observability.tracing import init_tracing
 from backend.mcp.server import mcp as mcp_server
+from backend.mcp.auth import BearerAuthMiddleware, McpPathMiddleware
+from backend.oauth import server as oauth_server
 
 DB_PATH = Path(__file__).parent / "db" / "commerce.db"
 
@@ -47,6 +50,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(McpPathMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
@@ -70,7 +74,8 @@ app.include_router(purchase_router.router)
 app.include_router(ucp_router.router)
 app.include_router(chat_state_router.router)
 app.include_router(merchant_link_router.router)
-app.mount("/mcp", mcp_asgi_app)  # real MCP Streamable HTTP transport (see mcp_asgi_app above)
+app.include_router(oauth_server.router)  # MCP connector sign-in (OAuth 2.1 + PKCE), see backend/oauth/server.py
+app.mount("/mcp", BearerAuthMiddleware(mcp_asgi_app))  # real MCP Streamable HTTP transport, bearer-protected (see mcp_asgi_app above)
 
 
 @app.get("/")
@@ -104,3 +109,6 @@ async def transcribe(audio: UploadFile = File(...)):
 
     tmp_path.unlink(missing_ok=True)
     return {"text": transcript}
+
+# Product photos, so cards inside Claude can show them through the tunnel.
+app.mount("/catalog", StaticFiles(directory=Path(__file__).parent.parent / "frontend" / "public" / "catalog"), name="catalog")

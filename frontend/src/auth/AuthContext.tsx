@@ -72,6 +72,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // trusted if it's still that demo account; anything else (e.g. a stale
   // token from a real login made while testing) is replaced.
   useEffect(() => {
+    // The approval page signs in on its own, for the account that owns the checkout.
+    if (window.location.pathname.startsWith("/approve/")) {
+      setLoading(false);
+      return;
+    }
     const token = getToken();
     if (!token) {
       startDemoSession()

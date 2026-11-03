@@ -30,3 +30,6 @@ Thumbs.db
 
 # Photo-processing environment for scripts/fetch_catalog_photos.py (rembg)
 .venv-photos/
+
+# Project virtualenv
+.venv/

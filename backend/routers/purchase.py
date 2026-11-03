@@ -13,7 +13,9 @@ server runs everything in between (see backend/purchase/service.py).
 """
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends
+import json
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -200,3 +202,27 @@ async def purchase_reconsent(req: ReconsentRequest, current_user: CurrentUser = 
 async def merchant_payment(req: MerchantChargeRequest, current_user: CurrentUser = Depends(get_current_user)):
     return await service.merchant_charge(user_id=current_user.user_id, token_id=req.token_id,
                                          checkout_id=req.checkout_id, amount=req.amount, currency=req.currency)
+
+
+@router.get("/api/purchase/checkouts/{checkout_id}")
+async def get_checkout_for_approval(checkout_id: str, current_user: CurrentUser = Depends(get_current_user)):
+    """The stored proposal for the approval page (the page a link from the MCP connector opens).
+    Only the owner of the checkout can read it."""
+    from backend.db.schema import MerchantCheckout
+    from backend.db.session_utils import get_session
+
+    with get_session() as db:
+        row = (db.query(MerchantCheckout)
+               .filter(MerchantCheckout.checkout_id == checkout_id,
+                       MerchantCheckout.user_id == current_user.user_id)
+               .first())
+        if row is None:
+            raise HTTPException(status_code=404, detail="Checkout not found")
+        status = row.status
+        merchant_id = row.merchant_id
+        checkout = json.loads(row.document)
+    return {
+        "status": status,
+        "checkout": checkout,
+        "payment_methods": methods.list_methods(current_user.user_id, merchant_id),
+    }

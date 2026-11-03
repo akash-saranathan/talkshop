@@ -7,6 +7,7 @@ import GenericChat from "./pages/GenericChat";
 import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
 import PaymentResult from "./pages/PaymentResult";
+import Approve from "./pages/Approve";
 import Dashboard from "./pages/Dashboard";
 
 // No login screen: the app opens straight into the assistant, signed in as
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
           <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
           <Route path="/payment-result/:orderId" element={<RequireAuth><PaymentResult /></RequireAuth>} />
+          <Route path="/approve/:checkoutId" element={<Approve />} />
           <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

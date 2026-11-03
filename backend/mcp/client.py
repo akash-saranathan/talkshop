@@ -10,12 +10,16 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+from backend.mcp.auth import MCP_BEARER_TOKEN
 
 MCP_URL = "http://localhost:8000/mcp/"
 
 
 async def _call(name: str, **kwargs: Any) -> Any:
-    async with Client(MCP_URL) as client:
+    transport = StreamableHttpTransport(MCP_URL, headers={"Authorization": f"Bearer {MCP_BEARER_TOKEN}"})
+    async with Client(transport) as client:
         result = await client.call_tool(name, kwargs)
         return result.data
 
