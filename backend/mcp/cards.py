@@ -13,7 +13,7 @@ import json
 
 from fastmcp.apps.app import FastMCPApp
 from fastmcp.exceptions import ToolError
-from prefab_ui.actions import SetState, ShowToast
+from prefab_ui.actions import SetState, ShowToast, ToggleState
 from prefab_ui.actions.mcp import CallTool, SendMessage
 from prefab_ui.app import PrefabApp
 from prefab_ui.components import (
@@ -243,13 +243,21 @@ async def search_cards(query: str, max_price: float | None = None) -> PrefabApp:
 
     products = await asyncio.to_thread(
         merchant_catalog.search, query=query, category=None, brand=None, max_price=max_price, size=None)
-    products = _one_per_model(_matching(products, query))[:6]
+    products = _one_per_model(_matching(products, query))[:3]
 
     thumbs = await asyncio.to_thread(lambda: [_thumbnail_uri(p.image_url) for p in products])
+    from backend.mcp.cart_cards import cart_data, render_cart
+    rows, stores, saved = await cart_data(user_id)
     in_cart = await asyncio.to_thread(_cart_quantities, user_id)
 
     # Each card counts its own presses: q0, q1, ... start from what is already in the cart.
-    state = {}
+    state = {"show_cart": False}
+    state.update({f"gone{j}": False for j in range(len(rows))})
+    for i in range(len(stores)):
+        state[f"ready{i}"] = False
+        state[f"paid{i}"] = False
+        state[f"checkout_id{i}"] = ""
+        state[f"checkout_total{i}"] = ""
     for i, p in enumerate(products):
         state[f"q{i}"] = in_cart.get(p.product_id, 0)
         state[f"inc{i}"] = in_cart.get(p.product_id, 0) > 0
@@ -264,7 +272,7 @@ async def search_cards(query: str, max_price: float | None = None) -> PrefabApp:
                 flag = f"inc{i}"
                 with Card():
                     if thumb:
-                        Image(src=thumb, alt=p.title, css_class="w-full h-40 object-cover")
+                        Image(src=thumb, alt=p.title, css_class="w-full h-32 object-cover")
                     with CardContent(), Column(gap=1):
                         Text(p.title, css_class="font-medium")
                         Muted(" · ".join(x for x in (p.merchant_name, getattr(p, "color", None), getattr(p, "size", None)) if x))

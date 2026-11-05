@@ -17,7 +17,7 @@ from prefab_ui.actions import SetState, ShowToast
 from prefab_ui.actions.mcp import CallTool, SendMessage
 from prefab_ui.app import PrefabApp
 from prefab_ui.components.control_flow import If
-from prefab_ui.rx import STATE
+from prefab_ui.rx import RESULT, STATE
 from prefab_ui.components import H3, Button, Card, CardContent, CardFooter, CardHeader, Column, Muted, Text
 
 from backend.mcp.cards import cards
@@ -79,45 +79,115 @@ def _cart_rows(user_id: str) -> list[dict]:
         } for r in rows]
 
 
+async def cart_data(user_id: str) -> tuple[list, list, dict]:
+    """The cart rows, the stores in it, and each store's default saved card."""
+    rows = await asyncio.to_thread(_cart_rows, user_id)
+
+    stores: list[dict] = []
+    for r in rows:
+        if not any(s["id"] == r["merchant_id"] for s in stores):
+            stores.append({"id": r["merchant_id"], "name": r["merchant_name"], "currency": r["currency"]})
+
+    def _saved_cards() -> dict:
+        from backend.payment import methods
+        return {s["id"]: methods.default_method(user_id, s["id"]) for s in stores}
+
+    saved = await asyncio.to_thread(_saved_cards)
+    return rows, stores, saved
+
+
+def render_cart(rows: list, stores: list, saved: dict) -> dict:
+    """Draws the cart contents into the current container and returns the state they need.
+    The caller provides the Card (or another container) around it."""
+    total = sum(r["price"] * r["quantity"] for r in rows)
+
+    state: dict = {}
+    for i in range(len(stores)):
+        state[f"ready{i}"] = False
+        state[f"paid{i}"] = False
+        state[f"checkout_id{i}"] = ""
+        state[f"checkout_total{i}"] = ""
+
+    # A removed line disappears straight away: each line has its own "gone" flag.
+    for j in range(len(rows)):
+        state[f"gone{j}"] = False
+
+    def _start(i: int, store_id: str) -> CallTool:
+        return CallTool(
+            "start_checkout", arguments={"merchant_id": store_id},
+            on_success=[SetState(f"checkout_id{i}", RESULT.checkout_id),
+                        SetState(f"checkout_total{i}", RESULT.total),
+                        SetState(f"ready{i}", True)],
+            on_error=ShowToast(message="Could not start checkout. Check the cart.", variant="error"),
+        )
+
+    with CardHeader():
+        H3("Your cart")
+    with CardContent(), Column(gap=2):
+        if not rows:
+            Muted("Your cart is empty. Search for a product and press Add to cart.")
+        for j, r in enumerate(rows):
+            with If(~getattr(STATE, f"gone{j}")), Column(gap=1):
+                Text(f"{r['title']} × {r['quantity']} — {r['price'] * r['quantity']:.2f} {r['currency']}")
+                Muted(f"From {r['merchant_name']}")
+                Button("Remove", variant="outline", on_click=[
+                    CallTool("remove_from_cart", arguments={"cart_item_id": r["cart_item_id"]}),
+                    SetState(f"gone{j}", True),
+                ])
+        if rows:
+            Text(f"Total {total:.2f} {rows[0]['currency']}", css_class="font-medium")
+    with CardFooter():
+        if rows:
+            Button("Clear cart", variant="outline", on_click=[
+                CallTool("clear_cart", arguments={}),
+                *[SetState(f"gone{j}", True) for j in range(len(rows))],
+            ])
+            if len(stores) > 1:
+                Button("Proceed with all stores", variant="success",
+                       on_click=[_start(i, s["id"]) for i, s in enumerate(stores)])
+            for i, s in enumerate(stores):
+                Button(f"Proceed with {s['name']}", variant="success", on_click=_start(i, s["id"]))
+
+    # One approval block per store. Each store is paid separately, so each has its own button.
+    for i, s in enumerate(stores):
+        pm = saved.get(s["id"])
+        with If(getattr(STATE, f"ready{i}")):
+            with CardContent(), Column(gap=2):
+                Text(f"{s['name']} checkout ready. Total {getattr(STATE, f'checkout_total{i}')} {s['currency']}",
+                     css_class="font-medium")
+                if pm:
+                    Muted(f"Pays with {pm['display']}")
+                else:
+                    Muted(f"Add a saved card for {s['name']} in TalkShop first.")
+            with CardFooter():
+                if pm:
+                    with If(~getattr(STATE, f"paid{i}")):  # noqa: SIM117
+                        Button("Approve and pay", variant="success", on_click=CallTool(
+                            "confirm_purchase",
+                            arguments={"checkout_id": getattr(STATE, f"checkout_id{i}"),
+                                       "payment_method_id": pm["payment_method_id"]},
+                            on_success=SetState(f"paid{i}", True),
+                            on_error=ShowToast(message="Payment was not completed. Check the card and try again.",
+                                               variant="error"),
+                        ))
+                    with If(getattr(STATE, f"paid{i}")):
+                        Muted(f"{s['name']} payment submitted. Ask for your orders to see tracking.")
+    return state
+
+
 @cards.ui()
 async def show_cart_card() -> PrefabApp:
     """
     Show the customer's TalkShop cart: each item with quantity and price, the total, and a
-    Proceed to checkout button. Use this when the customer asks to see their cart, or after
-    they add items.
+    Proceed button for each store (or one for all stores). Each store is its own purchase,
+    so each one gets its own Approve and pay button. Use this when the customer asks to see
+    their cart, or after they add items.
     """
     user_id = current_user_id()
-    rows = await asyncio.to_thread(_cart_rows, user_id)
-
+    rows, stores, saved = await cart_data(user_id)
     with Card(css_class="max-w-2xl mx-auto") as view:
-        with CardHeader():
-            H3("Your cart")
-        with CardContent(), Column(gap=2):
-            if not rows:
-                Muted("Your cart is empty. Search for a product and press Add to cart.")
-            for r in rows:
-                with Column(gap=1):
-                    Text(f"{r['title']} × {r['quantity']} — {r['price'] * r['quantity']:.2f} {r['currency']}")
-                    Muted(f"From {r['merchant_name']}")
-                    Button("Remove", variant="outline",
-                           on_click=CallTool("remove_from_cart", arguments={"cart_item_id": r["cart_item_id"]}))
-            if rows:
-                total = sum(r["price"] * r["quantity"] for r in rows)
-                Text(f"Total {total:.2f} {rows[0]['currency']}", css_class="font-medium")
-                if len({r["merchant_id"] for r in rows}) > 1:
-                    Muted("Your cart has items from more than one store. Checkout works one store at a time.")
-        with CardFooter():
-            if rows:
-                Button("Clear cart", variant="outline", on_click=CallTool("clear_cart", arguments={}))
-                name = rows[0]["merchant_name"]
-                first = rows[0]["merchant_id"]
-                Button(f"Proceed to checkout with {name}", variant="success",
-                       on_click=CallTool("start_checkout", arguments={"merchant_id": first},
-                                         on_success=SetState("ready", True),
-                                         on_error=ShowToast(message="Could not start checkout. Check the cart.", variant="error")))
-                with If(STATE.ready):
-                    Muted("Checkout started. Ask for your purchase card to approve and pay.")
-    return PrefabApp(view=view, state={"ready": False})
+        state = render_cart(rows, stores, saved)
+    return PrefabApp(view=view, state=state)
 
 
 @cards.tool(model=True)
